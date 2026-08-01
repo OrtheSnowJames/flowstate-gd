@@ -1,0 +1,8 @@
+[gd_scene format=4 uid="uid://bubbler00001"]
+
+[ext_resource type="Script" path="res://water/bubbler.gd" id="1_bubbler"]
+
+[node name="Bubbler" type="Node3D"]
+script = ExtResource("1_bubbler")
+
+[node name="GPUParticles3D" type="GPUParticles3D" parent="."]
