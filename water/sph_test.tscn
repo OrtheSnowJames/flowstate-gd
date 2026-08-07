@@ -1,0 +1,48 @@
+[gd_scene format=3 uid="uid://bsph7test001a"]
+
+[ext_resource type="Script" path="res://water/sph_fluid.gd" id="1_sph"]
+
+[sub_resource type="ProceduralSkyMaterial" id="Sky_mat"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky"]
+sky_material = SubResource("Sky_mat")
+
+[sub_resource type="Environment" id="Env"]
+background_mode = 2
+sky = SubResource("Sky")
+tonemap_mode = 2
+ssao_enabled = true
+
+[sub_resource type="BoxMesh" id="BoxMesh_bounds"]
+size = Vector3(6, 5, 6)
+
+[sub_resource type="StandardMaterial3D" id="Mat_bounds"]
+transparency = 1
+albedo_color = Color(0.5, 0.7, 0.9, 0.08)
+cull_mode = 1
+
+[node name="SPHTest" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Env")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(0.86, -0.35, 0.37, 0, 0.72, 0.69, -0.51, -0.59, 0.62, 0, 8, 0)
+shadow_enabled = true
+
+[node name="BoundsBox" type="MeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+mesh = SubResource("BoxMesh_bounds")
+surface_material_override/0 = SubResource("Mat_bounds")
+
+[node name="Fluid" type="MultiMeshInstance3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3, 0)
+script = ExtResource("1_sph")
+particle_count = 2048
+bounds_size = Vector3(6, 5, 6)
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 0.82, 0.57, 0, -0.57, 0.82, 0, 11, 13)
+fov = 60.0

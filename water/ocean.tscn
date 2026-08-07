@@ -174,7 +174,7 @@ spring_length = 3.0
 current = true
 
 [node name="water base" type="MeshInstance3D" parent="." unique_id=346417304]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.732273, 5.612145, -11.13273)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9.694685, 5.572272, -11.065368)
 mesh = SubResource("ArrayMesh_j38dg")
 surface_material_override/0 = ExtResource("2_nb2vx")
 script = ExtResource("3_ocean")
@@ -271,7 +271,7 @@ mesh = SubResource("ArrayMesh_nrb0v")
 shape = SubResource("ConcavePolygonShape3D_v5bp3")
 
 [node name="CSGBakedMeshInstance3D4" type="MeshInstance3D" parent="." unique_id=320538675]
-transform = Transform3D(-3.7147608e-08, 0.020959869, -10.077781, 7.78951e-10, 0.9997803, 0.21127538, 0.8502118, -2.0106139e-13, -4.405138e-07, -17, 5.903816, -0.5)
+transform = Transform3D(-3.716394e-08, 0, -10.079995, 0, 1, 0, 0.8502118, 0, -4.406106e-07, -17, 5.8069086, -0.5)
 mesh = SubResource("ArrayMesh_nrb0v")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="CSGBakedMeshInstance3D4" unique_id=1755535973]
@@ -280,7 +280,7 @@ mesh = SubResource("ArrayMesh_nrb0v")
 shape = SubResource("ConcavePolygonShape3D_v5bp3")
 
 [node name="CSGBakedMeshInstance3D6" type="MeshInstance3D" parent="." unique_id=1273008742]
-transform = Transform3D(-3.434169e-08, 0.382248, -9.314519, 1.4205838e-08, 0.92405975, 3.8530583, 0.8502118, 0, -4.4061053e-07, 11.704515, -0.11426926, -0.5)
+transform = Transform3D(-3.434169e-08, 0.382248, -9.314519, 1.4205838e-08, 0.92405975, 3.8530583, 0.8502118, 0, -4.4061053e-07, 11.704515, 0.08794212, -0.5)
 mesh = SubResource("ArrayMesh_nrb0v")
 
 [node name="StaticBody3D" type="StaticBody3D" parent="CSGBakedMeshInstance3D6" unique_id=2056436329]

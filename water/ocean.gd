@@ -43,8 +43,13 @@ func _ready() -> void:
 	_mat.set_shader_parameter("ripple_str",    0.4)
 	_mat.set_shader_parameter("ripple_freq",   40.0)
 	_mat.set_shader_parameter("ripple_speed",  4.0)
-	_mat.set_shader_parameter("ripple_radius", 50.0)
-	_mat.set_shader_parameter("ripple_decay",  2.0)
+	# ripple_decay is per-second in the shader's exp(-age * ripple_decay), and
+	# ripple_radius is a hard distance cutoff -- at the old 2.0/50.0 a ripple's
+	# wavefront (age * ripple_speed) could travel several meters before fading,
+	# reading as a splash's ring crossing the whole pool. Decay much faster in
+	# time and clamp the distance tight so ripples die out locally instead.
+	_mat.set_shader_parameter("ripple_radius", 12.0)
+	_mat.set_shader_parameter("ripple_decay",  6.0)
 	_mat.set_shader_parameter("player_radius", 1.2)
 	_init_wake()
 	_init_bubbles()
@@ -138,9 +143,42 @@ func _init_bubbles() -> void:
 ## flat for buoyancy purposes, so x/z are ignored. The mesh's vertices are
 ## offset from the node origin (see its AABB), so add that offset to land on the
 ## actual visible surface rather than the node position.
-func get_height_at(_world_pos: Vector3) -> float:
+func get_height_at(world_pos: Vector3) -> float:
+	var box := get_aabb()
+	var base := global_position.y + box.position.y + box.size.y * 0.5
+	# Add the live swell height so buoyant bodies bob with the visible waves.
+	return base + _wave_height(world_pos.x, world_pos.z)
+
+## The undisturbed surface, with no swell on top. player.gd needs the baseline
+## separately from get_height_at so it can bound how far a dip in the water is
+## allowed to weaken buoyancy -- see its _water_height().
+func get_rest_height() -> float:
 	var box := get_aabb()
 	return global_position.y + box.position.y + box.size.y * 0.5
+
+## One directional wave. MUST stay identical to wave_term() in the water shader.
+func _wave_term(p: Vector2, d: Vector2, wl: float, amp: float, sp: float) -> float:
+	d = d.normalized()
+	var w := TAU / wl
+	var ph := w * d.dot(p) + _elapsed * sp * w
+	return amp * sin(ph)
+
+## World-space swell height at (x,z). The wave set here is identical to wave_h()
+## in the shader, and both read _elapsed / wave_time, so the CPU height the player
+## floats on exactly matches the surface you see.
+func _wave_height(x: float, z: float) -> float:
+	var p := Vector2(x, z)
+	var h := 0.0
+	h += _wave_term(p, Vector2(1.0, 0.6), 6.0, 0.060, 1.2)
+	h += _wave_term(p, Vector2(-0.7, 1.0), 3.5, 0.040, 1.5)
+	h += _wave_term(p, Vector2(0.3, -1.0), 2.0, 0.025, 1.9)
+	h += _wave_term(p, Vector2(1.0, 0.25), 1.2, 0.015, 2.4)
+	var amp_scale := 1.0
+	if _mat:
+		var v = _mat.get_shader_parameter("wave_amp_scale")
+		if v != null:
+			amp_scale = v
+	return h * amp_scale
 
 ## Spawn a big blue water eruption at `world_pos`: a tall central jet punching
 ## straight up plus a wide crown of droplets spraying outward, all arcing back
@@ -377,6 +415,8 @@ func _process(delta: float) -> void:
 	if _mat == null:
 		return
 	_elapsed += delta
+	# Drive the shader's wave clock from the same value the CPU height uses.
+	_mat.set_shader_parameter("wave_time", _elapsed)
 
 	var active := _get_bodies_in_water()
 

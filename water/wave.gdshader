@@ -21,7 +21,7 @@ void fragment() {
 	float foam = smoothstep(0.72, 1.0, h);
 
 	// Translucent water over the refracted background, whitened by foam + rim.
-	vec3 col = mix(behind, water, 0.55);
+	vec3 col = mix(behind, water, 0.25);
 	col = mix(col, vec3(1.0), clamp(foam + fres * 0.35, 0.0, 1.0));
 
 	ALBEDO    = col;

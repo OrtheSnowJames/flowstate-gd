@@ -8,7 +8,7 @@ var yaw := 0.0
 var pitch := 0.0
 
 func _ready():
-	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 func _input(event):
 	if event is InputEventMouseMotion:

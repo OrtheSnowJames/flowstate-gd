@@ -20,6 +20,11 @@ uniform float normal_strength   : hint_range(0.0,  8.0, 0.1)   = 4.0;
 uniform float wave_height       : hint_range(0.0,  2.0, 0.01)  = 0.25;
 uniform float wave_frequency    : hint_range(0.01, 1.0, 0.01)  = 0.25;
 uniform float wave_time_scale   : hint_range(0.01, 2.0, 0.01)  = 0.60;
+// Shared wave clock driven by ocean.gd so CPU buoyancy matches the GPU surface.
+uniform float wave_time = 0.0;
+// Global scale on the swell amplitude (buoyancy reads this too, so waves and
+// bobbing stay in sync when you tune it).
+uniform float wave_amp_scale : hint_range(0.0, 3.0, 0.05) = 1.0;
 uniform float caustic_scale     : hint_range(0.5,  8.0, 0.1)   = 2.5;
 uniform float caustic_speed     : hint_range(0.0,  2.0, 0.01)  = 0.25;
 uniform float caustic_strength  : hint_range(0.0,  3.0, 0.05)  = 0.8;
@@ -45,6 +50,7 @@ uniform float shininess      : hint_range(1.0, 512.0, 1.0) = 80.0;
 uniform float opacity        : hint_range(0.0,   1.0, 0.01) = 1.0;
 
 varying vec3 v_world_pos;
+varying vec2 v_wave_grad;
 
 float hash(vec2 p) {
 	p = fract(p * vec2(127.1 + noise_seed, 311.7 + noise_seed));
@@ -105,15 +111,35 @@ float total_ripple(vec2 xz, float t) {
 	return v * ripple_str;
 }
 
+// One directional wave (sum-of-sines heightfield): returns its height and
+// accumulates its horizontal gradient. MUST stay identical to ocean.gd's
+// _wave_term so buoyancy matches the visible surface.
+float wave_term(vec2 p, vec2 d, float wl, float amp, float sp, inout vec2 grad) {
+	d = normalize(d);
+	float w  = 6.2831853 / wl;
+	float ph = w * dot(d, p) + wave_time * sp * w;
+	grad += amp * w * cos(ph) * d;
+	return amp * sin(ph);
+}
+
+// World-space swell: a few layered directional waves. Small amplitudes for a
+// pool. Identical set lives in ocean.gd (_wave_height).
+float wave_h(vec2 p, out vec2 grad) {
+	grad = vec2(0.0);
+	float h = 0.0;
+	h += wave_term(p, vec2( 1.0,  0.6),  6.0, 0.060, 1.2, grad);
+	h += wave_term(p, vec2(-0.7,  1.0),  3.5, 0.040, 1.5, grad);
+	h += wave_term(p, vec2( 0.3, -1.0),  2.0, 0.025, 1.9, grad);
+	h += wave_term(p, vec2( 1.0,  0.25), 1.2, 0.015, 2.4, grad);
+	grad *= wave_amp_scale;
+	return h * wave_amp_scale;
+}
+
 void vertex() {
-	vec2  xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
-	float t  = TIME;
-	float f  = wave_frequency * 20.0;
-	float s  = wave_time_scale;
-	float wy = (sin(UV.x*f*1.0 + UV.y*f*0.35 + t*s) * 0.5
-	          + sin(UV.x*f*0.55 - UV.y*f*0.75 + t*s*0.67) * 0.3
-	          + sin(UV.x*f*0.35 + UV.y*f*1.10 + t*s*1.27) * 0.2) * 0.5 + 0.5;
-	VERTEX.y += wy * wave_height;
+	vec2 xz = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xz;
+	vec2 grad;
+	VERTEX.y += wave_h(xz, grad);
+	v_wave_grad = grad;
 	v_world_pos = (MODEL_MATRIX * vec4(VERTEX, 1.0)).xyz;
 }
 
@@ -131,6 +157,7 @@ void fragment() {
 
 	vec2 wn = surface_normal(sxz / wave_scale, t * wave_speed);
 	wn += vec2(rip_dx, rip_dz) * 2.5;
+	wn += v_wave_grad * 4.0;   // big swell tilts the normals so waves catch light
 
 	float chop    = choppiness(sxz / wave_scale, t * wave_speed);
 	vec3  col     = mix(color_deep.rgb, color_shallow.rgb, chop);
