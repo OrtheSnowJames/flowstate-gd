@@ -5,6 +5,7 @@
 [ext_resource type="Material" uid="uid://d0db6ctnjv00e" path="res://water/tile.tres" id="4_jfse0"]
 [ext_resource type="Script" uid="uid://cajkpw6dc1dpw" path="res://water/fps_counter.gd" id="5_8tehq"]
 [ext_resource type="Texture2D" uid="uid://cniixylcjhie3" path="res://img/bars/momentum_under.png" id="6_7r1ms"]
+[ext_resource type="Texture2D" uid="uid://cobff378w34nb" path="res://img/enchant_extractor.png" id="6_hp8k4"]
 [ext_resource type="Texture2D" uid="uid://cnjp4bd20wyxi" path="res://img/bars/momentum_progress.png" id="7_jfse0"]
 [ext_resource type="Script" uid="uid://crehtju6pslhj" path="res://water/ocean_fluid_bridge.gd" id="7_poolk"]
 [ext_resource type="Script" uid="uid://bhnve1yyg42ut" path="res://water/buoyancy.gd" id="8_buoy"]
@@ -115,12 +116,13 @@ _surfaces = [{
 [sub_resource type="ConcavePolygonShape3D" id="ConcavePolygonShape3D_1ixhq"]
 data = PackedVector3Array(-28, -1, 1.5, -28, -1, -1.5, -28, 1, -1.5, 28, -1, -1.5, -28, -1, -1.5, -28, -1, 1.5, -28, 1, -1.5, -28, -1, -1.5, 28, -1, -1.5, -28, 1, -1.5, -28, 1, 1.5, -28, -1, 1.5, -28, -1, 1.5, -28, 1, 1.5, 28, 1, 1.5, 28, 1, 1.5, -28, 1, 1.5, -28, 1, -1.5, -28, -1, 1.5, 28, -1, 1.5, 28, -1, -1.5, 28, 1, 1.5, 28, -1, 1.5, -28, -1, 1.5, 28, -1, -1.5, 28, -1, 1.5, 28, 1, 1.5, 28, -1, -1.5, 28, 1, -1.5, -28, 1, -1.5, -28, 1, -1.5, 28, 1, -1.5, 28, 1, 1.5, 28, 1, 1.5, 28, 1, -1.5, 28, -1, -1.5)
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_beu56"]
+albedo_texture = ExtResource("6_hp8k4")
+uv1_scale = Vector3(3, 2, 1)
+texture_filter = 0
+
 [sub_resource type="BoxMesh" id="BoxMesh_pcube"]
 size = Vector3(1.6, 1.6, 1.6)
-
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pcube"]
-albedo_color = Color(0.85, 0.4, 0.2, 1)
-roughness = 0.5
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_pcube"]
 size = Vector3(1.6, 1.6, 1.6)
@@ -525,8 +527,8 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 10, 0)
 mass = 12.0
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="PushCube" unique_id=794948360]
+material_override = SubResource("StandardMaterial3D_beu56")
 mesh = SubResource("BoxMesh_pcube")
-surface_material_override/0 = SubResource("StandardMaterial3D_pcube")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="PushCube" unique_id=1499544290]
 shape = SubResource("BoxShape3D_pcube")
