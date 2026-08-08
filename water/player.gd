@@ -37,11 +37,13 @@ const ANIM_MAP: Dictionary = {
 	AnimationState.JUMP: "jump"
 }
 
-const DEBUG_IN_SHALLOW_WATER: bool = true
-
 const SWIM_GAIN: float = 10.0
+const SWIM_UP_ANIMATION_BASE_TIME := 0.5
 const DODGE_DOUBLE_TAP_TIME := 0.25
 const CONTROL_CAMERA := true
+const ANIMATE_PLAYER := true
+const DEBUG_IN_SHALLOW_WATER: bool = false
+
 ## Grace window for the backstroke -> forward-stroke flip: how long after
 ## last holding S a W press still counts as "flip out of the backstroke".
 ## Needed because requiring S and W to overlap on the exact same physics tick
@@ -220,12 +222,21 @@ func anim_name_to_string(anim_name: AnimationState) -> String:
 
 func anim_enum_from_string(anim_name_str: String) -> AnimationState:
 	# Finds the enum key by looking up the string value
+	if anim_name_str == "":
+		return AnimationState.IDLE
 	return ANIM_MAP.find_key(anim_name_str)
 
 func play_anim(anim_state: AnimationState) -> void:
 	if _anim_player:
 		if anim_enum_from_string(_anim_player.current_animation) != anim_state:
-			_anim_player.play(anim_name_to_string(anim_state))
+			if anim_state == AnimationState.SWIM_UP:
+				# slow down the animation
+				# animation is 0.5 seconds
+				# calculate speed multiplier based on _swim_up_animation_time()
+				var _mult := _swim_up_animation_time() / SWIM_UP_ANIMATION_BASE_TIME
+				_anim_player.play("swim_up", _mult)
+			else:
+				_anim_player.play(anim_name_to_string(anim_state))
 
 func _detach_camera_rig() -> void:
 	if is_instance_valid(_cam_pivot):
@@ -235,8 +246,34 @@ func _process(delta: float) -> void:
 	if CONTROL_CAMERA:
 		_camera_pivot_change(delta)
 
+	if ANIMATE_PLAYER:
+		_anim_change()
+
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _anim_change() -> void:
+	if movement_state == MovementState.DODGE:
+		return # TODO handle in dodge functions
+	if not _anim_player:
+		return
+
+	match movement_state:
+		MovementState.IDLE:
+			play_anim(AnimationState.IDLE)
+		MovementState.TREAD:
+			play_anim(AnimationState.TREAD)
+		MovementState.SWIM_UP:
+			play_anim(AnimationState.SWIM_UP)
+		MovementState.SWIM:
+			play_anim(AnimationState.SWIM)
+		MovementState.GLIDE:
+			play_anim(AnimationState.GLIDE)
+		MovementState.WALK:
+			play_anim(AnimationState.WALK)
+		MovementState.JUMP:
+			play_anim(AnimationState.JUMP)
+
 
 func _camera_pivot_change(delta: float) -> void:
 	if not is_instance_valid(_cam_pivot) or not _cam_pivot.is_inside_tree():
@@ -298,9 +335,13 @@ func detect_dodge(now: float, event: InputEvent) -> void:
 		last_d_press = now
 
 func _dodge_left() -> void:
+	if ANIMATE_PLAYER:
+		_anim_player.play("dodge_left")
 	_dodge(Vector3.LEFT)
 
 func _dodge_right() -> void:
+	if ANIMATE_PLAYER:
+		_anim_player.play("dodge_right")
 	_dodge(Vector3.RIGHT)
 
 ## A quick sideways burst triggered by double-tapping left/right (see _input).
