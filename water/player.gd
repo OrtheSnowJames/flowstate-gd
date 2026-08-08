@@ -11,10 +11,37 @@ enum MovementState {
 	JUMP,
 }
 
+# Almost a copy of the movement state enum, but with dodge left and right.
+enum AnimationState {
+	IDLE,
+	TREAD,
+	SWIM_UP,
+	SWIM,
+	GLIDE,
+	DODGE_LEFT,
+	DODGE_RIGHT,
+	WALK,
+	JUMP,
+}
+
+# Define this at the top of your script
+const ANIM_MAP: Dictionary = {
+	AnimationState.IDLE: "idle",
+	AnimationState.TREAD: "tread",
+	AnimationState.SWIM_UP: "swim_up",
+	AnimationState.SWIM: "swim",
+	AnimationState.GLIDE: "glide",
+	AnimationState.DODGE_LEFT: "dodge_left",
+	AnimationState.DODGE_RIGHT: "dodge_right",
+	AnimationState.WALK: "walk",
+	AnimationState.JUMP: "jump"
+}
+
 const DEBUG_IN_SHALLOW_WATER: bool = true
 
 const SWIM_GAIN: float = 10.0
 const DODGE_DOUBLE_TAP_TIME := 0.25
+const CONTROL_CAMERA := true
 ## Grace window for the backstroke -> forward-stroke flip: how long after
 ## last holding S a W press still counts as "flip out of the backstroke".
 ## Needed because requiring S and W to overlap on the exact same physics tick
@@ -104,7 +131,7 @@ var last_d_press := -1000.0
 ## Only works standing in the shallow end -- a push off the pool floor, same
 ## as dodge. Spends all your momentum on launch; the more you had, the higher
 ## you go (see _jump).
-@export var jump_power: float = 2
+@export var jump_power: float = 1
 ## Seconds after a jump before another one can trigger.
 @export var jump_cooldown: float = 1.0
 
@@ -144,6 +171,7 @@ var _jump_cooldown_timer: float = 0.0
 # transition both count as walkable; deep never does.
 @onready var _shallow_floor: Node = get_node_or_null("/root/Main/shallow")
 @onready var _transition_floor: Node = get_node_or_null("/root/Main/transition")
+@onready var _anim_player: AnimationPlayer = get_node_or_null("blockbench_export/AnimationPlayer")
 var _underwater_mat: ShaderMaterial
 
 # Height above the body the camera rig hovers at, captured from the scene
@@ -186,13 +214,34 @@ func _ready() -> void:
 	call_deferred("_detach_camera_rig")
 	_update_camera_pitch()
 
+func anim_name_to_string(anim_name: AnimationState) -> String:
+	# Looks up the string by enum key; falls back to empty string if missing
+	return ANIM_MAP.get(anim_name, "")
+
+func anim_enum_from_string(anim_name_str: String) -> AnimationState:
+	# Finds the enum key by looking up the string value
+	return ANIM_MAP.find_key(anim_name_str)
+
+func play_anim(anim_state: AnimationState) -> void:
+	if _anim_player:
+		if anim_enum_from_string(_anim_player.current_animation) != anim_state:
+			_anim_player.play(anim_name_to_string(anim_state))
+
 func _detach_camera_rig() -> void:
 	if is_instance_valid(_cam_pivot):
 		_cam_pivot.reparent(get_parent(), true)
 
 func _process(delta: float) -> void:
+	if CONTROL_CAMERA:
+		_camera_pivot_change(delta)
+
+	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+func _camera_pivot_change(delta: float) -> void:
 	if not is_instance_valid(_cam_pivot) or not _cam_pivot.is_inside_tree():
 		return
+
 	# Position: drift the rig toward hovering above the body.
 	var target_pos := global_position + Vector3.UP * _cam_pivot_height
 	_cam_pivot.global_position = _cam_pivot.global_position.lerp(
@@ -209,7 +258,6 @@ func _process(delta: float) -> void:
 		1.0 - exp(-camera_pitch_speed * delta))
 
 	_gui_change()
-
 
 func _gui_change() -> void:
 	gui.get_node("stamina_bar").value = stamina
@@ -299,7 +347,8 @@ func _jump(shallow: bool) -> void:
 	if not shallow or momentum <= 0.0 or _jump_cooldown_timer > 0.0:
 		return
 	_jump_cooldown_timer = jump_cooldown
-	linear_velocity.y = momentum * jump_power
+	var t := momentum / max_momentum
+	linear_velocity.y = jump_power * max_momentum * (1.0 - exp(-3.0 * t))
 	momentum = 0.0
 	movement_state = MovementState.JUMP
 

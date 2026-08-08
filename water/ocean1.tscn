@@ -1,6 +1,7 @@
 [gd_scene format=4 uid="uid://c4uvje3vnu4ii"]
 
 [ext_resource type="Script" uid="uid://catnupgbgkmm3" path="res://water/player.gd" id="1_24x4k"]
+[ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="2_hrcxi"]
 [ext_resource type="Material" uid="uid://d0db6ctnjv00e" path="res://water/tile.tres" id="4_jfse0"]
 [ext_resource type="Script" uid="uid://cajkpw6dc1dpw" path="res://water/fps_counter.gd" id="5_8tehq"]
 [ext_resource type="Texture2D" uid="uid://cniixylcjhie3" path="res://img/bars/momentum_under.png" id="6_7r1ms"]
@@ -132,59 +133,31 @@ environment = SubResource("Environment_qijwg")
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1847138631]
 transform = Transform3D(0.81787866, -0.4983029, -0.28769535, -0.57539064, -0.70830363, -0.40893933, 0, 0.5, -0.86602527, 0, 0, 0)
 
-[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=2132808980]
+[node name="our_player" type="RigidBody3D" parent="." unique_id=2132808980]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15.134187, 0)
 collision_layer = 524289
 script = ExtResource("1_24x4k")
-swim_speed = null
-turn_speed = null
-default_camera_pitch_deg = null
-camera_follow_speed = null
-camera_turn_speed = null
-camera_pitch_speed = null
-body_mass = null
-target_submersion = null
-damping_ratio = null
-water_linear_drag = null
-body_half_height = null
-ground_probe = null
-wall_probe = null
 ocean_path = NodePath("../water base")
-max_momentum = null
-momentum_in_shallow_end = null
-max_momentum_by_walking = null
-momentum_needed_to_swim = null
-forward_swim_gain_mult = null
-dodge_momentum = null
-dodge_impulse = null
-dodge_cooldown = null
-jump_power = null
-jump_cooldown = null
-momentum = null
-stamina = null
-max_stamina = null
-stamina_expended_dodge = null
-stamina_in_shallow_end_per_second = null
-stamina_expended_in_deep_end_per_second_tread = null
-stamina_expended_in_deep_end_per_second_swim = null
-stamina_expended_in_deep_end_per_second_glide = null
-movement_state = null
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="RigidBody3D" unique_id=499592458]
+[node name="MeshInstance3D" type="MeshInstance3D" parent="our_player" unique_id=499592458]
+visible = false
 layers = 524289
 mesh = SubResource("CapsuleMesh_nb2vx")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=605599104]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="our_player" unique_id=605599104]
 shape = SubResource("CapsuleShape3D_bwgqs")
 
-[node name="CamPivot" type="Node3D" parent="RigidBody3D" unique_id=2119047386]
+[node name="CamPivot" type="Node3D" parent="our_player" unique_id=2119047386]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
 
-[node name="SpringArm3D" type="SpringArm3D" parent="RigidBody3D/CamPivot" unique_id=1749263865]
+[node name="SpringArm3D" type="SpringArm3D" parent="our_player/CamPivot" unique_id=1749263865]
 spring_length = 4.5
 
-[node name="Camera3D" type="Camera3D" parent="RigidBody3D/CamPivot/SpringArm3D" unique_id=1107571816]
+[node name="Camera3D" type="Camera3D" parent="our_player/CamPivot/SpringArm3D" unique_id=1107571816]
 current = true
+
+[node name="blockbench_export" parent="our_player" unique_id=128070586 instance=ExtResource("2_hrcxi")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, -1.0725327, 0)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1090515682]
 transform = Transform3D(1, 0, 0, 0, 2.3176637, 0.47692117, 0, -0.7835843, 1.410624, 0, 8.793662, -3.743331)
