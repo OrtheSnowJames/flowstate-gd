@@ -395,14 +395,21 @@ func _stamina_change(delta: float) -> void:
 		elif movement_state == MovementState.GLIDE:
 			stamina -= delta * stamina_expended_in_deep_end_per_second_glide
 
-	if stamina <= 0.0:
+	if stamina <= 5.0:
 		_death()
 
 func _input(event: InputEvent) -> void:
 	if _unconscious:
 		return
+	detect_death(event)
 	var now := _time_since_start()
 	detect_dodge(now, event)
+	detect_death(event)
+
+func detect_death(event: InputEvent) -> void:
+	if event.is_action_pressed("death"):
+		print("kys")
+		_death()
 
 func detect_dodge(now: float, event: InputEvent) -> void:
 	if event.is_action_pressed("forward") \
@@ -519,10 +526,9 @@ func _death() -> void:
 
 	if _eyelid and _eyelid.material:
 		# 0.0 is a wide open eye, 1.0 fully shut (see eye_closing.gdshader --
-		# `progress` drives how far the lids have travelled from the edges).
+		# `progress` drives the murk, the tunnel and the lids together).
 		# Starting the tween at 0.5 snapped them half closed on the first frame
-		# before animating; starting from open lets them actually fall. Easing
-		# in makes the lids drift, then drop -- passing out, not blinking.
+		# before animating; starting from open lets them actually fall.
 		_eyelid.material.set_shader_parameter("progress", 0.0)
 		# Half the ear-ringing clip, so the lids finish falling while the ring
 		# is still going and the sound outlives the picture. Falls back to
@@ -532,7 +538,13 @@ func _death() -> void:
 		if _muffled_player and _muffled_player.stream:
 			_duration = _muffled_player.stream.get_length() / 2
 		_eyelid_tween = create_tween()
-		_eyelid_tween.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
+		# Linear on purpose. `progress` isn't one animation any more, it's the
+		# clock the shader reads off, and it shapes each layer itself: the murk
+		# slams in over the first cloud_ramp of it, the tunnel follows, the lids
+		# hold until lid_delay and then fall. Easing this drove all three at
+		# once -- a sine ease-in here, on top of the shader squaring it, left
+		# the screen at 8% murk halfway through the blackout.
+		_eyelid_tween.set_trans(Tween.TRANS_LINEAR)
 		_eyelid_tween.tween_method(
 			func(val: float) -> void:
 				_eyelid.material.set_shader_parameter("progress", val),
