@@ -12,6 +12,8 @@
 [ext_resource type="Texture2D" uid="uid://clhioidesbrgp" path="res://img/bars/stamina_under.png" id="8_jk5mu"]
 [ext_resource type="Texture2D" uid="uid://dscptm7b66unc" path="res://img/bars/stamina_over.png" id="9_hrcxi"]
 [ext_resource type="Texture2D" uid="uid://bmnn4r7ulgvh2" path="res://img/bars/stamina_progress.png" id="10_hp8k4"]
+[ext_resource type="Shader" uid="uid://d1tl3uxyuc0t5" path="res://other_shaders/eye_closing.gdshader" id="13_7na61"]
+[ext_resource type="AudioStream" uid="uid://bhvosstc5mmnq" path="res://audio/ear_ringing.mp3" id="14_r6av7"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -126,6 +128,9 @@ size = Vector3(1.6, 1.6, 1.6)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_pcube"]
 size = Vector3(1.6, 1.6, 1.6)
+
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_6iwkg"]
+shader = ExtResource("13_7na61")
 
 [node name="Main" type="Node3D" unique_id=1189769047]
 
@@ -572,3 +577,14 @@ nine_patch_stretch = true
 texture_under = ExtResource("8_jk5mu")
 texture_over = ExtResource("9_hrcxi")
 texture_progress = ExtResource("10_hp8k4")
+
+[node name="eyelid" type="ColorRect" parent="gui" unique_id=935998782]
+material = SubResource("ShaderMaterial_6iwkg")
+offset_right = 40.0
+offset_bottom = 40.0
+scale = Vector2(29.163057, 16.16692)
+color = Color(0.44313726, 1, 0.75686276, 0)
+
+[node name="muffled_player" type="AudioStreamPlayer" parent="." unique_id=1911185792]
+stream = ExtResource("14_r6av7")
+bus = &"death"

@@ -133,9 +133,37 @@ var last_d_press := -1000.0
 ## Only works standing in the shallow end -- a push off the pool floor, same
 ## as dodge. Spends all your momentum on launch; the more you had, the higher
 ## you go (see _jump).
-@export var jump_power: float = 1
+## Launch speed in m/s at full momentum, straight up. Actual height is
+## roughly jump_speed^2 / (2 * gravity), so 8.0 tops out around 3.2 m.
+@export var jump_speed: float = 8.0
+## How sharply momentum stops paying off. The launch scales with
+## (momentum / max_momentum) ^ jump_momentum_exponent, so below 1.0 each extra
+## point of momentum buys less than the last:
+##   1.0  -> linear, double the momentum is double the launch
+##   0.5  -> double the momentum is 1.41x the launch
+##   0.33 -> double the momentum is 1.26x the launch
+## Momentum is still worth building, it just can't run away with the jump.
+@export_range(0.1, 1.0, 0.01) var jump_momentum_exponent: float = 0.5
 ## Seconds after a jump before another one can trigger.
 @export var jump_cooldown: float = 1.0
+
+@export_group("Blackout")
+## Fallback for how long the eyelids take to fall shut. Normally the close is
+## timed off the ear-ringing clip instead (half its length, see _death); this
+## only applies when that stream is missing.
+@export var blackout_time: float = 2.5
+## Seconds the eyelids take to fly back open on revive(). Much shorter than the
+## close -- coming round is a jolt, blacking out is a slide.
+@export var eyelid_open_time: float = 0.22
+## How much of the tank revive() hands back, as a fraction of max_stamina. Must
+## stay above 0 or the player blacks out again on the next tick; low values give
+## you a groggy few seconds before you have to reach the shallows.
+@export_range(0.05, 1.0, 0.01) var revive_stamina_fraction: float = 0.5
+## Camera jolt on revive, in camera-offset units. Tiny by design -- 0.06 reads
+## as a flinch; past ~0.3 it's a car crash.
+@export var revive_shake_strength: float = 0.06
+## Seconds that jolt takes to decay to nothing.
+@export var revive_shake_time: float = 0.25
 
 @export_group("")
 # holy grail #1
@@ -168,11 +196,12 @@ var _jump_cooldown_timer: float = 0.0
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
-@onready var _spring_arm: SpringArm3D = $CamPivot/SpringArm3D
+@onready var _muffled_player: AudioStreamPlayer = get_node("/root/Main/muffled_player")
 # The scene's named floor meshes; see in_shallow_end(). shallow and
 # transition both count as walkable; deep never does.
 @onready var _shallow_floor: Node = get_node_or_null("/root/Main/shallow")
 @onready var _transition_floor: Node = get_node_or_null("/root/Main/transition")
+@onready var _eyelid: ColorRect = get_node_or_null("/root/Main/gui/eyelid")
 @onready var _anim_player: AnimationPlayer = get_node_or_null("blockbench_export/AnimationPlayer")
 var _underwater_mat: ShaderMaterial
 
@@ -183,6 +212,16 @@ var _gravity: float = 9.8
 # Timestamp of the last physics tick we were backstroking (holding S while
 # swim_key is held); see BACKSTROKE_FLIP_WINDOW.
 var _last_backstroke_time: float = -1000.0
+# Latched by _death() once stamina runs out; see there. Gates input and the
+# whole movement pass, so nothing can swim the body around while it's out.
+var _unconscious: bool = false
+# The eyelid tween, kept so revive() can kill a close that's still in flight
+# instead of letting the two fight over the same shader parameter.
+var _eyelid_tween: Tween = null
+# Camera shake state; see _shake_change.
+var _shake_left: float = 0.0
+var _shake_total: float = 0.0
+var _shake_strength: float = 0.0
 
 func _ready() -> void:
 	# Free cursor, not locked to the window -- A/D turn the camera now (see
@@ -203,6 +242,22 @@ func _ready() -> void:
 	physics_material_override = pm
 	if ocean_path:
 		_ocean = get_node_or_null(ocean_path)
+
+	# Drive the bars' ranges from the real stat maxima. They're authored in the
+	# scene with their own max_value, which silently drifts from the stats they
+	# show: stamina_bar shipped with max_value 10 against max_stamina 100, so
+	# the bar hit full at a tenth of a tank and sat pinned there for the other
+	# nine tenths. Draining read as a bar that clung to full and then dropped
+	# out in the last two seconds, and refilling as a bar that snapped full
+	# almost instantly -- both about ten times faster than the stat actually
+	# moves. Setting it here means retuning max_stamina can't desync the bar.
+	var stamina_bar: Range = gui.get_node_or_null("stamina_bar")
+	if stamina_bar:
+		stamina_bar.max_value = max_stamina
+	var momentum_bar: Range = gui.get_node_or_null("momentum_bar")
+	if momentum_bar:
+		momentum_bar.max_value = max_momentum
+
 	_underwater_mat = ShaderMaterial.new()
 	_underwater_mat.shader = load("res://water/underwater.gdshader")
 
@@ -251,6 +306,34 @@ func _process(delta: float) -> void:
 
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+	_shake_change(delta)
+
+## Decaying camera shake, driven off h_offset/v_offset rather than the camera's
+## rotation or position: _camera_pivot_change already owns rotation.x, and the
+## SpringArm3D rewrites the camera's position every frame to hold it at arm's
+## length, so anything written there is gone by the next frame. The offsets are
+## the one channel nothing else touches. Amplitude falls off linearly to zero
+## and then snaps the offsets back to exactly 0, so a shake can't leave the
+## camera parked slightly off-centre.
+func _shake_change(delta: float) -> void:
+	if _shake_left <= 0.0:
+		return
+	_shake_left = maxf(_shake_left - delta, 0.0)
+	if _shake_left <= 0.0 or _shake_total <= 0.0:
+		_camera.h_offset = 0.0
+		_camera.v_offset = 0.0
+		return
+	var falloff := _shake_left / _shake_total
+	_camera.h_offset = randf_range(-1.0, 1.0) * _shake_strength * falloff
+	_camera.v_offset = randf_range(-1.0, 1.0) * _shake_strength * falloff
+
+## Kick off a camera shake: `strength` in camera-offset units (small -- 0.05 is
+## a nudge, 0.3 is a hit), decaying to nothing over `duration` seconds.
+func shake_camera(strength: float, duration: float) -> void:
+	_shake_strength = strength
+	_shake_total = maxf(duration, 0.001)
+	_shake_left = _shake_total
 
 func _anim_change() -> void:
 	if movement_state == MovementState.DODGE:
@@ -312,10 +395,14 @@ func _stamina_change(delta: float) -> void:
 		elif movement_state == MovementState.GLIDE:
 			stamina -= delta * stamina_expended_in_deep_end_per_second_glide
 
+	if stamina <= 0.0:
+		_death()
+
 func _input(event: InputEvent) -> void:
+	if _unconscious:
+		return
 	var now := _time_since_start()
 	detect_dodge(now, event)
-
 
 func detect_dodge(now: float, event: InputEvent) -> void:
 	if event.is_action_pressed("forward") \
@@ -388,8 +475,13 @@ func _jump(shallow: bool) -> void:
 	if not shallow or momentum <= 0.0 or _jump_cooldown_timer > 0.0:
 		return
 	_jump_cooldown_timer = jump_cooldown
-	var t := momentum / max_momentum
-	linear_velocity.y = jump_power * max_momentum * (1.0 - exp(-3.0 * t))
+	# Diminishing returns on momentum: the exponent (< 1) flattens the curve, so
+	# arriving at full tilt jumps higher than arriving at half, but nowhere near
+	# twice as high. jump_speed is the launch at full momentum, in m/s, so the
+	# ceiling is a real number you can reason about instead of falling out of
+	# max_momentum -- retuning momentum no longer silently retunes the jump.
+	var t := clampf(momentum / max_momentum, 0.0, 1.0)
+	linear_velocity.y = jump_speed * pow(t, jump_momentum_exponent)
 	momentum = 0.0
 	movement_state = MovementState.JUMP
 
@@ -401,6 +493,100 @@ func _jump(shallow: bool) -> void:
 func _update_camera_pitch() -> void:
 	_camera.rotation.x = deg_to_rad(default_camera_pitch_deg)
 
+## Blacking out: stamina hit zero. Control is gone and the body goes limp --
+## it keeps floating, it just isn't swimming any more -- while the ear ringing
+## comes up and the eyelids fall shut over the view.
+##
+## The _unconscious latch is load-bearing, not defensive. _stamina_change tests
+## `stamina <= 0.0` every physics tick, so this used to re-enter 60 times a
+## second: play() restarted the ringing from frame 0 before a single frame of
+## it could sound (a buzz, not a ring), and every tick stacked another tween
+## onto the same shader parameter, so dozens of them fought over `progress` and
+## the lids juddered instead of closing.
+func _death() -> void:
+	if _unconscious:
+		return
+	_unconscious = true
+	movement_state = MovementState.IDLE
+	momentum = 0.0
+	# Stop taking input at the source, rather than only ignoring it downstream:
+	# _input stops being called at all, and _physics_process bails before it
+	# reads a single action. revive() turns it back on.
+	set_process_input(false)
+
+	if _muffled_player:
+		_muffled_player.play()
+
+	if _eyelid and _eyelid.material:
+		# 0.0 is a wide open eye, 1.0 fully shut (see eye_closing.gdshader --
+		# `progress` drives how far the lids have travelled from the edges).
+		# Starting the tween at 0.5 snapped them half closed on the first frame
+		# before animating; starting from open lets them actually fall. Easing
+		# in makes the lids drift, then drop -- passing out, not blinking.
+		_eyelid.material.set_shader_parameter("progress", 0.0)
+		# Half the ear-ringing clip, so the lids finish falling while the ring
+		# is still going and the sound outlives the picture. Falls back to
+		# blackout_time when there's no stream to measure (get_length() on a
+		# null stream would take the whole function down with it).
+		var _duration := blackout_time
+		if _muffled_player and _muffled_player.stream:
+			_duration = _muffled_player.stream.get_length() / 2
+		_eyelid_tween = create_tween()
+		_eyelid_tween.set_ease(Tween.EASE_IN).set_trans(Tween.TRANS_SINE)
+		_eyelid_tween.tween_method(
+			func(val: float) -> void:
+				_eyelid.material.set_shader_parameter("progress", val),
+			0.0,
+			1.0,
+			_duration)
+
+## Coming to: the mirror of _death(). Eyes snap back open with a jolt through
+## the camera, the ringing cuts, and control comes back.
+##
+## Nothing calls this yet -- wire it to whatever should bring the player round
+## (a lifeguard, a timer, a respawn point). Safe to call at any time; it's a
+## no-op if the player is already conscious.
+##
+## Stamina has to come back with it. _stamina_change re-tests `stamina <= 0.0`
+## on the very next tick, so reviving on an empty tank would black straight out
+## again -- and because _death() latches, that second blackout would be silent
+## and eyeless. revive_stamina_fraction is what stops that loop.
+func revive() -> void:
+	if not _unconscious:
+		return
+	_unconscious = false
+	set_process_input(true)
+	stamina = max_stamina * revive_stamina_fraction
+	momentum = 0.0
+	movement_state = MovementState.TREAD
+	# A double-tap registered before blacking out shouldn't cash in as a dodge
+	# the instant control returns.
+	last_a_press = -1000.0
+	last_d_press = -1000.0
+
+	if _muffled_player:
+		_muffled_player.stop()
+
+	shake_camera(revive_shake_strength, revive_shake_time)
+
+	if _eyelid and _eyelid.material:
+		# Kill the close if it's still running, or the two tweens would drive
+		# `progress` in opposite directions at once.
+		if _eyelid_tween and _eyelid_tween.is_valid():
+			_eyelid_tween.kill()
+		# Snap open from wherever the lids actually are, not from a fixed value,
+		# so reviving mid-close doesn't jump them shut first. Ease-out so they
+		# fly open and settle rather than crawling.
+		var from: float = _eyelid.material.get_shader_parameter("progress")
+		_eyelid_tween = create_tween()
+		_eyelid_tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
+		_eyelid_tween.tween_method(
+			func(val: float) -> void:
+				_eyelid.material.set_shader_parameter("progress", val),
+			from,
+			0.0,
+			eyelid_open_time)
+
 ## Turns the body (and the camera, which follows its yaw -- see _process)
 ## while A/D are held, at turn_speed rad/s. Replaces the old mouse-yaw and the
 ## old A/D strafe -- these keys steer now instead of sidestepping.
@@ -410,6 +596,19 @@ func _turn_from_input(delta: float) -> void:
 		rotate_y(-turn * turn_speed * delta)
 
 func _physics_process(delta: float) -> void:
+	if _unconscious:
+		# Limp body. Input is ignored -- no turning, no strokes, no momentum --
+		# but the water carries on acting on it: drag bleeds off whatever drift
+		# was left so it coasts to a stop instead of sailing on, and buoyancy
+		# floats it at the surface. Applied directly rather than through
+		# _apply_central_force so they can't be silenced by a stale can_move,
+		# and buoyancy stays last for the force-ordering reason below.
+		var v := linear_velocity
+		apply_central_force(
+			Vector3(-v.x, 0.0, -v.z) * (water_linear_drag * 1.5) * mass)
+		_apply_buoyancy(_submersion())
+		return
+
 	_turn_from_input(delta)
 
 	_dodge_cooldown_timer = maxf(_dodge_cooldown_timer - delta, 0.0)
