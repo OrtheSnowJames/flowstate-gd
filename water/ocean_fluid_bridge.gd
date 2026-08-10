@@ -63,6 +63,10 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0, caste
 	if not hit.is_empty():
 		reach = hit.along
 		_knockback(hit.body, travel_dir, _knockback_impulse_power * strength)
+		# Long-range lance: a hit that lands at full extension is harder to
+		# land and hits harder -- distance is the reward, not the penalty.
+		_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+				_stamina_damage_power_min, _stamina_damage_power_max, false)
 
 	# elongation drives the sim's along-direction reach (see the class comment
 	# above), so shrinking it with the same fraction the crest got clipped by
@@ -97,6 +101,10 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 	if not hit.is_empty():
 		reach = hit.along
 		_knockback(hit.body, travel_dir, _knockback_impulse_attack * strength)
+		# Point-blank haymaker: the opposite of water power -- the closer the
+		# hit lands, the more it hurts.
+		_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+				_stamina_damage_attack_min, _stamina_damage_attack_max, true)
 
 	add_impulse(origin, 0.6 * strength, 2.2 * strength, travel_dir, 1.0, 1.4 * (reach / max_distance))
 
@@ -205,6 +213,18 @@ const _hit_half_width := 1.1
 const _knockback_impulse_power := 40.0
 const _knockback_impulse_attack := 90.0
 
+## Stamina damage range at strength 1, before _apply_hit_damage() picks a
+## point along it based on where the hit landed. Water power is the
+## long-range lance -- min is a graze right in front of you, max is a hit
+## that landed at full extension. Water attack starts already well above
+## water power's max (it's meant to hurt a lot, full stop) and climbs even
+## higher the more point-blank the hit -- the opposite end of the range from
+## water power, since it's the close-range option.
+const _stamina_damage_power_min := 8.0
+const _stamina_damage_power_max := 30.0
+const _stamina_damage_attack_min := 35.0
+const _stamina_damage_attack_max := 65.0
+
 
 ## Looks for the nearest body a travelling wave should stop at instead of
 ## sailing through. Only searches bodies FluidBox is already tracking as
@@ -238,6 +258,24 @@ func _find_wave_target(origin: Vector3, travel_dir: Vector3, max_distance: float
 func _knockback(body: Node3D, travel_dir: Vector3, impulse: float) -> void:
 	if body is RigidBody3D:
 		body.apply_central_impulse(travel_dir * impulse)
+
+
+## Stamina damage on a landed hit, scaled by strength and by how far along
+## the wave's own path (0..max_distance) the hit landed. `closer_hurts_more`
+## flips which end of that range pays out more: false for water power (a hit
+## at full extension -- harder to land -- hurts more), true for water attack
+## (a hit right on top of you hurts more). Duck-typed via
+## has_method("take_stamina_damage") -- PushCube and anything else without
+## one just silently takes no damage, same reasoning as _knockback() checking
+## for RigidBody3D.
+func _apply_hit_damage(body: Node3D, strength: float, along: float, max_distance: float,
+		min_damage: float, max_damage: float, closer_hurts_more: bool) -> void:
+	if not body.has_method("take_stamina_damage"):
+		return
+	var t := clampf(along / max_distance, 0.0, 1.0)
+	if closer_hurts_more:
+		t = 1.0 - t
+	body.take_stamina_damage(lerpf(min_damage, max_damage, t) * strength)
 
 
 ## Spawns the actual crest geometry for send_wave()/send_attack_wave(): rises

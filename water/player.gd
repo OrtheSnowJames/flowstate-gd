@@ -471,6 +471,17 @@ func _stamina_change(delta: float) -> void:
 	if stamina <= 5.0:
 		_death()
 
+## Called by ocean_fluid_bridge.gd (_apply_hit_damage) when a water_power or
+## water_attack wave lands on this player -- water_wall never calls this, it
+## has no hit detection at all. Immediate stamina hit, on top of (not
+## instead of) the normal per-tick drain/recovery in _stamina_change().
+## Duck-typed from the ocean side (has_method("take_stamina_damage")), so
+## anything that wants to be hurt by a wave just needs this one method.
+func take_stamina_damage(amount: float) -> void:
+	stamina = clampf(stamina - amount, 0.0, max_stamina)
+	if stamina <= 5.0:
+		_death()
+
 func _input(event: InputEvent) -> void:
 	if _unconscious:
 		return
