@@ -185,6 +185,9 @@ var last_d_press := -1000.0
 @export var stamina_expended_in_deep_end_per_second_swim: float = 5.0 * balance_mult
 @export var stamina_expended_in_deep_end_per_second_glide: float = 0.1 * balance_mult
 @export var stamina_recovery_out_of_water_per_second: float = 9.0 * balance_mult
+@export var water_power_stamina_cost: float = 10.0 * balance_mult
+@export var water_attack_stamina_cost: float = 5.0 * balance_mult
+@export var water_wall_stamina_cost_per_second: float = 20.0 * balance_mult
 
 var dir: Vector3 = Vector3.ZERO
 var can_move: bool = true
@@ -206,6 +209,10 @@ var _action_anim_lock_movement_state: int = -1
 # _anim_change() to leave the AnimationPlayer alone while that's true. See
 # _play_water_wall_anim()/_stop_water_wall_anim().
 var _wall_anim_active: bool = false
+# True while the water wall is up -- take_stamina_damage() halves incoming
+# damage while this is set. The defend half of "later it will defend" the
+# wall's own doc comment mentioned.
+var _water_wall_up: bool = false
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
@@ -477,7 +484,10 @@ func _stamina_change(delta: float) -> void:
 ## instead of) the normal per-tick drain/recovery in _stamina_change().
 ## Duck-typed from the ocean side (has_method("take_stamina_damage")), so
 ## anything that wants to be hurt by a wave just needs this one method.
+## Holding up a water wall (_water_wall_up) halves whatever gets through.
 func take_stamina_damage(amount: float) -> void:
+	if _water_wall_up:
+		amount *= 0.5
 	stamina = clampf(stamina - amount, 0.0, max_stamina)
 	if stamina <= 5.0:
 		_death()
@@ -769,40 +779,54 @@ func _physics_process(delta: float) -> void:
 	# Water power (press 1): send a wave skimming across the surface toward
 	# wherever the mouse cursor is (horizontal only -- it rides the water, so
 	# it starts at the surface height and can't be aimed up or down). Needs
-	# actual water to draw on -- bone dry on the deck, there's nothing to shove.
-	if submersion > 0.0 and Input.is_action_just_pressed("water_power") and _ocean and _ocean.has_method("send_wave"):
+	# actual water to draw on -- bone dry on the deck, there's nothing to shove
+	# -- and enough stamina banked to cover the cast, same gating as _dodge().
+	if submersion > 0.0 and Input.is_action_just_pressed("water_power") \
+			and stamina >= water_power_stamina_cost \
+			and _ocean and _ocean.has_method("send_wave"):
 		var aim := _mouse_aim_direction()
 		var origin := global_position + aim * 1.0
 		origin.y = _water_height()
 		_ocean.send_wave(origin, aim, 1.0, self)
 		_play_water_action_anim("water_power")
+		stamina -= water_power_stamina_cost
 
 	# Water attack (water_attack action): close-range counterpart to water
 	# power -- a much bigger, denser burst that barely travels, a shove right
 	# in front of you rather than a lance across the pool. Same water-only
-	# gate as water power.
-	if submersion > 0.0 and Input.is_action_just_pressed("water_attack") and _ocean and _ocean.has_method("send_attack_wave"):
+	# and stamina gating as water power, just cheaper -- it's the low-commitment
+	# option.
+	if submersion > 0.0 and Input.is_action_just_pressed("water_attack") \
+			and stamina >= water_attack_stamina_cost \
+			and _ocean and _ocean.has_method("send_attack_wave"):
 		var attack_aim := _mouse_aim_direction()
 		var attack_origin := global_position + attack_aim * 0.6
 		attack_origin.y = _water_height()
 		_ocean.send_attack_wave(attack_origin, attack_aim, 1.0, self)
 		_play_water_action_anim("water_attack")
+		stamina -= water_attack_stamina_cost
 
 	# Water wall (water_wall action, hold 3): raises a stationary wall of
 	# water in front of the player and keeps it up -- and tracking the
 	# player's aim -- for as long as the key stays held; letting go drops it.
-	# Doesn't do anything yet -- it's the visual groundwork for a future
-	# defend/block move, not a functional one. Same water-only gate as the
-	# other two -- losing the water (or letting go) both drop the wall.
-	if submersion > 0.0 and Input.is_action_pressed("water_wall") and _ocean and _ocean.has_method("start_water_wall"):
+	# Costs stamina continuously while held (steepest of the three, per
+	# second rather than per cast), and running out cuts it off the same as
+	# letting go. It's the one functional part of the move so far: while up,
+	# take_stamina_damage() halves any hit that gets through -- the "defend"
+	# half of the move, ahead of it actually blocking incoming waves.
+	if submersion > 0.0 and Input.is_action_pressed("water_wall") and stamina > 0.0 \
+			and _ocean and _ocean.has_method("start_water_wall"):
 		var wall_aim := _mouse_aim_direction()
 		var wall_origin := global_position + wall_aim * 1.2
 		wall_origin.y = _water_height()
 		_ocean.start_water_wall(wall_origin, wall_aim, 1.0)
 		_play_water_wall_anim()
+		_water_wall_up = true
+		stamina -= water_wall_stamina_cost_per_second * delta
 	elif _ocean and _ocean.has_method("stop_water_wall"):
 		_ocean.stop_water_wall()
 		_stop_water_wall_anim()
+		_water_wall_up = false
 
 	# Wire the numbers up to the bar; see the exported stamina_* knobs above.
 	_stamina_change(delta)
