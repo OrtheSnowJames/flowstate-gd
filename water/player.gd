@@ -151,7 +151,7 @@ var last_d_press := -1000.0
 ## Fallback for how long the eyelids take to fall shut. Normally the close is
 ## timed off the ear-ringing clip instead (half its length, see _death); this
 ## only applies when that stream is missing.
-@export var blackout_time: float = 2.5
+@export var blackout_time: float = 4.5
 ## Seconds the eyelids take to fly back open on revive(). Much shorter than the
 ## close -- coming round is a jolt, blacking out is a slide.
 @export var eyelid_open_time: float = 0.22
@@ -178,11 +178,13 @@ var last_d_press := -1000.0
 # |
 # V
 @export var max_stamina: float = 100.0
+@export var balance_mult: float = 0.5
 @export var stamina_expended_dodge: float = 20.0 # can't dodge in the deep end
-@export var stamina_in_shallow_end_per_second: float = 9.0
-@export var stamina_expended_in_deep_end_per_second_tread: float = 2.5
-@export var stamina_expended_in_deep_end_per_second_swim: float = 5.0
-@export var stamina_expended_in_deep_end_per_second_glide: float = 0.1
+@export var stamina_in_shallow_end_per_second: float = 9.0 * balance_mult
+@export var stamina_expended_in_deep_end_per_second_tread: float = 2.5 * balance_mult
+@export var stamina_expended_in_deep_end_per_second_swim: float = 5.0 * balance_mult
+@export var stamina_expended_in_deep_end_per_second_glide: float = 0.1 * balance_mult
+@export var stamina_recovery_out_of_water_per_second: float = 9.0 * balance_mult
 
 var dir: Vector3 = Vector3.ZERO
 var can_move: bool = true
@@ -193,6 +195,17 @@ var _ocean: Node = null
 # Counts down after a dodge/jump until another one is allowed.
 var _dodge_cooldown_timer: float = 0.0
 var _jump_cooldown_timer: float = 0.0
+
+# water_power/water_attack are authored to hold on their last frame; this
+# tracks the movement_state they were fired during, so _anim_change() leaves
+# them alone (instead of snapping straight back to the movement animation
+# next frame) until movement actually changes to something else. -1 = no
+# action animation in control. See _play_water_action_anim().
+var _action_anim_lock_movement_state: int = -1
+# water_wall loops for as long as the key is held; this just tells
+# _anim_change() to leave the AnimationPlayer alone while that's true. See
+# _play_water_wall_anim()/_stop_water_wall_anim().
+var _wall_anim_active: bool = false
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
@@ -243,6 +256,15 @@ func _ready() -> void:
 	if ocean_path:
 		_ocean = get_node_or_null(ocean_path)
 
+	# water_wall is authored to loop, but glTF import always bakes animations
+	# in with loop_mode NONE (Godot-specific loop settings aren't part of the
+	# glTF format, so re-exporting from Blockbench can't carry it) -- set it
+	# here instead of relying on a per-animation import override that a
+	# reimport would silently drop. water_power/water_attack stay LOOP_NONE
+	# (hold on last frame) on purpose -- see _play_water_action_anim().
+	if _anim_player and _anim_player.has_animation("water_wall"):
+		_anim_player.get_animation("water_wall").loop_mode = Animation.LOOP_LINEAR
+
 	# Drive the bars' ranges from the real stat maxima. They're authored in the
 	# scene with their own max_value, which silently drifts from the stats they
 	# show: stamina_bar shipped with max_value 10 against max_stamina 100, so
@@ -279,7 +301,15 @@ func anim_enum_from_string(anim_name_str: String) -> AnimationState:
 	# Finds the enum key by looking up the string value
 	if anim_name_str == "":
 		return AnimationState.IDLE
-	return ANIM_MAP.find_key(anim_name_str)
+	var key = ANIM_MAP.find_key(anim_name_str)
+	if key == null:
+		# Not a movement animation -- e.g. water_power/water_attack/water_wall,
+		# which play themselves directly and aren't in ANIM_MAP at all (see
+		# _play_water_action_anim/_play_water_wall_anim). -1 never matches a
+		# real AnimationState, so play_anim() always re-triggers its own clip
+		# instead of crashing trying to return Nil as an int enum.
+		return -1 as AnimationState
+	return key
 
 func play_anim(anim_state: AnimationState) -> void:
 	if _anim_player:
@@ -292,6 +322,33 @@ func play_anim(anim_state: AnimationState) -> void:
 				_anim_player.play("swim_up", _mult)
 			else:
 				_anim_player.play(anim_name_to_string(anim_state))
+
+## Fires a one-shot animation for water_power/water_attack -- authored to
+## hold on its last frame -- and keeps it in control of the AnimationPlayer
+## (see the lock check in _anim_change()) until movement_state actually
+## changes to something else, so the landing pose gets to read as a beat
+## instead of snapping straight back to the movement animation next frame.
+func _play_water_action_anim(anim_name: String) -> void:
+	if not _anim_player or not _anim_player.has_animation(anim_name):
+		return
+	_anim_player.play(anim_name)
+	_action_anim_lock_movement_state = movement_state
+
+## Starts/keeps the looping water_wall animation in control of the
+## AnimationPlayer for as long as it's held; see _stop_water_wall_anim() for
+## release. Safe to call every held frame -- only calls play() once.
+func _play_water_wall_anim() -> void:
+	if not _anim_player or not _anim_player.has_animation("water_wall"):
+		return
+	if _anim_player.current_animation != "water_wall":
+		_anim_player.play("water_wall")
+	_wall_anim_active = true
+
+## Releases water_wall's hold on the AnimationPlayer so _anim_change() picks
+## the movement animation back up next frame. Safe to call when it isn't
+## active (player.gd calls it unconditionally every frame the key isn't held).
+func _stop_water_wall_anim() -> void:
+	_wall_anim_active = false
 
 func _detach_camera_rig() -> void:
 	if is_instance_valid(_cam_pivot):
@@ -341,6 +398,16 @@ func _anim_change() -> void:
 	if not _anim_player:
 		return
 
+	# water_wall (looping) and water_power/water_attack (hold on last frame)
+	# are playing themselves directly -- see _play_water_wall_anim() and
+	# _play_water_action_anim() -- so leave the AnimationPlayer alone instead
+	# of stomping them with the movement-driven animation below.
+	if _wall_anim_active:
+		return
+	if _action_anim_lock_movement_state == movement_state:
+		return
+	_action_anim_lock_movement_state = -1
+
 	match movement_state:
 		MovementState.IDLE:
 			play_anim(AnimationState.IDLE)
@@ -384,6 +451,12 @@ func _gui_change() -> void:
 	gui.get_node("momentum_bar").value = momentum
 
 func _stamina_change(delta: float) -> void:
+	# Bone dry -- not even wading -- so there's no water to be tired from.
+	# Recover instead of draining, same as standing in the shallow end.
+	if _submersion() <= 0.0:
+		stamina += delta * stamina_recovery_out_of_water_per_second
+		return
+
 	var _shallow := in_shallow_end()
 	if _shallow:
 		stamina += delta * stamina_in_shallow_end_per_second
@@ -472,14 +545,14 @@ func _dodge(local_dir: Vector3) -> void:
 		right = -right
 	apply_central_impulse(right * dodge_impulse)
 
-## A jump off the pool floor, triggered by the jump action. Only works
-## standing in the shallow end (a push off solid ground, same reasoning as
-## _dodge -- nothing to push off in open water), and gated by jump_cooldown so
-## it can't be chained. Spends the *entire* momentum stat on launch -- the more
-## you had going in, the higher you go -- so it also doubles as a hard reset:
-## you land with none of your old speed left.
-func _jump(shallow: bool) -> void:
-	if not shallow or momentum <= 0.0 or _jump_cooldown_timer > 0.0:
+## A jump off solid ground, triggered by the jump action. Only works standing
+## in the shallow end or bone dry on the deck (a push off solid ground, same
+## reasoning as _dodge -- nothing to push off in open water), and gated by
+## jump_cooldown so it can't be chained. Spends the *entire* momentum stat on
+## launch -- the more you had going in, the higher you go -- so it also
+## doubles as a hard reset: you land with none of your old speed left.
+func _jump(on_ground: bool) -> void:
+	if not on_ground or momentum <= 0.0 or _jump_cooldown_timer > 0.0:
 		return
 	_jump_cooldown_timer = jump_cooldown
 	# Diminishing returns on momentum: the exponent (< 1) flattens the curve, so
@@ -547,7 +620,8 @@ func _death() -> void:
 		_eyelid_tween.set_trans(Tween.TRANS_LINEAR)
 		_eyelid_tween.tween_method(
 			func(val: float) -> void:
-				_eyelid.material.set_shader_parameter("progress", val),
+				var curved := 1.0 - pow(1.0 - val, 5.0)
+				_eyelid.material.set_shader_parameter("progress", curved),
 			0.0,
 			1.0,
 			_duration)
@@ -632,7 +706,10 @@ func _physics_process(delta: float) -> void:
 	var shallow := in_shallow_end()
 
 	if Input.is_action_just_pressed("jump"):
-		_jump(shallow)
+		# Solid ground to push off: the shallow end's floor, or bone dry on the
+		# deck -- either way there's something underfoot. Open water (swimming
+		# or treading) has nothing to launch off, same reasoning as _dodge.
+		_jump(shallow or submersion <= 0.0)
 
 	# Entry/exit splashes are handled by the water sim itself (it detects the
 	# body crossing the surface and erupts a water crown scaled by the real
@@ -680,12 +757,41 @@ func _physics_process(delta: float) -> void:
 
 	# Water power (press 1): send a wave skimming across the surface toward
 	# wherever the mouse cursor is (horizontal only -- it rides the water, so
-	# it starts at the surface height and can't be aimed up or down).
-	if Input.is_action_just_pressed("water_power") and _ocean and _ocean.has_method("send_wave"):
+	# it starts at the surface height and can't be aimed up or down). Needs
+	# actual water to draw on -- bone dry on the deck, there's nothing to shove.
+	if submersion > 0.0 and Input.is_action_just_pressed("water_power") and _ocean and _ocean.has_method("send_wave"):
 		var aim := _mouse_aim_direction()
 		var origin := global_position + aim * 1.0
 		origin.y = _water_height()
-		_ocean.send_wave(origin, aim, 1.0)
+		_ocean.send_wave(origin, aim, 1.0, self)
+		_play_water_action_anim("water_power")
+
+	# Water attack (water_attack action): close-range counterpart to water
+	# power -- a much bigger, denser burst that barely travels, a shove right
+	# in front of you rather than a lance across the pool. Same water-only
+	# gate as water power.
+	if submersion > 0.0 and Input.is_action_just_pressed("water_attack") and _ocean and _ocean.has_method("send_attack_wave"):
+		var attack_aim := _mouse_aim_direction()
+		var attack_origin := global_position + attack_aim * 0.6
+		attack_origin.y = _water_height()
+		_ocean.send_attack_wave(attack_origin, attack_aim, 1.0, self)
+		_play_water_action_anim("water_attack")
+
+	# Water wall (water_wall action, hold 3): raises a stationary wall of
+	# water in front of the player and keeps it up -- and tracking the
+	# player's aim -- for as long as the key stays held; letting go drops it.
+	# Doesn't do anything yet -- it's the visual groundwork for a future
+	# defend/block move, not a functional one. Same water-only gate as the
+	# other two -- losing the water (or letting go) both drop the wall.
+	if submersion > 0.0 and Input.is_action_pressed("water_wall") and _ocean and _ocean.has_method("start_water_wall"):
+		var wall_aim := _mouse_aim_direction()
+		var wall_origin := global_position + wall_aim * 1.2
+		wall_origin.y = _water_height()
+		_ocean.start_water_wall(wall_origin, wall_aim, 1.0)
+		_play_water_wall_anim()
+	elif _ocean and _ocean.has_method("stop_water_wall"):
+		_ocean.stop_water_wall()
+		_stop_water_wall_anim()
 
 	# Wire the numbers up to the bar; see the exported stamina_* knobs above.
 	_stamina_change(delta)
