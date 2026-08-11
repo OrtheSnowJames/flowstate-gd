@@ -163,14 +163,24 @@ func _add_player(id: int) -> void:
 	# it back in _enter_tree to decide who controls this body. Set before
 	# add_child so the name is already right when the node enters the tree.
 	player.name = str(id)
-	player.position = _spawn_position(players.get_child_count())
+	player.position = spawn_position(id)
 	players.add_child(player, true)
 	print("net: spawned player for peer %d" % id)
 
 
-func _spawn_position(index: int) -> Vector3:
+## Where the body belonging to `id` starts. Derived from the peer id rather
+## than counting existing players, so every peer works out the same answer for
+## the same player without any of it having to survive the network.
+##
+## That independence is the point. A joining client used to come up at the
+## scene's default (0, 0, 0) -- under the pool -- because the position the host
+## set at spawn didn't reach it before its own physics started running, and
+## being its own body's authority it then published that wrong position to
+## everyone. Computing it locally means there's nothing to arrive late.
+func spawn_position(id: int) -> Vector3:
 	# Fan out around the original single-player spawn so bodies don't overlap.
-	var angle := float(index) * TAU / float(MAX_PLAYERS)
+	var slot := absi(id) % MAX_PLAYERS
+	var angle := float(slot) * TAU / float(MAX_PLAYERS)
 	return _SPAWN_ORIGIN + Vector3(cos(angle), 0.0, sin(angle)) * _SPAWN_SPREAD
 
 

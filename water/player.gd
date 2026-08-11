@@ -213,6 +213,9 @@ var _wall_anim_active: bool = false
 # damage while this is set. The defend half of "later it will defend" the
 # wall's own doc comment mentioned.
 var _water_wall_up: bool = false
+# The peer this body belongs to, read off the node name in _enter_tree. 0 when
+# the name isn't a peer id (the scene opened standalone).
+var _owner_peer: int = 0
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
@@ -252,12 +255,12 @@ var _shake_strength: float = 0.0
 ## before their parent. Setting it in _ready would leave the synchronizer a
 ## frame behind, replicating from the wrong peer.
 func _enter_tree() -> void:
-	var owner_peer := str(name).to_int()
+	_owner_peer = str(name).to_int()
 	# 0 means the name isn't a peer id at all (the scene opened on its own, or
 	# somebody renamed the node). Leave the default authority alone rather than
 	# setting an invalid one.
-	if owner_peer > 0:
-		set_multiplayer_authority(owner_peer)
+	if _owner_peer > 0:
+		set_multiplayer_authority(_owner_peer)
 
 ## A raised water wall belongs to the ocean node, not to this one, so it
 ## outlives the player who raised it: someone disconnecting (or otherwise being
@@ -318,6 +321,22 @@ func _ready() -> void:
 	# position, not a captured/hidden relative-motion pointer.
 	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	_camera.current = true
+
+	# Place ourselves rather than waiting to be told where we are. The host sets
+	# this same position when it spawns the body, but on a joining client that
+	# value arrived too late -- physics had already started from the scene's
+	# default (0, 0, 0), under the pool, and since we're our own authority we'd
+	# then publish that to everyone. spawn_position is derived from the peer id
+	# so it agrees with the host's answer without needing to be sent.
+	if _owner_peer > 0:
+		position = Net.spawn_position(_owner_peer)
+
+	# Tell anyone who joins later where we actually are. The synchronizer only
+	# gets a stationary body's position across once it changes, so a player who
+	# joined while we stood still saw us stuck wherever our body happened to be
+	# when they got their copy of it -- and it only corrected once we moved.
+	if not multiplayer.peer_connected.is_connected(_on_peer_joined):
+		multiplayer.peer_connected.connect(_on_peer_joined)
 
 	# Drive the bars' ranges from the real stat maxima. They're authored in the
 	# scene with their own max_value, which silently drifts from the stats they
@@ -492,6 +511,14 @@ func _anim_change() -> void:
 	if not _anim_player:
 		return
 
+	# Out cold: the death animation holds on its last frame and nothing should
+	# take the body back off it. This has to be checked here rather than left to
+	# the action lock below, because net_death sets movement_state to IDLE --
+	# so without it the next frame would play "idle" straight over the top of
+	# the death pose. Reviving clears _unconscious and hands control back.
+	if _unconscious:
+		return
+
 	# water_wall (looping) and water_power/water_attack (hold on last frame)
 	# are playing themselves directly -- see _play_water_wall_anim() and
 	# _play_water_action_anim() -- so leave the AnimationPlayer alone instead
@@ -590,6 +617,30 @@ func net_water_wall_stop() -> void:
 	if _ocean and _ocean.has_method("stop_water_wall"):
 		_ocean.stop_water_wall(self)
 	_stop_water_wall_anim()
+
+## Someone new turned up: send them our current state directly, so they don't
+## have to wait for us to move before their copy of us is in the right place.
+## Only the peer that owns this body is subscribed (see _ready), so exactly one
+## peer answers for it.
+func _on_peer_joined(id: int) -> void:
+	if not _is_local():
+		return
+	rpc_id(id, "net_sync_state", position, rotation, movement_state, _unconscious)
+
+## Current state of a body, pushed to a peer that just joined. Everything here
+## is already replicated continuously -- this exists purely to seed the initial
+## value, which the synchronizer alone doesn't reliably deliver for a body that
+## isn't moving.
+@rpc("any_peer", "reliable")
+func net_sync_state(pos: Vector3, rot: Vector3, state: MovementState, out_cold: bool) -> void:
+	# Never let a late packet stomp the body we're actually driving.
+	if _is_local():
+		return
+	position = pos
+	rotation = rot
+	movement_state = state
+	if out_cold and not _unconscious:
+		net_death()
 
 ## Knockback, applied where this body's physics actually run. Called by
 ## ocean_fluid_bridge's _knockback (via _send_to_owner) on the peer that owns
@@ -812,7 +863,17 @@ func net_death() -> void:
 		_water_wall_up = false
 		if _ocean and _ocean.has_method("stop_water_wall"):
 			_ocean.stop_water_wall(self)
-		_stop_water_wall_anim()
+	# Clear the wall's animation hold too, whether or not a wall was up: it
+	# outranks the movement animation in _anim_change, so leaving it set would
+	# keep the body looping water_wall instead of going limp.
+	_stop_water_wall_anim()
+
+	# Dropping. Played on every peer, not just the dying one -- watching
+	# somebody go under is the whole point of broadcasting a death. Imported
+	# from glTF as LOOP_NONE, so it holds on its last frame by itself, and
+	# _anim_change leaves it there for as long as _unconscious is set.
+	if _anim_player and _anim_player.has_animation("death"):
+		_anim_player.play("death")
 
 	# Past here is what blacking out looks like from behind your own eyes: the
 	# ear ringing and the lids falling. Somebody else going under doesn't black
