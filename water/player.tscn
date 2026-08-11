@@ -1,0 +1,46 @@
+[gd_scene format=4 uid="uid://bqp3xw7mlvn2f"]
+
+[ext_resource type="Script" uid="uid://catnupgbgkmm3" path="res://water/player.gd" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="2_char"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_nb2vx"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_bwgqs"]
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_player"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+properties/2/path = NodePath(".:movement_state")
+properties/2/spawn = true
+properties/2/replication_mode = 1
+
+[node name="Player" type="RigidBody3D"]
+collision_layer = 524289
+script = ExtResource("1_player")
+ocean_path = NodePath("../../water base")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+visible = false
+layers = 524289
+mesh = SubResource("CapsuleMesh_nb2vx")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_bwgqs")
+
+[node name="CamPivot" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
+
+[node name="SpringArm3D" type="SpringArm3D" parent="CamPivot"]
+spring_length = 4.5
+
+[node name="Camera3D" type="Camera3D" parent="CamPivot/SpringArm3D"]
+
+[node name="blockbench_export" parent="." instance=ExtResource("2_char")]
+transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, -1.0725327, 0)
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="."]
+replication_config = SubResource("SceneReplicationConfig_player")

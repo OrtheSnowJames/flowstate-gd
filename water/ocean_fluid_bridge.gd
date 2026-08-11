@@ -51,7 +51,14 @@ func get_rest_height() -> float:
 ##
 ## `caster` is excluded from hit detection (see _find_wave_target) so the wave
 ## can't knock back whoever just fired it.
-func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0, caster: Node3D = null) -> void:
+##
+## `apply_hits` splits showing the wave from resolving it. In multiplayer every
+## peer runs this to draw the same wave (player.gd's net_cast_water_move is
+## call_local), but only the peer that actually cast passes true -- otherwise
+## each peer would independently decide the wave connected and the victim would
+## be knocked back and damaged once per player in the game.
+func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
+		caster: Node3D = null, apply_hits: bool = true) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
@@ -61,12 +68,16 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0, caste
 	var hit := _find_wave_target(origin, travel_dir, max_distance, _hit_half_width * strength, caster)
 	var reach := max_distance
 	if not hit.is_empty():
+		# The wave stops at whatever it ran into for everyone -- that's what it
+		# looks like, not a question of who resolves the hit -- but only the
+		# casting peer turns that into knockback and damage.
 		reach = hit.along
-		_knockback(hit.body, travel_dir, _knockback_impulse_power * strength)
-		# Long-range lance: a hit that lands at full extension is harder to
-		# land and hits harder -- distance is the reward, not the penalty.
-		_apply_hit_damage(hit.body, strength, hit.along, max_distance,
-				_stamina_damage_power_min, _stamina_damage_power_max, false)
+		if apply_hits:
+			_knockback(hit.body, travel_dir, _knockback_impulse_power * strength)
+			# Long-range lance: a hit that lands at full extension is harder to
+			# land and hits harder -- distance is the reward, not the penalty.
+			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+					_stamina_damage_power_min, _stamina_damage_power_max, false)
 
 	# elongation drives the sim's along-direction reach (see the class comment
 	# above), so shrinking it with the same fraction the crest got clipped by
@@ -87,7 +98,10 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0, caste
 ## with strength (that's what kept send_wave's reach growing -- here reach
 ## should stay short no matter how hard you hit), while radius, strength_m,
 ## and the crest/particle sizing all scale up for a bigger, rounder blast.
-func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0, caster: Node3D = null) -> void:
+## `apply_hits` works exactly as it does in send_wave() -- only the casting
+## peer resolves the hit, everyone else just draws the wave.
+func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
+		caster: Node3D = null, apply_hits: bool = true) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
@@ -100,11 +114,12 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 	var reach := max_distance
 	if not hit.is_empty():
 		reach = hit.along
-		_knockback(hit.body, travel_dir, _knockback_impulse_attack * strength)
-		# Point-blank haymaker: the opposite of water power -- the closer the
-		# hit lands, the more it hurts.
-		_apply_hit_damage(hit.body, strength, hit.along, max_distance,
-				_stamina_damage_attack_min, _stamina_damage_attack_max, true)
+		if apply_hits:
+			_knockback(hit.body, travel_dir, _knockback_impulse_attack * strength)
+			# Point-blank haymaker: the opposite of water power -- the closer the
+			# hit lands, the more it hurts.
+			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+					_stamina_damage_attack_min, _stamina_damage_attack_max, true)
 
 	add_impulse(origin, 0.6 * strength, 2.2 * strength, travel_dir, 1.0, 1.4 * (reach / max_distance))
 
@@ -114,36 +129,41 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 	_spawn_wave_crest(origin, travel_dir, strength, reach, 1.8, 3.0)
 
 
-## Live instance for the water-wall key while it's held -- there's only ever
-## one at a time (it's a hold-to-sustain move, not a burst like the other
-## two), so a few tracked refs are simpler than threading state through
-## tweens. Null whenever the wall isn't up.
-var _wall_mesh: MeshInstance3D
-var _wall_spray: GPUParticles3D
-var _wall_mat: ShaderMaterial
+## Live water walls, keyed by the caster that raised each one. It's a
+## hold-to-sustain move, so a wall persists across frames and has to be found
+## again to follow its caster and to drop when they let go -- and with more
+## than one player in the pool, several can be up at once. Keyed by caster
+## instance id rather than a single set of refs: sharing one wall between two
+## players holding the key made each one's updates yank the other's wall
+## around, and whoever released first tore down both.
+##
+## caster id -> { "mesh": MeshInstance3D, "spray": GPUParticles3D, "mat": ShaderMaterial }
+var _walls: Dictionary = {}
 
 
 ## A stationary wall of water for the water-wall key: rises on the first call
-## and then just follows the player (via repeated calls, one per held frame)
+## and then just follows its caster (via repeated calls, one per held frame)
 ## for as long as it's held -- see stop_water_wall() for when the key is
 ## released. Doesn't do anything yet -- no push, no blocking incoming waves --
 ## this is just the visual: it's the shape a future defend/block move will
 ## hang its actual behavior off of. Reuses the crest mesh but built tall and
 ## flat-fronted instead of a curling lance, and it never gets a travel tween
-## -- it rises and stays put (repositioning to track the player instead of
+## -- it rises and stays put (repositioning to track the caster instead of
 ## sliding), unlike send_wave's crest skimming forward. Deliberately doesn't
 ## touch add_impulse: the real sim isn't disturbed at all, so there's nothing
 ## here to later conflict with defend logic reading or shaping the sim's
 ## height field at this same spot.
-func start_water_wall(origin: Vector3, direction: Vector3, strength: float = 1.0) -> void:
+func start_water_wall(origin: Vector3, direction: Vector3, strength: float = 1.0,
+		caster: Node3D = null) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var facing := Vector3(direction.x, 0.0, direction.z).normalized()
 	if facing == Vector3.ZERO:
 		facing = Vector3.FORWARD
 
-	if _wall_mesh and is_instance_valid(_wall_mesh):
-		# Already up -- follow the player instead of restarting the rise.
-		_position_water_wall(origin, facing)
+	var key := _wall_key(caster)
+	if _walls.has(key) and is_instance_valid(_walls[key].mesh):
+		# Already up -- follow the caster instead of restarting the rise.
+		_position_water_wall(_walls[key], origin, facing)
 		return
 
 	var mi := MeshInstance3D.new()
@@ -161,10 +181,9 @@ func start_water_wall(origin: Vector3, direction: Vector3, strength: float = 1.0
 	add_child(spray)
 	spray.emitting = true
 
-	_wall_mesh = mi
-	_wall_spray = spray
-	_wall_mat = mat
-	_position_water_wall(origin, facing)
+	var wall := {"mesh": mi, "spray": spray, "mat": mat}
+	_walls[key] = wall
+	_position_water_wall(wall, origin, facing)
 
 	var set_alpha := func(a: float) -> void: mat.set_shader_parameter("alpha_mul", a)
 	create_tween().tween_method(set_alpha, 0.0, 1.0, 0.12)   # rise; holds at 1.0 until stop_water_wall
@@ -174,25 +193,34 @@ func start_water_wall(origin: Vector3, direction: Vector3, strength: float = 1.0
 	_spawn_splash(origin, 260.0 * strength, 1.4)
 
 
-func _position_water_wall(origin: Vector3, facing: Vector3) -> void:
+## Identifies whose wall is whose. Falls back to 0 for a null caster so
+## single-player calls that don't pass one still get a consistent slot.
+func _wall_key(caster: Node3D) -> int:
+	return caster.get_instance_id() if is_instance_valid(caster) else 0
+
+
+func _position_water_wall(wall: Dictionary, origin: Vector3, facing: Vector3) -> void:
 	var pos := Vector3(origin.x, global_position.y, origin.z)
-	_wall_mesh.global_position = pos
-	_wall_mesh.look_at(pos + facing, Vector3.UP)
-	_wall_spray.global_position = pos
+	wall.mesh.global_position = pos
+	wall.mesh.look_at(pos + facing, Vector3.UP)
+	wall.spray.global_position = pos
 
 
-## Water-wall key released: falls back and fades, then frees. Safe to call
-## even when no wall is up (player.gd calls it unconditionally every frame
-## the key isn't held) -- it's a no-op past the guard below.
-func stop_water_wall() -> void:
-	if not (_wall_mesh and is_instance_valid(_wall_mesh)):
+## Water-wall key released: that caster's wall falls back and fades, then
+## frees. Safe to call even when they have no wall up (player.gd calls it
+## unconditionally every frame the key isn't held) -- it's a no-op past the
+## guard below, and it only ever touches the wall belonging to `caster`.
+func stop_water_wall(caster: Node3D = null) -> void:
+	var key := _wall_key(caster)
+	if not _walls.has(key):
 		return
-	var mi := _wall_mesh
-	var spray := _wall_spray
-	var mat := _wall_mat
-	_wall_mesh = null
-	_wall_spray = null
-	_wall_mat = null
+	var wall: Dictionary = _walls[key]
+	_walls.erase(key)
+	if not is_instance_valid(wall.mesh):
+		return
+	var mi: MeshInstance3D = wall.mesh
+	var spray: GPUParticles3D = wall.spray
+	var mat: ShaderMaterial = wall.mat
 
 	var set_alpha := func(a: float) -> void: mat.set_shader_parameter("alpha_mul", a)
 	var tw := create_tween()
@@ -255,9 +283,17 @@ func _find_wave_target(origin: Vector3, travel_dir: Vector3, max_distance: float
 ## Shoves a hit body back along the wave's travel direction. RigidBody3D only
 ## -- the only kind of body this pool tracks that can meaningfully receive an
 ## impulse (see _find_wave_target).
+##
+## The push has to happen wherever that body's physics actually run, which is
+## its multiplayer authority: a player's own peer for a swimmer, the host for
+## PushCube. Applying it here instead would be applying it to a frozen puppet
+## (see player.gd's _setup_remote_body and synced_prop.gd) -- the impulse would
+## do nothing at all, and the next replicated transform would overwrite it.
 func _knockback(body: Node3D, travel_dir: Vector3, impulse: float) -> void:
-	if body is RigidBody3D:
-		body.apply_central_impulse(travel_dir * impulse)
+	if not (body is RigidBody3D):
+		return
+	_send_to_owner(body, "net_apply_impulse", [travel_dir * impulse],
+			func() -> void: body.apply_central_impulse(travel_dir * impulse))
 
 
 ## Stamina damage on a landed hit, scaled by strength and by how far along
@@ -275,7 +311,28 @@ func _apply_hit_damage(body: Node3D, strength: float, along: float, max_distance
 	var t := clampf(along / max_distance, 0.0, 1.0)
 	if closer_hurts_more:
 		t = 1.0 - t
-	body.take_stamina_damage(lerpf(min_damage, max_damage, t) * strength)
+	var amount := lerpf(min_damage, max_damage, t) * strength
+	# Ask the victim to hurt itself rather than editing their stamina from here.
+	# Stamina lives on the peer that owns that body, and only that peer knows
+	# whether they're holding a water wall up to halve the hit (player.gd's
+	# take_stamina_damage) -- a number computed here would be both wrong and
+	# invisible to everyone else.
+	_send_to_owner(body, "take_stamina_damage", [amount],
+			func() -> void: body.take_stamina_damage(amount))
+
+
+## Runs `method` on `body` wherever that body is authoritative: directly when
+## that's us, over RPC otherwise.
+##
+## The `local` fallback also covers single-player transparently -- with no
+## connection our unique id is 1 and so is every body's default authority, so
+## the comparison is true and nothing is sent anywhere.
+func _send_to_owner(body: Node3D, method: String, args: Array, local: Callable) -> void:
+	var owner_peer := body.get_multiplayer_authority()
+	if owner_peer == multiplayer.get_unique_id():
+		local.call()
+	elif body.has_method(method):
+		body.rpc_id.callv([owner_peer, method] + args)
 
 
 ## Spawns the actual crest geometry for send_wave()/send_attack_wave(): rises

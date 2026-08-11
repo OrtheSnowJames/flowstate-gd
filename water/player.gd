@@ -243,12 +243,41 @@ var _shake_left: float = 0.0
 var _shake_total: float = 0.0
 var _shake_strength: float = 0.0
 
+## The node's name is the peer id that owns this body -- net.gd names it that
+## when it spawns one, and the name replicates along with the node, so every
+## peer independently agrees on who controls which player.
+##
+## _enter_tree rather than _ready on purpose: the MultiplayerSynchronizer child
+## reads this body's authority when it starts up, and children are readied
+## before their parent. Setting it in _ready would leave the synchronizer a
+## frame behind, replicating from the wrong peer.
+func _enter_tree() -> void:
+	var owner_peer := str(name).to_int()
+	# 0 means the name isn't a peer id at all (the scene opened on its own, or
+	# somebody renamed the node). Leave the default authority alone rather than
+	# setting an invalid one.
+	if owner_peer > 0:
+		set_multiplayer_authority(owner_peer)
+
+## A raised water wall belongs to the ocean node, not to this one, so it
+## outlives the player who raised it: someone disconnecting (or otherwise being
+## despawned) mid-hold would leave a wall standing in the pool with nobody
+## holding it and no input left running to drop it.
+func _exit_tree() -> void:
+	if _ocean and _ocean.has_method("stop_water_wall"):
+		_ocean.stop_water_wall(self)
+
+## True when this body is the one THIS game window drives: reads input, owns the
+## camera, writes the GUI, and decides its own stamina and death. Everything
+## else is somebody else's player, mirrored in from the network.
+##
+## Also true in solo play with no connection at all -- with no peer,
+## get_unique_id() is 1 and so is the default authority -- so gating on this
+## doesn't break running the game without hosting.
+func _is_local() -> bool:
+	return is_multiplayer_authority()
+
 func _ready() -> void:
-	# Free cursor, not locked to the window -- A/D turn the camera now (see
-	# _physics_process), and water_power (press 1) aims wherever the cursor
-	# actually is (see _mouse_aim_direction), which needs its on-screen
-	# position, not a captured/hidden relative-motion pointer.
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 	mass = body_mass
 	_gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	# Keep the capsule upright; buoyancy/torque shouldn't tip the player over.
@@ -269,8 +298,26 @@ func _ready() -> void:
 	# here instead of relying on a per-animation import override that a
 	# reimport would silently drop. water_power/water_attack stay LOOP_NONE
 	# (hold on last frame) on purpose -- see _play_water_action_anim().
+	#
+	# Every body needs this, remote ones included: the water-move RPCs run on
+	# all peers (see net_cast_water_move), so somebody else's player plays these
+	# same clips in this window.
 	if _anim_player and _anim_player.has_animation("water_wall"):
 		_anim_player.get_animation("water_wall").loop_mode = Animation.LOOP_LINEAR
+
+	# Everything past here belongs to whoever is playing in THIS window: the one
+	# cursor, the one camera, the one set of GUI bars. A body mirrored in from
+	# another peer must not touch any of it.
+	if not _is_local():
+		_setup_remote_body()
+		return
+
+	# Free cursor, not locked to the window -- A/D turn the camera now (see
+	# _physics_process), and water_power (press 1) aims wherever the cursor
+	# actually is (see _mouse_aim_direction), which needs its on-screen
+	# position, not a captured/hidden relative-motion pointer.
+	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+	_camera.current = true
 
 	# Drive the bars' ranges from the real stat maxima. They're authored in the
 	# scene with their own max_value, which silently drifts from the stats they
@@ -299,6 +346,26 @@ func _ready() -> void:
 	_cam_pivot_height = _cam_pivot.position.y
 	call_deferred("_detach_camera_rig")
 	_update_camera_pitch()
+
+## Turns this body into a puppet of the peer that owns it. Its transform comes
+## from the MultiplayerSynchronizer, so local physics must not fight the
+## incoming values -- freezing stops gravity, buoyancy and drag from dragging
+## it off the position its owner reported.
+##
+## FREEZE_MODE_KINEMATIC rather than STATIC: a frozen-kinematic body still
+## shoves what it runs into as it's moved, so on the host a remote swimmer
+## bumping PushCube pushes it for real instead of passing through. The cube's
+## physics live on the host (see ocean1.tscn's synchronizer), which is exactly
+## where that collision needs to happen.
+##
+## The camera rig goes entirely: there's one camera per window and it belongs
+## to the local player, so somebody else's body has no use for a SpringArm and
+## a Camera3D following it around.
+func _setup_remote_body() -> void:
+	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
+	freeze = true
+	if is_instance_valid(_cam_pivot):
+		_cam_pivot.queue_free()
 
 func anim_name_to_string(anim_name: AnimationState) -> String:
 	# Looks up the string by enum key; falls back to empty string if missing
@@ -358,15 +425,35 @@ func _stop_water_wall_anim() -> void:
 	_wall_anim_active = false
 
 func _detach_camera_rig() -> void:
-	if is_instance_valid(_cam_pivot):
-		_cam_pivot.reparent(get_parent(), true)
+	# Deferred a frame by _ready, so the body can be gone by the time this runs:
+	# joining a game clears the solo player that was spawned at startup, and
+	# this call was already queued against it. Reparenting then passes a null
+	# parent and reads a transform off a node that's no longer in the tree.
+	if not is_inside_tree() or not is_instance_valid(_cam_pivot):
+		return
+	# The scene root, NOT get_parent(). The player used to sit directly under
+	# Main so those were the same node, but players are spawned under "Players"
+	# now -- and that's the node the MultiplayerSpawner watches, so parking a
+	# camera rig in it means adding an unspawnable child to a replicated list.
+	var root := get_tree().current_scene
+	if root:
+		_cam_pivot.reparent(root, true)
 
 func _process(delta: float) -> void:
-	if CONTROL_CAMERA:
-		_camera_pivot_change(delta)
-
+	# Animation runs for every body, local or not: movement_state is replicated
+	# (see player.tscn's SceneReplicationConfig), so a remote swimmer animates
+	# through exactly the same _anim_change() the local one does, off the state
+	# its owner broadcast.
 	if ANIMATE_PLAYER:
 		_anim_change()
+
+	# The camera, the cursor and the shake are per-window, so they only make
+	# sense for the body this window is actually playing.
+	if not _is_local():
+		return
+
+	if CONTROL_CAMERA:
+		_camera_pivot_change(delta)
 
 	if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
@@ -432,6 +519,87 @@ func _anim_change() -> void:
 			play_anim(AnimationState.JUMP)
 
 
+# ---------------------------------------------------------------------------
+# Water moves over the network
+# ---------------------------------------------------------------------------
+## Which move net_cast_water_move is carrying. Sent as an int rather than
+## calling three near-identical RPCs, so there's one path to keep in step.
+enum WaterMove { POWER, ATTACK }
+
+## Fires a one-shot water move on every peer. Only the local player ever calls
+## this -- the input that reaches it is already gated on _is_local().
+##
+## Sends the move, the origin and the aim, exactly as much as another peer
+## needs to reproduce the wave; nothing about the resulting hit travels, since
+## each peer works that out (or deliberately doesn't) in net_cast_water_move.
+func _cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
+	if Net.is_online():
+		# call_local, so this covers us too -- no separate local call.
+		rpc("net_cast_water_move", kind, origin, aim, strength)
+	else:
+		net_cast_water_move(kind, origin, aim, strength)
+
+@rpc("any_peer", "call_local", "reliable")
+func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
+	if _ocean == null:
+		return
+	# Everyone draws the wave; only the peer that cast it resolves what it hit.
+	# _is_local() is true here exactly on the caster's own machine, because this
+	# runs on the *caster's* body on every peer.
+	var apply_hits := _is_local()
+	match kind:
+		WaterMove.POWER:
+			if _ocean.has_method("send_wave"):
+				_ocean.send_wave(origin, aim, strength, self, apply_hits)
+			_play_water_action_anim("water_power")
+		WaterMove.ATTACK:
+			if _ocean.has_method("send_attack_wave"):
+				_ocean.send_attack_wave(origin, aim, strength, self, apply_hits)
+			_play_water_action_anim("water_attack")
+
+## The wall is held rather than fired, so it re-sends every frame it's up
+## instead of once. Unreliable on purpose: at 60 sends a second a dropped
+## packet is corrected by the next one a frame later, and the ordering
+## guarantees of a reliable channel would cost more than they're worth for
+## what is really just "the wall is still here, at this spot".
+func _cast_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
+	if Net.is_online():
+		rpc("net_water_wall", origin, aim, strength)
+	else:
+		net_water_wall(origin, aim, strength)
+
+@rpc("any_peer", "call_local", "unreliable")
+func net_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
+	if _ocean and _ocean.has_method("start_water_wall"):
+		# `self` keys the wall to this player, so two people holding walls at
+		# once get one each instead of fighting over a shared one.
+		_ocean.start_water_wall(origin, aim, strength, self)
+	_play_water_wall_anim()
+
+## Dropping the wall is reliable -- unlike the per-frame updates above there's
+## no follow-up packet to correct a lost one, and losing this would strand a
+## wall standing in the pool with nobody holding it.
+func _cast_water_wall_stop() -> void:
+	if Net.is_online():
+		rpc("net_water_wall_stop")
+	else:
+		net_water_wall_stop()
+
+@rpc("any_peer", "call_local", "reliable")
+func net_water_wall_stop() -> void:
+	if _ocean and _ocean.has_method("stop_water_wall"):
+		_ocean.stop_water_wall(self)
+	_stop_water_wall_anim()
+
+## Knockback, applied where this body's physics actually run. Called by
+## ocean_fluid_bridge's _knockback (via _send_to_owner) on the peer that owns
+## this player, since a remote copy is frozen and would ignore the impulse.
+@rpc("any_peer", "reliable")
+func net_apply_impulse(impulse: Vector3) -> void:
+	if _is_local():
+		apply_central_impulse(impulse)
+
+
 func _camera_pivot_change(delta: float) -> void:
 	if not is_instance_valid(_cam_pivot) or not _cam_pivot.is_inside_tree():
 		return
@@ -485,6 +653,12 @@ func _stamina_change(delta: float) -> void:
 ## Duck-typed from the ocean side (has_method("take_stamina_damage")), so
 ## anything that wants to be hurt by a wave just needs this one method.
 ## Holding up a water wall (_water_wall_up) halves whatever gets through.
+##
+## An @rpc so the peer that landed the hit can call it on the peer that got
+## hit (ocean_fluid_bridge routes it there via _send_to_owner). Stamina and the
+## wall state both live on the owning peer, so the reduction has to be decided
+## here rather than by whoever threw the wave.
+@rpc("any_peer", "reliable")
 func take_stamina_damage(amount: float) -> void:
 	if _water_wall_up:
 		amount *= 0.5
@@ -493,6 +667,10 @@ func take_stamina_damage(amount: float) -> void:
 		_death()
 
 func _input(event: InputEvent) -> void:
+	# Keystrokes in this window drive this window's player and nobody else's --
+	# without this, one keypress would dodge every body in the pool at once.
+	if not _is_local():
+		return
 	if _unconscious:
 		return
 	detect_death(event)
@@ -604,7 +782,20 @@ func _update_camera_pitch() -> void:
 ## it could sound (a buzz, not a ring), and every tick stacked another tween
 ## onto the same shader parameter, so dozens of them fought over `progress` and
 ## the lids juddered instead of closing.
+## Only the peer that owns this body decides it has died -- its stamina lives
+## there (see take_stamina_damage) -- and then tells everyone, so the body goes
+## limp in every window rather than only in its owner's.
 func _death() -> void:
+	if _unconscious:
+		return
+	if Net.is_online():
+		# call_local, so this covers us as well as everyone else.
+		rpc("net_death")
+	else:
+		net_death()
+
+@rpc("any_peer", "call_local", "reliable")
+func net_death() -> void:
 	if _unconscious:
 		return
 	_unconscious = true
@@ -614,6 +805,20 @@ func _death() -> void:
 	# _input stops being called at all, and _physics_process bails before it
 	# reads a single action. revive() turns it back on.
 	set_process_input(false)
+
+	# A wall left standing when its owner blacks out would hang in the pool
+	# with nobody holding it up, since the input that drops it stops running.
+	if _water_wall_up:
+		_water_wall_up = false
+		if _ocean and _ocean.has_method("stop_water_wall"):
+			_ocean.stop_water_wall(self)
+		_stop_water_wall_anim()
+
+	# Past here is what blacking out looks like from behind your own eyes: the
+	# ear ringing and the lids falling. Somebody else going under doesn't black
+	# YOUR screen out -- you just watch their body go limp.
+	if not _is_local():
+		return
 
 	if _muffled_player:
 		_muffled_player.play()
@@ -703,6 +908,13 @@ func _turn_from_input(delta: float) -> void:
 		rotate_y(-turn * turn_speed * delta)
 
 func _physics_process(delta: float) -> void:
+	# A remote body is a puppet: its transform is replicated in from the peer
+	# that owns it (see _setup_remote_body), and it's frozen so none of the
+	# force/velocity work below could take effect anyway. Reading input for it
+	# would also mean this window's keys driving somebody else's player.
+	if not _is_local():
+		return
+
 	if _unconscious:
 		# Limp body. Input is ignored -- no turning, no strokes, no momentum --
 		# but the water carries on acting on it: drag bleeds off whatever drift
@@ -787,8 +999,9 @@ func _physics_process(delta: float) -> void:
 		var aim := _mouse_aim_direction()
 		var origin := global_position + aim * 1.0
 		origin.y = _water_height()
-		_ocean.send_wave(origin, aim, 1.0, self)
-		_play_water_action_anim("water_power")
+		# The wave and its animation are raised on every peer from inside the
+		# RPC, this one included -- see _cast_water_move.
+		_cast_water_move(WaterMove.POWER, origin, aim, 1.0)
 		stamina -= water_power_stamina_cost
 
 	# Water attack (water_attack action): close-range counterpart to water
@@ -802,8 +1015,7 @@ func _physics_process(delta: float) -> void:
 		var attack_aim := _mouse_aim_direction()
 		var attack_origin := global_position + attack_aim * 0.6
 		attack_origin.y = _water_height()
-		_ocean.send_attack_wave(attack_origin, attack_aim, 1.0, self)
-		_play_water_action_anim("water_attack")
+		_cast_water_move(WaterMove.ATTACK, attack_origin, attack_aim, 1.0)
 		stamina -= water_attack_stamina_cost
 
 	# Water wall (water_wall action, hold 3): raises a stationary wall of
@@ -819,13 +1031,14 @@ func _physics_process(delta: float) -> void:
 		var wall_aim := _mouse_aim_direction()
 		var wall_origin := global_position + wall_aim * 1.2
 		wall_origin.y = _water_height()
-		_ocean.start_water_wall(wall_origin, wall_aim, 1.0)
-		_play_water_wall_anim()
+		_cast_water_wall(wall_origin, wall_aim, 1.0)
 		_water_wall_up = true
 		stamina -= water_wall_stamina_cost_per_second * delta
-	elif _ocean and _ocean.has_method("stop_water_wall"):
-		_ocean.stop_water_wall()
-		_stop_water_wall_anim()
+	elif _water_wall_up:
+		# Only on the frame it actually drops, not every frame the key is idle:
+		# this now goes out over the network, and re-sending "wall down" sixty
+		# times a second to say nothing changed is pure traffic.
+		_cast_water_wall_stop()
 		_water_wall_up = false
 
 	# Wire the numbers up to the bar; see the exported stamina_* knobs above.

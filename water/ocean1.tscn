@@ -14,6 +14,7 @@
 [ext_resource type="Texture2D" uid="uid://bmnn4r7ulgvh2" path="res://img/bars/stamina_progress.png" id="10_hp8k4"]
 [ext_resource type="Shader" uid="uid://d1tl3uxyuc0t5" path="res://other_shaders/eye_closing.gdshader" id="13_7na61"]
 [ext_resource type="AudioStream" uid="uid://bhvosstc5mmnq" path="res://audio/ear_ringing.mp3" id="14_r6av7"]
+[ext_resource type="Script" path="res://water/synced_prop.gd" id="15_syncprop"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -27,6 +28,14 @@ background_mode = 2
 sky = SubResource("Sky_n3fli")
 tonemap_mode = 2
 glow_enabled = true
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_pushcube"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
 
 [sub_resource type="CapsuleMesh" id="CapsuleMesh_nb2vx"]
 
@@ -142,31 +151,11 @@ environment = SubResource("Environment_qijwg")
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1847138631]
 transform = Transform3D(0.81787866, -0.4983029, -0.28769535, -0.57539064, -0.70830363, -0.40893933, 0, 0.5, -0.86602527, 0, 0, 0)
 
-[node name="our_player" type="RigidBody3D" parent="." unique_id=2132808980]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15.134187, 0)
-collision_layer = 524289
-script = ExtResource("1_24x4k")
-ocean_path = NodePath("../water base")
+[node name="Players" type="Node" parent="." unique_id=2132808980]
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="our_player" unique_id=499592458]
-visible = false
-layers = 524289
-mesh = SubResource("CapsuleMesh_nb2vx")
-
-[node name="CollisionShape3D" type="CollisionShape3D" parent="our_player" unique_id=605599104]
-shape = SubResource("CapsuleShape3D_bwgqs")
-
-[node name="CamPivot" type="Node3D" parent="our_player" unique_id=2119047386]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
-
-[node name="SpringArm3D" type="SpringArm3D" parent="our_player/CamPivot" unique_id=1749263865]
-spring_length = 4.5
-
-[node name="Camera3D" type="Camera3D" parent="our_player/CamPivot/SpringArm3D" unique_id=1107571816]
-current = true
-
-[node name="blockbench_export" parent="our_player" unique_id=128070586 instance=ExtResource("2_hrcxi")]
-transform = Transform3D(0.5, 0, 0, 0, 0.5, 0, 0, 0, 0.5, 0, -1.0725327, 0)
+[node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="." unique_id=499592458]
+_spawnable_scenes = PackedStringArray("res://water/player.tscn")
+spawn_path = NodePath("../Players")
 
 [node name="FPSLayer" type="CanvasLayer" parent="." unique_id=1357260277]
 layer = 10
@@ -476,6 +465,7 @@ enable_height_queries = true
 [node name="PushCube" type="RigidBody3D" parent="." unique_id=1648123897]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 10, 0)
 mass = 12.0
+script = ExtResource("15_syncprop")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="PushCube" unique_id=794948360]
 material_override = SubResource("StandardMaterial3D_beu56")
@@ -489,6 +479,9 @@ script = ExtResource("8_buoy")
 water_path = NodePath("../../water base")
 linear_drag = 0.8
 angular_drag = 0.9
+
+[node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="PushCube" unique_id=1853879477]
+replication_config = SubResource("SceneReplicationConfig_pushcube")
 
 [node name="gui" type="CanvasLayer" parent="." unique_id=2063923803]
 
