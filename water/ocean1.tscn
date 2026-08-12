@@ -1,7 +1,5 @@
 [gd_scene format=4 uid="uid://c4uvje3vnu4ii"]
 
-[ext_resource type="Script" uid="uid://catnupgbgkmm3" path="res://water/player.gd" id="1_24x4k"]
-[ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="2_hrcxi"]
 [ext_resource type="Material" uid="uid://d0db6ctnjv00e" path="res://water/tile.tres" id="4_jfse0"]
 [ext_resource type="Script" uid="uid://cajkpw6dc1dpw" path="res://water/fps_counter.gd" id="5_8tehq"]
 [ext_resource type="Texture2D" uid="uid://cniixylcjhie3" path="res://img/bars/momentum_under.png" id="6_7r1ms"]
@@ -13,8 +11,11 @@
 [ext_resource type="Texture2D" uid="uid://dscptm7b66unc" path="res://img/bars/stamina_over.png" id="9_hrcxi"]
 [ext_resource type="Texture2D" uid="uid://bmnn4r7ulgvh2" path="res://img/bars/stamina_progress.png" id="10_hp8k4"]
 [ext_resource type="Shader" uid="uid://d1tl3uxyuc0t5" path="res://other_shaders/eye_closing.gdshader" id="13_7na61"]
+[ext_resource type="Material" uid="uid://dpqs80amhfvs5" path="res://water/tile_orange.tres" id="14_6iwkg"]
 [ext_resource type="AudioStream" uid="uid://bhvosstc5mmnq" path="res://audio/ear_ringing.mp3" id="14_r6av7"]
-[ext_resource type="Script" path="res://water/synced_prop.gd" id="15_syncprop"]
+[ext_resource type="Texture2D" uid="uid://ift1n2lvapii" path="res://img/concrete.png" id="15_1p6d8"]
+[ext_resource type="Script" uid="uid://b8jgog7ewjxj5" path="res://water/synced_prop.gd" id="15_syncprop"]
+[ext_resource type="PackedScene" uid="uid://dhnoersbl03k6" path="res://poolk/bathroom.tscn" id="16_mvkr7"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -28,18 +29,6 @@ background_mode = 2
 sky = SubResource("Sky_n3fli")
 tonemap_mode = 2
 glow_enabled = true
-
-[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_pushcube"]
-properties/0/path = NodePath(".:position")
-properties/0/spawn = true
-properties/0/replication_mode = 1
-properties/1/path = NodePath(".:rotation")
-properties/1/spawn = true
-properties/1/replication_mode = 1
-
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_nb2vx"]
-
-[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_bwgqs"]
 
 [sub_resource type="ArrayMesh" id="ArrayMesh_ihpsq"]
 _surfaces = [{
@@ -127,6 +116,14 @@ size = Vector3(1.6, 1.6, 1.6)
 [sub_resource type="BoxShape3D" id="BoxShape3D_pcube"]
 size = Vector3(1.6, 1.6, 1.6)
 
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_pushcube"]
+properties/0/path = NodePath(".:position")
+properties/0/spawn = true
+properties/0/replication_mode = 1
+properties/1/path = NodePath(".:rotation")
+properties/1/spawn = true
+properties/1/replication_mode = 1
+
 [sub_resource type="ShaderMaterial" id="ShaderMaterial_6iwkg"]
 shader = ExtResource("13_7na61")
 shader_parameter/progress = 0.0
@@ -143,6 +140,12 @@ shader_parameter/vignette_start = 0.18
 shader_parameter/lid_color = Color(0, 0, 0, 1)
 shader_parameter/lid_delay = 0.35
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_uhase"]
+albedo_texture = ExtResource("15_1p6d8")
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_tpo3s"]
+size = Vector2(20, 55)
+
 [node name="Main" type="Node3D" unique_id=1189769047]
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1995031414]
@@ -154,7 +157,7 @@ transform = Transform3D(0.81787866, -0.4983029, -0.28769535, -0.57539064, -0.708
 [node name="Players" type="Node" parent="." unique_id=2132808980]
 
 [node name="MultiplayerSpawner" type="MultiplayerSpawner" parent="." unique_id=499592458]
-_spawnable_scenes = PackedStringArray("res://water/player.tscn")
+_spawnable_scenes = PackedStringArray("uid://bqp3xw7mlvn2f")
 spawn_path = NodePath("../Players")
 
 [node name="FPSLayer" type="CanvasLayer" parent="." unique_id=1357260277]
@@ -410,6 +413,15 @@ mesh = SubResource("ArrayMesh_xgj7f")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="Node4/CSGBakedMeshInstance3D5/StaticBody3D" unique_id=511104897]
 shape = SubResource("ConcavePolygonShape3D_1ixhq")
 
+[node name="CSGBakedMeshInstance3D10" type="MeshInstance3D" parent="Node4" unique_id=2031658998]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.0054843756, 7.648855, 23.5)
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="Node4/CSGBakedMeshInstance3D10" unique_id=1334614956]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Node4/CSGBakedMeshInstance3D10/StaticBody3D" unique_id=585324998]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
 [node name="CSGBakedMeshInstance3D6" type="MeshInstance3D" parent="Node4" unique_id=1293657096]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.3333333, 3.6561737, 23.5)
 mesh = SubResource("ArrayMesh_xgj7f")
@@ -532,3 +544,80 @@ color = Color(0.44313726, 1, 0.75686276, 0)
 stream = ExtResource("14_r6av7")
 volume_db = 3.193
 bus = &"death"
+
+[node name="TextureButton" type="TextureButton" parent="." unique_id=429129609]
+offset_right = 40.0
+offset_bottom = 40.0
+
+[node name="top_tile" type="Node3D" parent="." unique_id=2050636506]
+
+[node name="CSGBakedMeshInstance3D10" type="MeshInstance3D" parent="top_tile" unique_id=257007158]
+transform = Transform3D(1.0732392e-08, 0, -1.2736828, 0, 0.13829517, 0, 0.9, 0, 1.5188515e-08, -28.136984, 8.752459, 0.0098724365)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D10" unique_id=323470963]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D10/StaticBody3D" unique_id=2008177036]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="CSGBakedMeshInstance3D13" type="MeshInstance3D" parent="top_tile" unique_id=514011509]
+transform = Transform3D(1.0732392e-08, 0, -1.2736828, 0, 0.13829517, 0, 0.9, 0, 1.5188515e-08, 27.863016, 8.752459, 0.0098724365)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D13" unique_id=525015993]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D13/StaticBody3D" unique_id=1306751739]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="CSGBakedMeshInstance3D11" type="MeshInstance3D" parent="top_tile" unique_id=341437910]
+transform = Transform3D(0.9, 0, 7.086296e-08, 0, 0.13829517, 0, -5.0072643e-08, 0, 1.2736828, -5.136984, 8.752459, -22.990128)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D11" unique_id=1948332287]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D11/StaticBody3D" unique_id=480249089]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="CSGBakedMeshInstance3D12" type="MeshInstance3D" parent="top_tile/CSGBakedMeshInstance3D11" unique_id=1299783384]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.111112, 0, 0)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D11/CSGBakedMeshInstance3D12" unique_id=694667816]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D11/CSGBakedMeshInstance3D12/StaticBody3D" unique_id=1298402934]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="CSGBakedMeshInstance3D12" type="MeshInstance3D" parent="top_tile" unique_id=1381072791]
+transform = Transform3D(0.9, 0, 7.086296e-08, 0, 0.13829517, 0, -5.0072643e-08, 0, 1.2736828, -5.136984, 8.752459, 23.009872)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D12" unique_id=855316545]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D12/StaticBody3D" unique_id=111061775]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="CSGBakedMeshInstance3D12" type="MeshInstance3D" parent="top_tile/CSGBakedMeshInstance3D12" unique_id=943753457]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.111112, 0, 0)
+material_override = ExtResource("14_6iwkg")
+mesh = SubResource("ArrayMesh_xgj7f")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="top_tile/CSGBakedMeshInstance3D12/CSGBakedMeshInstance3D12" unique_id=53140636]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="top_tile/CSGBakedMeshInstance3D12/CSGBakedMeshInstance3D12/StaticBody3D" unique_id=1209782103]
+shape = SubResource("ConcavePolygonShape3D_1ixhq")
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=419730785]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -35, 9, -13)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=1391441311]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, -1, 13)
+material_override = SubResource("StandardMaterial3D_uhase")
+mesh = SubResource("PlaneMesh_tpo3s")
+
+[node name="Bathroom" parent="." unique_id=1134696406 instance=ExtResource("16_mvkr7")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -36, 8, -5)
