@@ -109,6 +109,13 @@ var last_d_press := -1000.0
 ## Forward probe length used to detect a wall ahead while gliding.
 @export var wall_probe: float = 0.7
 @export var ocean_path: NodePath
+## Off for a purely decorative player -- one dropped into a scene (e.g. the
+## menu background, see menu/menu.gd) to be walked around for show while some
+## other, fixed camera actually owns the view. Leaves this player's own camera
+## rig in the scene but never makes it .current, and skips the mouse-capture
+## dance in _ready(). On (the default) is every normal gameplay case, local
+## or networked -- unchanged from before this existed.
+@export var take_over_camera: bool = true
 # Momentum for how fast the player moves and later, attacks and combos and shit
 @export var max_momentum: float = 10.0
 @export var momentum_in_shallow_end: float = 3.0
@@ -191,7 +198,12 @@ var last_d_press := -1000.0
 
 var dir: Vector3 = Vector3.ZERO
 var can_move: bool = true
-@onready var gui: CanvasLayer = get_node("/root/Main/gui")
+# get_node_or_null, not get_node: a decorative player dropped into a scene with
+# no HUD (see menu/menu.gd) has nothing at this path at all, and get_node's hard
+# error on a miss would take down the rest of _ready() with it -- the camera
+# detach, the underwater material, everything after this point never runs.
+# Every read of `gui` below is guarded the same way for the same reason.
+@onready var gui: CanvasLayer = get_node_or_null("/root/Main/gui")
 # Movement state: state of movement 👍
 @export var movement_state: MovementState = MovementState.IDLE
 var _ocean: Node = null
@@ -219,7 +231,8 @@ var _owner_peer: int = 0
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
-@onready var _muffled_player: AudioStreamPlayer = get_node("/root/Main/muffled_player")
+# get_node_or_null -- see the comment on `gui` above; same failure mode.
+@onready var _muffled_player: AudioStreamPlayer = get_node_or_null("/root/Main/muffled_player")
 # The scene's named floor meshes; see in_shallow_end(). shallow and
 # transition both count as walkable; deep never does.
 @onready var _shallow_floor: Node = get_node_or_null("/root/Main/shallow")
@@ -319,8 +332,23 @@ func _ready() -> void:
 	# _physics_process), and water_power (press 1) aims wherever the cursor
 	# actually is (see _mouse_aim_direction), which needs its on-screen
 	# position, not a captured/hidden relative-motion pointer.
-	Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
-	_camera.current = true
+	#
+	# Both skipped for a decorative player (take_over_camera = false): it has
+	# no business touching the one shared mouse mode, and its camera rig stays
+	# in the scene but not .current, so whatever fixed camera is actually
+	# showing the view (e.g. the menu's) keeps it.
+	if take_over_camera:
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		_camera.current = true
+	else:
+		# Not just "skip claiming it" -- actively give it up. Camera3D
+		# auto-promotes itself to .current on entering the tree if nothing else
+		# has claimed the slot yet, and that happens as this subtree enters the
+		# tree, before this _ready() runs -- so by this point it may already
+		# have stolen the view out from under whatever fixed camera (e.g. the
+		# menu's) was supposed to own it. Explicitly disowning it here is what
+		# actually stops that, not the absence of the line above.
+		_camera.current = false
 
 	# Place ourselves rather than waiting to be told where we are. The host sets
 	# this same position when it spawns the body, but on a joining client that
@@ -346,12 +374,13 @@ func _ready() -> void:
 	# out in the last two seconds, and refilling as a bar that snapped full
 	# almost instantly -- both about ten times faster than the stat actually
 	# moves. Setting it here means retuning max_stamina can't desync the bar.
-	var stamina_bar: Range = gui.get_node_or_null("stamina_bar")
-	if stamina_bar:
-		stamina_bar.max_value = max_stamina
-	var momentum_bar: Range = gui.get_node_or_null("momentum_bar")
-	if momentum_bar:
-		momentum_bar.max_value = max_momentum
+	if gui:
+		var stamina_bar: Range = gui.get_node_or_null("stamina_bar")
+		if stamina_bar:
+			stamina_bar.max_value = max_stamina
+		var momentum_bar: Range = gui.get_node_or_null("momentum_bar")
+		if momentum_bar:
+			momentum_bar.max_value = max_momentum
 
 	_underwater_mat = ShaderMaterial.new()
 	_underwater_mat.shader = load("res://water/underwater.gdshader")
@@ -673,6 +702,8 @@ func _camera_pivot_change(delta: float) -> void:
 	_gui_change()
 
 func _gui_change() -> void:
+	if not gui:
+		return
 	gui.get_node("stamina_bar").value = stamina
 	gui.get_node("momentum_bar").value = momentum
 

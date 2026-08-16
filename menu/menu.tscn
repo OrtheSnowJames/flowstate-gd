@@ -1,0 +1,24 @@
+[gd_scene format=3 uid="uid://c23mvf312fw4v"]
+
+[ext_resource type="PackedScene" uid="uid://c4uvje3vnu4ii" path="res://water/ocean1.tscn" id="1_j0t7f"]
+[ext_resource type="Script" uid="uid://b4ci0sn56recd" path="res://menu/menu.gd" id="2_menu"]
+[ext_resource type="PackedScene" uid="uid://bqp3xw7mlvn2f" path="res://water/player.tscn" id="3_player"]
+[ext_resource type="PackedScene" uid="uid://uarc1b4ao3bs" path="res://the_button.tscn" id="4_pbjm4"]
+
+[node name="Menu" type="Node3D" unique_id=1946435144]
+script = ExtResource("2_menu")
+
+[node name="ocean_scene" parent="." unique_id=1189769047 instance=ExtResource("1_j0t7f")]
+
+[node name="MenuPlayer" parent="ocean_scene" unique_id=239846078 instance=ExtResource("3_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15.134187, 0)
+ocean_path = NodePath("")
+take_over_camera = false
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=1585582499]
+transform = Transform3D(0.3092244, 0.07972919, -0.9476411, -0.024732945, 0.9968166, 0.07579595, 0.95066744, 0, 0.31021193, -67.14825, 23.90173, 13.267788)
+
+[node name="CanvasLayer" type="CanvasLayer" parent="." unique_id=425421991]
+
+[node name="Button" parent="CanvasLayer" unique_id=755197354 instance=ExtResource("4_pbjm4")]
+button_text = "Play"

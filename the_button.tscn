@@ -2,12 +2,20 @@
 
 [ext_resource type="Texture2D" uid="uid://dpiaopk2vbpoh" path="res://img/button without shadow.png" id="1_6d3lx"]
 [ext_resource type="Texture2D" uid="uid://bksqpagea53qd" path="res://img/arrow.png" id="2_clnch"]
+[ext_resource type="Script" uid="uid://dsbvvsiudnhvn" path="res://other_scripts/the_button_interface.gd" id="2_inrkj"]
 [ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="3_inrkj"]
+[ext_resource type="Script" uid="uid://eujklws7tafo" path="res://other_scripts/button_size_changer.gd" id="4_6d3lx"]
 
-[node name="TextureButton" type="TextureButton" unique_id=755197354]
+[node name="Button" type="TextureButton" unique_id=755197354]
 offset_right = 40.0
 offset_bottom = 40.0
 texture_normal = ExtResource("1_6d3lx")
+texture_pressed = ExtResource("1_6d3lx")
+texture_hover = ExtResource("1_6d3lx")
+texture_disabled = ExtResource("1_6d3lx")
+texture_focused = ExtResource("1_6d3lx")
+script = ExtResource("2_inrkj")
+button_text = "hmmm"
 
 [node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=1619802658]
 layout_mode = 0
@@ -42,3 +50,6 @@ pivot_offset = Vector2(68.5, -37)
 theme_override_fonts/font = ExtResource("3_inrkj")
 theme_override_font_sizes/font_size = 26
 text = "Play"
+
+[node name="Node" type="Node" parent="." unique_id=1885364065]
+script = ExtResource("4_6d3lx")

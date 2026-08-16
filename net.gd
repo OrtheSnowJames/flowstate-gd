@@ -154,7 +154,12 @@ func _clear_players() -> void:
 func _add_player(id: int) -> void:
 	var players := _players_root()
 	if players == null:
-		push_error("net: no Players node in the current scene -- can't spawn peer %d" % id)
+		# A warning, not an error: this fires on every scene load that doesn't
+		# want the networked player roster at all -- the menu background (see
+		# menu/menu.gd) drops its own standalone player.tscn instance directly
+		# instead, deliberately outside this system. That's a legitimate scene,
+		# not a bug, so this shouldn't read as one in the log.
+		push_warning("net: no Players node in the current scene -- can't spawn peer %d" % id)
 		return
 	if players.has_node(str(id)):
 		return
