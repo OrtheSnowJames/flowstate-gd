@@ -18,11 +18,11 @@
 [ext_resource type="Script" uid="uid://b8jgog7ewjxj5" path="res://water/synced_prop.gd" id="15_syncprop"]
 [ext_resource type="Texture2D" uid="uid://defog6v6fx3qd" path="res://img/forrest_ground_01_diff_1k.jpg" id="16_lta4o"]
 [ext_resource type="PackedScene" uid="uid://dhnoersbl03k6" path="res://poolk/bathroom.tscn" id="16_mvkr7"]
-[ext_resource type="Script" path="res://water/pool_scene_toggles.gd" id="21_pooltog"]
 [ext_resource type="Shader" uid="uid://bi3o8elbtqoni" path="res://addons/simplegrasstextured/shaders/grass.gdshader" id="17_fywoq"]
 [ext_resource type="Texture2D" uid="uid://c4ggdp0kg5wjk" path="res://addons/simplegrasstextured/textures/grassbushcc008.png" id="18_gu18f"]
 [ext_resource type="ArrayMesh" uid="uid://sptcpdx6wtm8" path="res://addons/simplegrasstextured/default_mesh.tres" id="19_614yo"]
 [ext_resource type="Script" uid="uid://2juaclm8gc1n" path="res://addons/simplegrasstextured/grass.gd" id="20_biqxj"]
+[ext_resource type="Script" uid="uid://dh1ieqgns8isx" path="res://water/pool_scene_toggles.gd" id="21_pooltog"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -162,7 +162,7 @@ albedo_texture = ExtResource("16_lta4o")
 [sub_resource type="PlaneMesh" id="PlaneMesh_2qpaf"]
 size = Vector2(20, 80)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_lta4o"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_gu18f"]
 render_priority = 0
 shader = ExtResource("17_fywoq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
@@ -211,103 +211,54 @@ size = Vector3(80, 0.5, 6)
 [node name="Main" type="Node3D" unique_id=1189769047]
 script = ExtResource("21_pooltog")
 
-[node name="Node3D" type="Node3D" parent="." unique_id=203598218]
+[node name="trees" type="Node3D" parent="." unique_id=203598218]
+[node name="Sketchfab_Scene" parent="trees" unique_id=2048121839 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -42.72, 9, -40.37)
 
-[node name="Sketchfab_Scene" parent="Node3D" unique_id=2048121839 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -43, 9, -38)
+[node name="Sketchfab_Scene3" parent="trees" unique_id=1609324978 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -39.45, 9, -39.38)
 
-[node name="Sketchfab_Scene2" parent="Node3D" unique_id=1803042609 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -41, 9, -38)
+[node name="Sketchfab_Scene5" parent="trees" unique_id=1505547745 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -34.53, 9, -37.12)
 
-[node name="Sketchfab_Scene3" parent="Node3D" unique_id=1609324978 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -39, 9, -38)
+[node name="Sketchfab_Scene7" parent="trees" unique_id=1125862036 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -30.22, 9, -40.07)
 
-[node name="Sketchfab_Scene4" parent="Node3D" unique_id=1258103703 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -37, 9, -38)
+[node name="Sketchfab_Scene9" parent="trees" unique_id=266034423 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27.16, 9, -40.35)
 
-[node name="Sketchfab_Scene5" parent="Node3D" unique_id=1505547745 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -35, 9, -38)
+[node name="Sketchfab_Scene11" parent="trees" unique_id=959372046 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23.56, 9, -37.97)
 
-[node name="Sketchfab_Scene6" parent="Node3D" unique_id=1268814805 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -33, 9, -38)
+[node name="Sketchfab_Scene13" parent="trees" unique_id=2135930689 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19.95, 9, -39.51)
 
-[node name="Sketchfab_Scene7" parent="Node3D" unique_id=1125862036 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -31, 9, -38)
+[node name="Sketchfab_Scene15" parent="trees" unique_id=621134958 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -14.7, 9, -37.78)
 
-[node name="Sketchfab_Scene8" parent="Node3D" unique_id=1003825211 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -29, 9, -38)
+[node name="Sketchfab_Scene17" parent="trees" unique_id=1713804724 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11.56, 9, -37.55)
 
-[node name="Sketchfab_Scene9" parent="Node3D" unique_id=266034423 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -27, 9, -38)
+[node name="Sketchfab_Scene19" parent="trees" unique_id=588504313 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -6.38, 9, -40.47)
 
-[node name="Sketchfab_Scene10" parent="Node3D" unique_id=1257993977 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -25, 9, -38)
+[node name="Sketchfab_Scene21" parent="trees" unique_id=1023226742 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -2.39, 9, -37.01)
 
-[node name="Sketchfab_Scene11" parent="Node3D" unique_id=959372046 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -23, 9, -38)
+[node name="Sketchfab_Scene23" parent="trees" unique_id=1410265386 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.68, 9, -39.72)
 
-[node name="Sketchfab_Scene12" parent="Node3D" unique_id=1351801178 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -21, 9, -38)
+[node name="Sketchfab_Scene25" parent="trees" unique_id=611591081 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5.91, 9, -38.82)
 
-[node name="Sketchfab_Scene13" parent="Node3D" unique_id=2135930689 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -19, 9, -38)
+[node name="Sketchfab_Scene27" parent="trees" unique_id=1815797959 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 8.19, 9, -40.02)
 
-[node name="Sketchfab_Scene14" parent="Node3D" unique_id=1176230211 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -17, 9, -38)
+[node name="Sketchfab_Scene29" parent="trees" unique_id=1536920232 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.69, 9, -37.48)
 
-[node name="Sketchfab_Scene15" parent="Node3D" unique_id=621134958 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -15, 9, -38)
-
-[node name="Sketchfab_Scene16" parent="Node3D" unique_id=1324507210 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -13, 9, -38)
-
-[node name="Sketchfab_Scene17" parent="Node3D" unique_id=1713804724 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -11, 9, -38)
-
-[node name="Sketchfab_Scene18" parent="Node3D" unique_id=320940371 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -9, 9, -38)
-
-[node name="Sketchfab_Scene19" parent="Node3D" unique_id=588504313 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7, 9, -38)
-
-[node name="Sketchfab_Scene20" parent="Node3D" unique_id=1845063831 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -5, 9, -38)
-
-[node name="Sketchfab_Scene21" parent="Node3D" unique_id=1023226742 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -3, 9, -38)
-
-[node name="Sketchfab_Scene22" parent="Node3D" unique_id=913874465 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -1, 9, -38)
-
-[node name="Sketchfab_Scene23" parent="Node3D" unique_id=1410265386 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1, 9, -38)
-
-[node name="Sketchfab_Scene24" parent="Node3D" unique_id=1442936223 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3, 9, -38)
-
-[node name="Sketchfab_Scene25" parent="Node3D" unique_id=611591081 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 5, 9, -38)
-
-[node name="Sketchfab_Scene26" parent="Node3D" unique_id=1630520097 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 7, 9, -38)
-
-[node name="Sketchfab_Scene27" parent="Node3D" unique_id=1815797959 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 9, -38)
-
-[node name="Sketchfab_Scene28" parent="Node3D" unique_id=450849494 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11, 9, -38)
-
-[node name="Sketchfab_Scene29" parent="Node3D" unique_id=1536920232 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13, 9, -38)
-
-[node name="Sketchfab_Scene30" parent="Node3D" unique_id=139266307 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 15, 9, -38)
-
-[node name="Sketchfab_Scene31" parent="Node3D" unique_id=160857672 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17, 9, -38)
-
-[node name="Sketchfab_Scene32" parent="Node3D" unique_id=465023343 instance=ExtResource("1_fywoq")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 19, 9, -38)
+[node name="Sketchfab_Scene31" parent="trees" unique_id=160857672 instance=ExtResource("1_fywoq")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 17.61, 9, -36.85)
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1995031414]
 environment = SubResource("Environment_qijwg")
@@ -793,7 +744,7 @@ mesh = SubResource("PlaneMesh_2qpaf")
 
 [node name="SimpleGrassTextured" type="MultiMeshInstance3D" parent="StaticBody3D2" unique_id=844937069]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
-material_override = SubResource("ShaderMaterial_lta4o")
+material_override = SubResource("ShaderMaterial_gu18f")
 multimesh = SubResource("MultiMesh_fywoq")
 script = ExtResource("20_biqxj")
 sgt_radius = 2.0

@@ -44,6 +44,25 @@ const CONTROL_CAMERA := true
 const ANIMATE_PLAYER := true
 const DEBUG_IN_SHALLOW_WATER: bool = false
 
+# Normal vs. lifeguard numbers for is_lifeguard's stat buffs (see
+# _apply_lifeguard_loadout() below). Both sides are named consts, not just the
+# lifeguard side, so a normal-player number never has to be duplicated between
+# an export default and the "turn it back off" branch.
+const _NORMAL_WATER_POWER_DAMAGE_MAX := 30.0
+const _NORMAL_WATER_ATTACK_DAMAGE_MAX := 65.0
+const _NORMAL_MOMENTUM_GAIN_MULT := 1.0
+const _NORMAL_MOMENTUM_LOSS_MULT := 1.0
+const _NORMAL_WATER_WALL_BLOCK_REDUCTION := 0.5 # halves an incoming hit while blocking
+
+const _LIFEGUARD_WATER_POWER_DAMAGE_MAX := 60.0
+const _LIFEGUARD_WATER_ATTACK_DAMAGE_MAX := 80.0
+const _LIFEGUARD_MOMENTUM_GAIN_MULT := 1.3
+const _LIFEGUARD_MOMENTUM_LOSS_MULT := 0.5
+const _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION := 0.1 # the kickboard block: 90% of the hit never lands
+
+const _CHARACTER_MESH := preload("res://mesh/character.glb")
+const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
+
 ## Grace window for the backstroke -> forward-stroke flip: how long after
 ## last holding S a W press still counts as "flip out of the backstroke".
 ## Needed because requiring S and W to overlap on the exact same physics tick
@@ -196,6 +215,54 @@ var last_d_press := -1000.0
 @export var water_attack_stamina_cost: float = 5.0 * balance_mult
 @export var water_wall_stamina_cost_per_second: float = 20.0 * balance_mult
 
+## Seconds after casting before that same move can fire again -- same
+## reasoning as dodge_cooldown/jump_cooldown above: no throwing another one
+## before your arms have recovered from the last. water_wall has no cooldown
+## of its own on purpose -- it's a hold, not a cast, so nothing to spam; its
+## stamina drain already limits how long it can stay up.
+@export var water_power_cooldown: float = 0.6
+@export var water_attack_cooldown: float = 0.4
+
+@export_group("Lifeguard")
+## Off-duty by default. On: swaps blockbench_export for mesh/lifeguard.glb
+## (same rig/animations as mesh/character.glb, kickboard included -- see
+## _apply_mesh_for_lifeguard()) and buffs several stats below to match --
+## bigger max hit damage, faster momentum gain, less momentum lost in the
+## deep end, and a much better water_wall block. Safe to flip either
+## direction, live or baked into the scene file: see the setter.
+@export var is_lifeguard: bool = false:
+	set(value):
+		is_lifeguard = value
+		# Deferred to _ready() at load time (see there) -- applied immediately
+		# here only for a genuine LIVE toggle, i.e. this node is already fully
+		# built and in the tree, not still being deserialized. Swapping
+		# blockbench_export while this node's OWN children (blockbench_export
+		# included) might not exist yet would leave a duplicate mesh behind
+		# instead of replacing the one the scene file is about to add.
+		if is_inside_tree():
+			_apply_lifeguard_loadout()
+
+## Damage range at strength 1 for a hit that lands -- see
+## ocean_fluid_bridge.gd's _apply_hit_damage(), which picks a point along
+## this range based on where along the wave's path the hit landed. Only the
+## *_max ends change for a lifeguard (per spec); the mins are the same for
+## everyone.
+@export var water_power_damage_min: float = 8.0
+@export var water_power_damage_max: float = _NORMAL_WATER_POWER_DAMAGE_MAX
+@export var water_attack_damage_min: float = 35.0
+@export var water_attack_damage_max: float = _NORMAL_WATER_ATTACK_DAMAGE_MAX
+
+## Multiplies momentum gained while swimming, and momentum lost per second
+## while idling in open water or gliding -- see _swim()/_glide(). >1 gains
+## faster; <1 loses less.
+@export var momentum_gain_mult: float = _NORMAL_MOMENTUM_GAIN_MULT
+@export var momentum_loss_mult: float = _NORMAL_MOMENTUM_LOSS_MULT
+
+## Fraction of an incoming hit that still gets through while holding a water
+## wall up -- see take_stamina_damage(). 0.5 is a 50% block, 0.1 is 90%.
+@export var water_wall_block_reduction: float = _NORMAL_WATER_WALL_BLOCK_REDUCTION
+@export_group("") # closes "Lifeguard" -- movement_state etc. below are ungrouped again
+
 var dir: Vector3 = Vector3.ZERO
 var can_move: bool = true
 # get_node_or_null, not get_node: a decorative player dropped into a scene with
@@ -210,6 +277,10 @@ var _ocean: Node = null
 # Counts down after a dodge/jump until another one is allowed.
 var _dodge_cooldown_timer: float = 0.0
 var _jump_cooldown_timer: float = 0.0
+# Counts down after casting water_power/water_attack until that same move can
+# fire again -- see water_power_cooldown/water_attack_cooldown above.
+var _water_power_cooldown_timer: float = 0.0
+var _water_attack_cooldown_timer: float = 0.0
 
 # water_power/water_attack are authored to hold on their last frame; this
 # tracks the movement_state they were fired during, so _anim_change() leaves
@@ -308,18 +379,16 @@ func _ready() -> void:
 	if ocean_path:
 		_ocean = get_node_or_null(ocean_path)
 
-	# water_wall is authored to loop, but glTF import always bakes animations
-	# in with loop_mode NONE (Godot-specific loop settings aren't part of the
-	# glTF format, so re-exporting from Blockbench can't carry it) -- set it
-	# here instead of relying on a per-animation import override that a
-	# reimport would silently drop. water_power/water_attack stay LOOP_NONE
-	# (hold on last frame) on purpose -- see _play_water_action_anim().
-	#
-	# Every body needs this, remote ones included: the water-move RPCs run on
-	# all peers (see net_cast_water_move), so somebody else's player plays these
-	# same clips in this window.
-	if _anim_player and _anim_player.has_animation("water_wall"):
-		_anim_player.get_animation("water_wall").loop_mode = Animation.LOOP_LINEAR
+	# Kickboard rig + stat buffs if is_lifeguard was baked on for this
+	# instance -- deferred to here rather than applied straight from
+	# is_lifeguard's own setter (see there) so the mesh swap only ever runs
+	# once the whole subtree, blockbench_export included, genuinely exists.
+	# Every body needs this, remote ones included: is_lifeguard is identical
+	# across every peer's copy of a given player (it's baked into the scene,
+	# not something that needs network sync), so this keeps their mesh and
+	# the water_wall loop-mode fix below correct in every window, not just
+	# their own.
+	_apply_lifeguard_loadout()
 
 	# Everything past here belongs to whoever is playing in THIS window: the one
 	# cursor, the one camera, the one set of GUI bars. A body mirrored in from
@@ -394,6 +463,66 @@ func _ready() -> void:
 	_cam_pivot_height = _cam_pivot.position.y
 	call_deferred("_detach_camera_rig")
 	_update_camera_pitch()
+
+## Applies (or reverts) every lifeguard buff to match is_lifeguard: the
+## kickboard rig and the stat numbers documented on is_lifeguard's own export
+## above. Safe to call repeatedly and in either direction -- both branches
+## always write every field rather than only touching what's different from
+## the other, so there's no stale leftover from whichever state was active
+## before.
+func _apply_lifeguard_loadout() -> void:
+	if is_lifeguard:
+		water_power_damage_max = _LIFEGUARD_WATER_POWER_DAMAGE_MAX
+		water_attack_damage_max = _LIFEGUARD_WATER_ATTACK_DAMAGE_MAX
+		momentum_gain_mult = _LIFEGUARD_MOMENTUM_GAIN_MULT
+		momentum_loss_mult = _LIFEGUARD_MOMENTUM_LOSS_MULT
+		water_wall_block_reduction = _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION
+	else:
+		water_power_damage_max = _NORMAL_WATER_POWER_DAMAGE_MAX
+		water_attack_damage_max = _NORMAL_WATER_ATTACK_DAMAGE_MAX
+		momentum_gain_mult = _NORMAL_MOMENTUM_GAIN_MULT
+		momentum_loss_mult = _NORMAL_MOMENTUM_LOSS_MULT
+		water_wall_block_reduction = _NORMAL_WATER_WALL_BLOCK_REDUCTION
+	_apply_mesh_for_lifeguard()
+
+## Swaps blockbench_export for the lifeguard rig (mesh/lifeguard.glb, kickboard
+## included) or back to the normal one (mesh/character.glb), matching
+## is_lifeguard. Only ever called once the whole scene subtree genuinely
+## exists (see _ready() and is_lifeguard's setter) -- both meshes share every
+## node name down to individual mesh parts (same Blockbench rig, re-exported),
+## so the kickboard's presence is the only thing that tells an already-swapped
+## lifeguard body apart from a normal one.
+func _apply_mesh_for_lifeguard() -> void:
+	var old := get_node_or_null("blockbench_export")
+	if not (old and old.has_node("kickboard") == is_lifeguard):
+		if old:
+			remove_child(old)
+			old.free()
+		var mesh: Node3D = (_LIFEGUARD_MESH if is_lifeguard else _CHARACTER_MESH).instantiate()
+		mesh.name = "blockbench_export"
+		# Matches player.tscn's own baked transform for this node exactly --
+		# both rigs were modeled/exported at the same scale and origin offset.
+		mesh.transform = Transform3D(Basis().scaled(Vector3.ONE * 0.5), Vector3(0.0, -1.0725327, 0.0))
+		add_child(mesh)
+		_anim_player = get_node_or_null("blockbench_export/AnimationPlayer")
+	# Unconditional, not just on the swapped branch above: a freshly-swapped
+	# AnimationPlayer needs it applied fresh (it's a whole new Animation
+	# resource instance), and the never-swapped case still needs it once, same
+	# as before this function existed.
+	_fix_water_wall_loop_mode()
+
+## water_wall is authored to loop, but glTF import always bakes animations in
+## with loop_mode NONE (Godot-specific loop settings aren't part of the glTF
+## format, so re-exporting from Blockbench can't carry it) -- set it here
+## instead of relying on a per-animation import override that a reimport would
+## silently drop. water_power/water_attack stay LOOP_NONE (hold on last frame)
+## on purpose -- see _play_water_action_anim(). Called from
+## _apply_mesh_for_lifeguard() (both at _ready() and on a live rig swap),
+## since a swapped-in rig comes with its own separate copy of "water_wall"
+## that hasn't had this fix applied yet.
+func _fix_water_wall_loop_mode() -> void:
+	if _anim_player and _anim_player.has_animation("water_wall"):
+		_anim_player.get_animation("water_wall").loop_mode = Animation.LOOP_LINEAR
 
 ## Turns this body into a puppet of the peer that owns it. Its transform comes
 ## from the MultiplayerSynchronizer, so local physics must not fight the
@@ -603,14 +732,22 @@ func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strengt
 	# _is_local() is true here exactly on the caster's own machine, because this
 	# runs on the *caster's* body on every peer.
 	var apply_hits := _is_local()
+	# The damage range comes from THIS node's own stats -- a lifeguard's
+	# buffed water_power_damage_max/water_attack_damage_max, read here rather
+	# than threaded through the RPC, because self is always the caster's own
+	# body (that's what call_local + running "on the caster's body on every
+	# peer" means -- see the comment above), and is_lifeguard is identical on
+	# every peer's copy of it already, no sync needed.
 	match kind:
 		WaterMove.POWER:
 			if _ocean.has_method("send_wave"):
-				_ocean.send_wave(origin, aim, strength, self, apply_hits)
+				_ocean.send_wave(origin, aim, strength, self, apply_hits,
+						water_power_damage_min, water_power_damage_max)
 			_play_water_action_anim("water_power")
 		WaterMove.ATTACK:
 			if _ocean.has_method("send_attack_wave"):
-				_ocean.send_attack_wave(origin, aim, strength, self, apply_hits)
+				_ocean.send_attack_wave(origin, aim, strength, self, apply_hits,
+						water_attack_damage_min, water_attack_damage_max)
 			_play_water_action_anim("water_attack")
 
 ## The wall is held rather than fired, so it re-sends every frame it's up
@@ -734,7 +871,9 @@ func _stamina_change(delta: float) -> void:
 ## instead of) the normal per-tick drain/recovery in _stamina_change().
 ## Duck-typed from the ocean side (has_method("take_stamina_damage")), so
 ## anything that wants to be hurt by a wave just needs this one method.
-## Holding up a water wall (_water_wall_up) halves whatever gets through.
+## Holding up a water wall (_water_wall_up) cuts whatever gets through by
+## water_wall_block_reduction -- 50% for a normal player, 90% for a lifeguard
+## blocking with the kickboard (see is_lifeguard).
 ##
 ## An @rpc so the peer that landed the hit can call it on the peer that got
 ## hit (ocean_fluid_bridge routes it there via _send_to_owner). Stamina and the
@@ -743,7 +882,7 @@ func _stamina_change(delta: float) -> void:
 @rpc("any_peer", "reliable")
 func take_stamina_damage(amount: float) -> void:
 	if _water_wall_up:
-		amount *= 0.5
+		amount *= water_wall_block_reduction
 	stamina = clampf(stamina - amount, 0.0, max_stamina)
 	if stamina <= 5.0:
 		_death()
@@ -1024,6 +1163,8 @@ func _physics_process(delta: float) -> void:
 
 	_dodge_cooldown_timer = maxf(_dodge_cooldown_timer - delta, 0.0)
 	_jump_cooldown_timer = maxf(_jump_cooldown_timer - delta, 0.0)
+	_water_power_cooldown_timer = maxf(_water_power_cooldown_timer - delta, 0.0)
+	_water_attack_cooldown_timer = maxf(_water_attack_cooldown_timer - delta, 0.0)
 
 	# Compute these once per tick; in_shallow_end() runs a raycast, so don't call
 	# it (or _submersion) repeatedly below.
@@ -1084,9 +1225,12 @@ func _physics_process(delta: float) -> void:
 	# wherever the mouse cursor is (horizontal only -- it rides the water, so
 	# it starts at the surface height and can't be aimed up or down). Needs
 	# actual water to draw on -- bone dry on the deck, there's nothing to shove
-	# -- and enough stamina banked to cover the cast, same gating as _dodge().
+	# -- enough stamina banked to cover the cast, same gating as _dodge() --
+	# and its cooldown spent, same reasoning as dodge/jump: no throwing
+	# another one before your arms have recovered from the last.
 	if submersion > 0.0 and Input.is_action_just_pressed("water_power") \
 			and stamina >= water_power_stamina_cost \
+			and _water_power_cooldown_timer <= 0.0 \
 			and _ocean and _ocean.has_method("send_wave"):
 		var aim := _mouse_aim_direction()
 		var origin := global_position + aim * 1.0
@@ -1095,20 +1239,23 @@ func _physics_process(delta: float) -> void:
 		# RPC, this one included -- see _cast_water_move.
 		_cast_water_move(WaterMove.POWER, origin, aim, 1.0)
 		stamina -= water_power_stamina_cost
+		_water_power_cooldown_timer = water_power_cooldown
 
 	# Water attack (water_attack action): close-range counterpart to water
 	# power -- a much bigger, denser burst that barely travels, a shove right
-	# in front of you rather than a lance across the pool. Same water-only
-	# and stamina gating as water power, just cheaper -- it's the low-commitment
-	# option.
+	# in front of you rather than a lance across the pool. Same water-only,
+	# stamina, and cooldown gating as water power, just cheaper on all three --
+	# it's the low-commitment option.
 	if submersion > 0.0 and Input.is_action_just_pressed("water_attack") \
 			and stamina >= water_attack_stamina_cost \
+			and _water_attack_cooldown_timer <= 0.0 \
 			and _ocean and _ocean.has_method("send_attack_wave"):
 		var attack_aim := _mouse_aim_direction()
 		var attack_origin := global_position + attack_aim * 0.6
 		attack_origin.y = _water_height()
 		_cast_water_move(WaterMove.ATTACK, attack_origin, attack_aim, 1.0)
 		stamina -= water_attack_stamina_cost
+		_water_attack_cooldown_timer = water_attack_cooldown
 
 	# Water wall (water_wall action, hold 3): raises a stationary wall of
 	# water in front of the player and keeps it up -- and tracking the
@@ -1316,15 +1463,20 @@ func _swim(delta: float) -> void:
 		# keep building toward max the usual way (fast at first, slow near
 		# max). Forward (W, input_dir.y < 0) builds momentum slower; backward
 		# (S) is normal.
+		# momentum_gain_mult buffs both branches -- the kickboard doesn't care
+		# whether you're still winding up or already past the swim threshold,
+		# it just makes every stroke count for more either way.
 		var gain_scale := forward_swim_gain_mult if input_dir.y < 0.0 else 1.0
 		var swim_up_time := _swim_up_animation_time()
 		if swim_up_time > 0.0:
-			momentum += momentum_needed_to_swim / swim_up_time * delta * gain_scale
+			momentum += momentum_needed_to_swim / swim_up_time * delta * gain_scale * momentum_gain_mult
 		else:
-			momentum += SWIM_GAIN * pow(1.0 - t, 2.0) * delta * gain_scale
+			momentum += SWIM_GAIN * pow(1.0 - t, 2.0) * delta * gain_scale * momentum_gain_mult
 		momentum = min(momentum, max_momentum)
 	else:
-		momentum = move_toward(momentum, 0.0, SWIM_GAIN * delta)
+		# Deep-water idle decay -- momentum_loss_mult is the kickboard's "lose
+		# less in the deep end" half of the buff.
+		momentum = move_toward(momentum, 0.0, SWIM_GAIN * delta * momentum_loss_mult)
 
 	# swim_up is the wind-up phase spent building the momentum needed to swim
 	# (see _swim_up_animation_time); once past the threshold it's a full swim.
@@ -1354,7 +1506,9 @@ func _glide(delta: float) -> void:
 
 	if momentum > 0.0:
 		movement_state = MovementState.GLIDE
-		momentum -= SWIM_GAIN * delta
+		# momentum_loss_mult -- the other deep-water spot the kickboard's
+		# "lose less" applies, alongside _swim()'s idle decay.
+		momentum -= SWIM_GAIN * delta * momentum_loss_mult
 		var t = momentum / max_momentum
 		_apply_swim_motion(glide_dir, t)
 	else:

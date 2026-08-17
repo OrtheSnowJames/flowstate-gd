@@ -57,8 +57,14 @@ func get_rest_height() -> float:
 ## call_local), but only the peer that actually cast passes true -- otherwise
 ## each peer would independently decide the wave connected and the victim would
 ## be knocked back and damaged once per player in the game.
+##
+## `damage_min`/`damage_max` default to the normal-player range but come from
+## the CASTER (player.gd passes its own water_power_damage_min/max, which a
+## lifeguard has buffed) -- see is_lifeguard on water/player.gd.
 func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
-		caster: Node3D = null, apply_hits: bool = true) -> void:
+		caster: Node3D = null, apply_hits: bool = true,
+		damage_min: float = _stamina_damage_power_min,
+		damage_max: float = _stamina_damage_power_max) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
@@ -77,7 +83,7 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 			# Long-range lance: a hit that lands at full extension is harder to
 			# land and hits harder -- distance is the reward, not the penalty.
 			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
-					_stamina_damage_power_min, _stamina_damage_power_max, false)
+					damage_min, damage_max, false)
 
 	# elongation drives the sim's along-direction reach (see the class comment
 	# above), so shrinking it with the same fraction the crest got clipped by
@@ -100,8 +106,14 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 ## and the crest/particle sizing all scale up for a bigger, rounder blast.
 ## `apply_hits` works exactly as it does in send_wave() -- only the casting
 ## peer resolves the hit, everyone else just draws the wave.
+##
+## `damage_min`/`damage_max` default to the normal-player range but come from
+## the CASTER (player.gd passes its own water_attack_damage_min/max, which a
+## lifeguard has buffed) -- see is_lifeguard on water/player.gd.
 func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
-		caster: Node3D = null, apply_hits: bool = true) -> void:
+		caster: Node3D = null, apply_hits: bool = true,
+		damage_min: float = _stamina_damage_attack_min,
+		damage_max: float = _stamina_damage_attack_max) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
@@ -119,7 +131,7 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 			# Point-blank haymaker: the opposite of water power -- the closer the
 			# hit lands, the more it hurts.
 			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
-					_stamina_damage_attack_min, _stamina_damage_attack_max, true)
+					damage_min, damage_max, true)
 
 	add_impulse(origin, 0.6 * strength, 2.2 * strength, travel_dir, 1.0, 1.4 * (reach / max_distance))
 

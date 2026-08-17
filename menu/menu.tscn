@@ -9,6 +9,7 @@
 script = ExtResource("2_menu")
 
 [node name="ocean_scene" parent="." unique_id=1189769047 instance=ExtResource("1_j0t7f")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.060077667, -1.9073486e-06, -0.051952362)
 
 [node name="MenuPlayer" parent="ocean_scene" unique_id=239846078 instance=ExtResource("3_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 15.134187, 0)
