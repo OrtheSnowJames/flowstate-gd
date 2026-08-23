@@ -21,11 +21,19 @@ const PLAYER_SCENE := preload("res://water/player.tscn")
 ## real address (or read it off a UI field) to play over a network.
 var join_ip := "127.0.0.1"
 
+## Off by default, on purpose: pressing test_lifeguard_key (see project.godot's
+## input map -- "L" as of writing) with this off does nothing at all. Unlike
+## the F1/F2 host/join keys (harmless if someone leaves them in and presses
+## one by accident), a live lifeguard toggle is a permanent gameplay-changing
+## buff -- a stray keypress handing that out for real is worth its own
+## explicit switch, not just "delete before shipping" discipline. Flip this
+## on in the Inspector only while actually testing is_lifeguard.
+@export var enable_lifeguard_test_key: bool = true
+
 ## Spawn point of the player that used to be baked into ocean1.tscn. Players
 ## are fanned out around it so two peers don't spawn inside each other.
 const _SPAWN_ORIGIN := Vector3(0.0, 15.134187, 0.0)
 const _SPAWN_SPREAD := 2.5
-
 
 func _ready() -> void:
 	# Connected once here rather than inside host_game(): hosting twice would
@@ -222,14 +230,38 @@ func _on_server_disconnected() -> void:
 # ---------------------------------------------------------------------------
 # Debug keys -- placeholder until the real menu UI exists
 # ---------------------------------------------------------------------------
-## Raw keycodes rather than input actions on purpose: these are temporary, and
-## this way project.godot's input map stays clean. Delete this function once
-## the menu calls host_game()/join_game() directly.
+## Raw keycodes rather than input actions for host/join, on purpose: these are
+## temporary, and this way project.godot's input map stays clean for them.
+## Delete that half once the menu calls host_game()/join_game() directly.
+##
+## test_lifeguard_key is different -- it's a real registered action (someone
+## added it to the input map on purpose for this), so it's read the normal
+## way, and it's gated by enable_lifeguard_test_key rather than being
+## unconditionally live like F1/F2.
 func _unhandled_input(event: InputEvent) -> void:
-	if not (event is InputEventKey and event.pressed and not event.echo):
-		return
-	match event.keycode:
-		KEY_F1:
-			host_game()
-		KEY_F2:
-			join_game()
+	if event is InputEventKey and event.pressed and not event.echo:
+		match event.keycode:
+			KEY_F1:
+				host_game()
+			KEY_F2:
+				join_game()
+
+	if enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
+		_toggle_local_lifeguard()
+
+
+## Flips is_lifeguard on whichever player body belongs to THIS peer -- for
+## testing the buffs (see water/player.gd's is_lifeguard) without needing a
+## real second player to fight. A toggle rather than a one-way "make me a
+## lifeguard" so both states are reachable from the same key while testing.
+##
+## Searches the "player" group (see player.gd's _enter_tree) rather than
+## assuming a fixed location, since the local player could be under a real
+## gameplay scene's "Players" spawner or a hand-placed instance like
+## menu.tscn's MenuPlayer, which sits outside that whole system.
+func _toggle_local_lifeguard() -> void:
+	for p in get_tree().get_nodes_in_group("player"):
+		if p.is_multiplayer_authority():
+			p.is_lifeguard = not p.is_lifeguard
+			print("net: test_lifeguard_key -> %s is_lifeguard=%s" % [p.name, p.is_lifeguard])
+			return

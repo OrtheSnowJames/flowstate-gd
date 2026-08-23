@@ -63,6 +63,18 @@ const _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION := 0.1 # the kickboard block: 90% of
 const _CHARACTER_MESH := preload("res://mesh/character.glb")
 const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
 
+## Movement-state clip names (see ANIM_MAP) that should genuinely loop
+## (LOOP_LINEAR) on mesh/character.glb's rig -- they're authored as
+## continuous cycles (a walk cycle, a treading-water loop, etc.). glTF import
+## always bakes every clip in at LOOP_NONE regardless of what Blockbench's own
+## loop setting was (glTF has no concept of animation looping, so that
+## authoring-time setting can never survive export) -- these need it set
+## explicitly, same as water_wall already did. mesh/lifeguard.glb's
+## equivalents are authored as single held poses instead, per its own
+## Blockbench project, so they're deliberately left off this list -- see
+## _fix_animation_loop_modes().
+const _CHARACTER_LOOP_ANIMS: Array[String] = ["idle", "tread", "swim_up", "swim", "glide", "walk", "jump"]
+
 ## Grace window for the backstroke -> forward-stroke flip: how long after
 ## last holding S a W press still counts as "flip out of the backstroke".
 ## Needed because requiring S and W to overlap on the exact same physics tick
@@ -288,6 +300,13 @@ var _water_attack_cooldown_timer: float = 0.0
 # next frame) until movement actually changes to something else. -1 = no
 # action animation in control. See _play_water_action_anim().
 var _action_anim_lock_movement_state: int = -1
+# Which AnimationState play_anim() last told the AnimationPlayer to play,
+# tracked independently of what the player itself reports -- see play_anim()
+# for why that matters. -1 = nothing played yet, or something else (a water
+# move, a dodge, death) currently owns the AnimationPlayer instead and
+# _anim_change() needs to unconditionally re-assert control the next time it
+# resumes, whatever movement_state happens to already be.
+var _movement_anim_state: int = -1
 # water_wall loops for as long as the key is held; this just tells
 # _anim_change() to leave the AnimationPlayer alone while that's true. See
 # _play_water_wall_anim()/_stop_water_wall_anim().
@@ -345,6 +364,11 @@ func _enter_tree() -> void:
 	# setting an invalid one.
 	if _owner_peer > 0:
 		set_multiplayer_authority(_owner_peer)
+	# Lets net.gd find "the local player" without assuming where in the tree
+	# it lives -- under a real gameplay scene's "Players" spawner, or a
+	# hand-placed instance like menu.tscn's MenuPlayer, which sits outside
+	# that whole system. See net.gd's test_lifeguard_key handling.
+	add_to_group("player")
 
 ## A raised water wall belongs to the ocean node, not to this one, so it
 ## outlives the player who raised it: someone disconnecting (or otherwise being
@@ -505,24 +529,40 @@ func _apply_mesh_for_lifeguard() -> void:
 		mesh.transform = Transform3D(Basis().scaled(Vector3.ONE * 0.5), Vector3(0.0, -1.0725327, 0.0))
 		add_child(mesh)
 		_anim_player = get_node_or_null("blockbench_export/AnimationPlayer")
+		# _movement_anim_state tracks what's playing on a SPECIFIC
+		# AnimationPlayer instance -- a fresh one from the swap has never
+		# played anything, regardless of what the old one was showing, so a
+		# stale value here would make play_anim() think its target clip is
+		# already running and skip triggering it, leaving the new rig frozen
+		# on its bind pose. This is the live test_lifeguard_key toggle path,
+		# not just a theoretical one -- see net.gd's _toggle_local_lifeguard().
+		_movement_anim_state = -1
 	# Unconditional, not just on the swapped branch above: a freshly-swapped
-	# AnimationPlayer needs it applied fresh (it's a whole new Animation
-	# resource instance), and the never-swapped case still needs it once, same
+	# AnimationPlayer needs it applied fresh (it's a whole new set of Animation
+	# resource instances), and the never-swapped case still needs it once, same
 	# as before this function existed.
-	_fix_water_wall_loop_mode()
+	_fix_animation_loop_modes()
 
-## water_wall is authored to loop, but glTF import always bakes animations in
-## with loop_mode NONE (Godot-specific loop settings aren't part of the glTF
-## format, so re-exporting from Blockbench can't carry it) -- set it here
-## instead of relying on a per-animation import override that a reimport would
-## silently drop. water_power/water_attack stay LOOP_NONE (hold on last frame)
-## on purpose -- see _play_water_action_anim(). Called from
-## _apply_mesh_for_lifeguard() (both at _ready() and on a live rig swap),
-## since a swapped-in rig comes with its own separate copy of "water_wall"
-## that hasn't had this fix applied yet.
-func _fix_water_wall_loop_mode() -> void:
-	if _anim_player and _anim_player.has_animation("water_wall"):
-		_anim_player.get_animation("water_wall").loop_mode = Animation.LOOP_LINEAR
+## water_wall is authored to loop for as long as it's held, and (on
+## mesh/character.glb) so are the movement cycles in _CHARACTER_LOOP_ANIMS --
+## but glTF import always bakes every clip in at LOOP_NONE regardless of what
+## Blockbench's own loop setting was (that authoring-time setting has nowhere
+## to go in the glTF format, so it can never survive export), so both need it
+## set explicitly here instead. water_power/water_attack (and, deliberately,
+## every clip on mesh/lifeguard.glb but water_wall) stay LOOP_NONE -- hold on
+## last frame -- on purpose; see is_lifeguard and _play_water_action_anim().
+## Called from _apply_mesh_for_lifeguard() (both at _ready() and on a live rig
+## swap), since a swapped-in rig comes with its own separate copy of every
+## Animation resource that hasn't had this fix applied yet.
+func _fix_animation_loop_modes() -> void:
+	if not _anim_player:
+		return
+	var loop_names: Array[String] = ["water_wall"]
+	if not is_lifeguard:
+		loop_names += _CHARACTER_LOOP_ANIMS
+	for anim_name in loop_names:
+		if _anim_player.has_animation(anim_name):
+			_anim_player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
 
 ## Turns this body into a puppet of the peer that owns it. Its transform comes
 ## from the MultiplayerSynchronizer, so local physics must not fight the
@@ -548,31 +588,24 @@ func anim_name_to_string(anim_name: AnimationState) -> String:
 	# Looks up the string by enum key; falls back to empty string if missing
 	return ANIM_MAP.get(anim_name, "")
 
-func anim_enum_from_string(anim_name_str: String) -> AnimationState:
-	# Finds the enum key by looking up the string value
-	if anim_name_str == "":
-		return AnimationState.IDLE
-	var key = ANIM_MAP.find_key(anim_name_str)
-	if key == null:
-		# Not a movement animation -- e.g. water_power/water_attack/water_wall,
-		# which play themselves directly and aren't in ANIM_MAP at all (see
-		# _play_water_action_anim/_play_water_wall_anim). -1 never matches a
-		# real AnimationState, so play_anim() always re-triggers its own clip
-		# instead of crashing trying to return Nil as an int enum.
-		return -1 as AnimationState
-	return key
-
+## Used to compare against _movement_anim_state (see there) instead of
+## AnimationPlayer.current_animation directly, which reads as "" once a
+## LOOP_NONE clip finishes and holds -- exactly the case play_anim() has to
+## tell apart from "nothing has ever played".
 func play_anim(anim_state: AnimationState) -> void:
-	if _anim_player:
-		if anim_enum_from_string(_anim_player.current_animation) != anim_state:
-			if anim_state == AnimationState.SWIM_UP:
-				# slow down the animation
-				# animation is 0.5 seconds
-				# calculate speed multiplier based on _swim_up_animation_time()
-				var _mult := _swim_up_animation_time() / SWIM_UP_ANIMATION_BASE_TIME
-				_anim_player.play("swim_up", _mult)
-			else:
-				_anim_player.play(anim_name_to_string(anim_state))
+	if not _anim_player:
+		return
+	if _movement_anim_state == anim_state:
+		return
+	_movement_anim_state = anim_state
+	if anim_state == AnimationState.SWIM_UP:
+		# slow down the animation
+		# animation is 0.5 seconds
+		# calculate speed multiplier based on _swim_up_animation_time()
+		var _mult := _swim_up_animation_time() / SWIM_UP_ANIMATION_BASE_TIME
+		_anim_player.play("swim_up", _mult)
+	else:
+		_anim_player.play(anim_name_to_string(anim_state))
 
 ## Fires a one-shot animation for water_power/water_attack -- authored to
 ## hold on its last frame -- and keeps it in control of the AnimationPlayer
@@ -584,6 +617,11 @@ func _play_water_action_anim(anim_name: String) -> void:
 		return
 	_anim_player.play(anim_name)
 	_action_anim_lock_movement_state = movement_state
+	# This clip now owns the AnimationPlayer instead of play_anim()'s own
+	# bookkeeping -- invalidate it so _anim_change() unconditionally
+	# re-asserts control (even if movement_state happens to already equal
+	# whatever it was before this fired) the next time it resumes.
+	_movement_anim_state = -1
 
 ## Starts/keeps the looping water_wall animation in control of the
 ## AnimationPlayer for as long as it's held; see _stop_water_wall_anim() for
@@ -594,6 +632,7 @@ func _play_water_wall_anim() -> void:
 	if _anim_player.current_animation != "water_wall":
 		_anim_player.play("water_wall")
 	_wall_anim_active = true
+	_movement_anim_state = -1 # same reasoning as _play_water_action_anim()
 
 ## Releases water_wall's hold on the AnimationPlayer so _anim_change() picks
 ## the movement animation back up next frame. Safe to call when it isn't
@@ -924,11 +963,13 @@ func detect_dodge(now: float, event: InputEvent) -> void:
 func _dodge_left() -> void:
 	if ANIMATE_PLAYER:
 		_anim_player.play("dodge_left")
+		_movement_anim_state = -1 # same reasoning as _play_water_action_anim()
 	_dodge(Vector3.LEFT)
 
 func _dodge_right() -> void:
 	if ANIMATE_PLAYER:
 		_anim_player.play("dodge_right")
+		_movement_anim_state = -1
 	_dodge(Vector3.RIGHT)
 
 ## A quick sideways burst triggered by double-tapping left/right (see _input).
@@ -1044,6 +1085,7 @@ func net_death() -> void:
 	# _anim_change leaves it there for as long as _unconscious is set.
 	if _anim_player and _anim_player.has_animation("death"):
 		_anim_player.play("death")
+		_movement_anim_state = -1 # same reasoning as _play_water_action_anim()
 
 	# Past here is what blacking out looks like from behind your own eyes: the
 	# ear ringing and the lids falling. Somebody else going under doesn't black
