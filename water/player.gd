@@ -96,9 +96,15 @@ var last_d_press := -1000.0
 @export_group("Camera")
 ## Camera starts pitched down by this many degrees so the rig (already raised
 ## above head height) reads as an overhead view instead of dead-level;
-## mouse look still adjusts freely from there within the usual clamp.
-@export var default_camera_pitch_deg: float = -25.0
-## Multiplies the spring arm's65c65n65i65u65e65 65e65g65h65 65165p65l65s65t65e65c65m65r65 65n65#65 65l65s65r65(65o65m65d65i65)65 65165p65s65e65 65t65f65r65h65r65b65c65.65@65x65o65t65v65r65c65m65r65_65o65m65 65l65a65 65 65.65
+## mouse look still adjusts freely from there within the usual clamp. More
+## negative = looking down more steeply, i.e. a higher-feeling angle.
+## "Angle" in the Settings menu -- see settings.gd's camera_pitch_deg.
+@export var default_camera_pitch_deg: float = -36.0
+## How high above the player CamPivot hovers, in metres -- baked into
+## water/player.tscn's CamPivot transform by default, but overridable here so
+## Settings.apply_to() (see settings.gd) can push a saved value onto the
+## local player at _ready(). "Camera arc" in the Settings menu.
+@export var camera_hover_height: float = 3.2
 ## How quickly the camera rig's position catches up to the player, in 1/seconds
 ## (exponential smoothing, frame-rate independent). Lower = more of a drone lag
 ## drifting into place; higher = tracks tighter. Not instant like a rigidly
@@ -108,6 +114,14 @@ var last_d_press := -1000.0
 @export var camera_turn_speed: float = 4.0
 ## Same idea but for mouse-look pitch settling into place, instead of snapping.
 @export var camera_pitch_speed: float = 8.0
+
+## Whether A/D turning ramps up the longer the key is held, instead of
+## applying turn_speed instantly -- "exponential sensitivity" in Settings.
+## See _turn_from_input().
+@export var exponential_turn_sensitivity: bool = false
+## Seconds of continuous A/D hold to reach ~95% of full turn_speed when
+## exponential_turn_sensitivity is on. Only matters while that's enabled.
+@export var turn_ramp_time: float = 0.6
 
 ## Movement is mass-invariant by design (buoyancy/swim forces scale with mass,
 ## so it cancels out in F=ma), but FluidBox's splash/wake strength scales with
@@ -293,6 +307,9 @@ var _jump_cooldown_timer: float = 0.0
 # fire again -- see water_power_cooldown/water_attack_cooldown above.
 var _water_power_cooldown_timer: float = 0.0
 var _water_attack_cooldown_timer: float = 0.0
+# How long A/D has been continuously held -- resets the instant it's released.
+# Only read when exponential_turn_sensitivity is on; see _turn_from_input().
+var _turn_hold_time: float = 0.0
 
 # water_power/water_attack are authored to hold on their last frame; this
 # tracks the movement_state they were fired during, so _anim_change() leaves
@@ -364,6 +381,25 @@ func _enter_tree() -> void:
 	# setting an invalid one.
 	if _owner_peer > 0:
 		set_multiplayer_authority(_owner_peer)
+	else:
+		# A body outside the real networked spawn system entirely -- e.g.
+		# menu.tscn's MenuPlayer, a purely decorative, always-local walk-around
+		# instance with no business ever being networked. Its
+		# MultiplayerSynchronizer would otherwise still try to broadcast this
+		# body's transform to ANY peer that connects while it's still in the
+		# tree (a host sitting on the menu, say) -- REGARDLESS of what scene
+		# that peer is actually on, since MultiplayerSynchronizer doesn't know
+		# or care that this is "just the menu background". That produced real,
+		# connection-breaking RPC errors ("Node not found:
+		# .../MenuPlayer/MultiplayerSynchronizer") the moment a client
+		# connected while the host was still sitting on the menu -- removing
+		# the synchronizer outright, rather than trying to scope its
+		# visibility, is what actually guarantees this body can never
+		# replicate to anyone, ever, regardless of what future multiplayer
+		# features get added.
+		var sync := get_node_or_null("MultiplayerSynchronizer")
+		if sync:
+			sync.queue_free()
 	# Lets net.gd find "the local player" without assuming where in the tree
 	# it lives -- under a real gameplay scene's "Players" spawner, or a
 	# hand-placed instance like menu.tscn's MenuPlayer, which sits outside
@@ -421,6 +457,11 @@ func _ready() -> void:
 		_setup_remote_body()
 		return
 
+	# Saved camera/turning settings, before any of it gets used below --
+	# camera_hover_height in particular has to land before _cam_pivot_height
+	# is captured from it a few lines down.
+	Settings.apply_to(self)
+
 	# Free cursor, not locked to the window -- A/D turn the camera now (see
 	# _physics_process), and water_power (press 1) aims wherever the cursor
 	# actually is (see _mouse_aim_direction), which needs its on-screen
@@ -456,7 +497,18 @@ func _ready() -> void:
 	# gets a stationary body's position across once it changes, so a player who
 	# joined while we stood still saw us stuck wherever our body happened to be
 	# when they got their copy of it -- and it only corrected once we moved.
-	if not multiplayer.peer_connected.is_connected(_on_peer_joined):
+	#
+	# _owner_peer > 0 only -- a decorative body like menu.tscn's MenuPlayer
+	# counts as "local" too (its default authority of 1 happens to match
+	# whichever peer is the host), but it's not part of the real networked
+	# roster at all. Without this gate, a host idling on the menu would
+	# register this RPC for MenuPlayer, and fire it at literally any client
+	# that ever connects, regardless of what scene that client is on --
+	# producing "Node not found: .../MenuPlayer" errors disruptive enough to
+	# break the connection, since the RPC targets a path
+	# (menu.tscn/.../MenuPlayer) that doesn't exist on a client already
+	# switched to ocean1.tscn.
+	if _owner_peer > 0 and not multiplayer.peer_connected.is_connected(_on_peer_joined):
 		multiplayer.peer_connected.connect(_on_peer_joined)
 
 	# Drive the bars' ranges from the real stat maxima. They're authored in the
@@ -484,7 +536,10 @@ func _ready() -> void:
 	# Deferred: reparenting synchronously from inside _ready() can leave the
 	# node briefly reporting !is_inside_tree() to the current frame's process
 	# pass; call_deferred runs it after the tree finishes settling instead.
-	_cam_pivot_height = _cam_pivot.position.y
+	# Was _cam_pivot.position.y (the node's own baked transform) -- now driven
+	# by the export instead, so Settings.apply_to() above (and Settings'
+	# "camera arc" row) actually has somewhere to land.
+	_cam_pivot_height = camera_hover_height
 	call_deferred("_detach_camera_rig")
 	_update_camera_pitch()
 
@@ -1177,8 +1232,23 @@ func revive() -> void:
 ## old A/D strafe -- these keys steer now instead of sidestepping.
 func _turn_from_input(delta: float) -> void:
 	var turn := Input.get_axis("left", "right")
-	if turn != 0.0:
-		rotate_y(-turn * turn_speed * delta)
+	if turn == 0.0:
+		_turn_hold_time = 0.0
+		return
+
+	var rate := turn_speed
+	if exponential_turn_sensitivity:
+		# Same exponential-approach idiom as camera_turn_speed/
+		# camera_pitch_speed above (1.0 - exp(-t/tau)) -- ramps from a
+		# standing start up toward the full turn_speed instead of applying it
+		# instantly, so tapping A/D nudges gently and holding it down builds
+		# into a full turn.
+		_turn_hold_time += delta
+		rate *= 1.0 - exp(-_turn_hold_time / turn_ramp_time)
+	else:
+		_turn_hold_time = 0.0
+
+	rotate_y(-turn * rate * delta)
 
 func _physics_process(delta: float) -> void:
 	# A remote body is a puppet: its transform is replicated in from the peer

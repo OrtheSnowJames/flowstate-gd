@@ -1,0 +1,74 @@
+[gd_scene format=3]
+
+[ext_resource type="Texture2D" uid="uid://dpiaopk2vbpoh" path="res://img/button without shadow.png" id="1_bg"]
+[ext_resource type="Texture2D" uid="uid://bksqpagea53qd" path="res://img/arrow.png" id="2_arrow"]
+[ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="3_font"]
+[ext_resource type="Script" path="res://other_scripts/the_stepper_interface.gd" id="4_interface"]
+[ext_resource type="Script" uid="uid://eujklws7tafo" path="res://other_scripts/button_size_changer.gd" id="5_sizechanger"]
+
+[node name="Stepper" type="Control"]
+offset_right = 420.0
+offset_bottom = 100.0
+pivot_offset = Vector2(210, 50)
+script = ExtResource("4_interface")
+row_label = "Setting"
+amount_text = "0"
+
+[node name="Background" type="NinePatchRect" parent="."]
+show_behind_parent = true
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("1_bg")
+patch_margin_left = 44
+patch_margin_right = 44
+
+[node name="RowLabel" type="Label" parent="."]
+offset_left = 24.0
+offset_top = 0.0
+offset_right = 210.0
+offset_bottom = 100.0
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+vertical_alignment = 1
+text = "Setting"
+
+[node name="LeftArrow" type="TextureButton" parent="."]
+offset_left = 220.0
+offset_top = 25.0
+offset_right = 270.0
+offset_bottom = 75.0
+pivot_offset = Vector2(25, 25)
+flip_h = true
+texture_normal = ExtResource("2_arrow")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Node" type="Node" parent="LeftArrow"]
+script = ExtResource("5_sizechanger")
+
+[node name="AmountLabel" type="Label" parent="."]
+offset_left = 270.0
+offset_top = 0.0
+offset_right = 370.0
+offset_bottom = 100.0
+mouse_filter = 2
+theme_override_fonts/font = ExtResource("3_font")
+theme_override_font_sizes/font_size = 22
+horizontal_alignment = 1
+vertical_alignment = 1
+text = "0"
+
+[node name="RightArrow" type="TextureButton" parent="."]
+offset_left = 370.0
+offset_top = 25.0
+offset_right = 420.0
+offset_bottom = 75.0
+pivot_offset = Vector2(25, 25)
+texture_normal = ExtResource("2_arrow")
+ignore_texture_size = true
+stretch_mode = 5
+
+[node name="Node" type="Node" parent="RightArrow"]
+script = ExtResource("5_sizechanger")

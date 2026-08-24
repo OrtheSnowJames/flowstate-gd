@@ -32,10 +32,10 @@ mesh = SubResource("CapsuleMesh_nb2vx")
 shape = SubResource("CapsuleShape3D_bwgqs")
 
 [node name="CamPivot" type="Node3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 2.5, 0)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 3.2, 0)
 
 [node name="SpringArm3D" type="SpringArm3D" parent="CamPivot"]
-spring_length = 4.5
+spring_length = 3.2
 
 [node name="Camera3D" type="Camera3D" parent="CamPivot/SpringArm3D"]
 

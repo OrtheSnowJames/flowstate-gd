@@ -63,10 +63,19 @@ func _ready() -> void:
 ## purely so multiplayer can be tested without alt-tabbing to press F1/F2.
 ## The debug keys and join_ip still work exactly the same; delete this along
 ## with _unhandled_input when the menu UI lands.
+##
+## --host also has to actually GET the host into gameplay, not just start
+## listening -- with menu.tscn as run/main_scene, "host" boots onto the menu
+## same as everyone else, which has no Players node (see
+## pool_scene_toggles.gd's delete_players, set on menu.tscn's ocean_scene).
+## A client connecting to a host still sitting on the menu has nowhere to be
+## spawned -- you can't join a game that hasn't started. start_solo_play()
+## is exactly "enter gameplay", reused here rather than duplicated.
 func _apply_command_line() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--host":
 			host_game()
+			start_solo_play()
 		elif arg == "--join":
 			join_game()
 		elif arg.begins_with("--join="):
@@ -139,6 +148,16 @@ func leave_game() -> void:
 # ---------------------------------------------------------------------------
 # Player bodies
 # ---------------------------------------------------------------------------
+## Spawns a body for whichever peer this is, right now, in whatever scene is
+## currently active. _ready()'s own deferred spawn only ever fires once, at
+## boot, against whichever scene happened to be current then -- with menu.tscn
+## as run/main_scene that's the menu itself (no "Players" node, so it's a
+## no-op there), so Solo Play needs its own explicit spawn once it's actually
+## switched to a scene that has one. See menu.gd's Solo Play handler.
+func spawn_local_player() -> void:
+	_add_player(multiplayer.get_unique_id())
+
+
 ## Where spawned players live. The MultiplayerSpawner in ocean1.tscn watches
 ## this node, so the host adding a child here is what replicates it to every
 ## client -- clients never add players themselves.
@@ -228,6 +247,102 @@ func _on_server_disconnected() -> void:
 
 
 # ---------------------------------------------------------------------------
+# Menu flow orchestration
+# ---------------------------------------------------------------------------
+## These two exist here, not in menu.gd, for a real reason: both span a
+## change_scene_to_file() call, and that FREES the node any menu.gd method
+## would be running on partway through -- an `await` in menu.gd that crosses
+## that boundary would be resuming a coroutine on a doomed node. Net (and
+## Transition, which these lean on for the visuals) are autoloads, so they're
+## still around on the other side. menu.gd just fire-and-forgets a call to
+## one of these; it doesn't await either of them itself.
+
+## Solo Play: fades out, switches to the real gameplay scene, spawns this
+## peer's body there (see spawn_local_player() -- the deferred spawn-on-boot
+## in _ready() only ever fires once, against whichever scene was current at
+## launch), fades back in.
+func start_solo_play() -> void:
+	await Transition.fade_to_black()
+	get_tree().change_scene_to_file("res://water/ocean1.tscn")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	spawn_local_player()
+	await Transition.fade_from_black()
+
+
+## Connect to Localhost: switches to the real gameplay scene FIRST -- so its
+## Players/MultiplayerSpawner already exist -- and covers it immediately with
+## the blur+status overlay, THEN connects. This order isn't a style choice:
+## every --host/--join test this session has actually run connected a peer
+## into a scene that already had its spawner; connecting first and only
+## loading that scene afterward is untested and riskier -- a spawn packet the
+## host sends the instant a peer connects has nowhere to route if the
+## client's own MultiplayerSpawner doesn't exist yet.
+func start_connect_localhost() -> void:
+	await Transition.blur_in()
+	Transition.show_status("Connecting...")
+	get_tree().change_scene_to_file("res://water/ocean1.tscn")
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var err := join_game("127.0.0.1")
+	# Not `err == OK and await ...` -- an explicit if instead of leaning on
+	# `and`'s short-circuit to skip the await when err != OK, since an
+	# await embedded inside a boolean expression is a combination worth
+	# just not risking.
+	var ok := false
+	if err == OK:
+		ok = await _await_connection_result()
+	if ok:
+		await Transition.hide_status()
+		await Transition.blur_out()
+		return
+
+	await Transition.show_status("Couldn't connect")
+	await get_tree().create_timer(1.5).timeout
+	get_tree().change_scene_to_file("res://menu/menu.tscn")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await Transition.hide_status()
+	await Transition.blur_out()
+
+
+# Set while _await_connection_result() is waiting -- see there.
+var _awaiting_connection := false
+var _connection_succeeded := false
+
+## Races multiplayer's own connected_to_server/connection_failed signals
+## (join_game() already wires the general-purpose _on_connected_to_server/
+## _on_connection_failed handlers above for logging; this is a separate,
+## one-shot pair specific to a single connection attempt), with a timeout in
+## case neither ever fires. Returns true on success.
+func _await_connection_result(timeout := 8.0) -> bool:
+	_awaiting_connection = true
+	_connection_succeeded = false
+	multiplayer.connected_to_server.connect(_on_connect_attempt_ok, CONNECT_ONE_SHOT)
+	multiplayer.connection_failed.connect(_on_connect_attempt_failed, CONNECT_ONE_SHOT)
+	var elapsed := 0.0
+	while _awaiting_connection and elapsed < timeout:
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+	if multiplayer.connected_to_server.is_connected(_on_connect_attempt_ok):
+		multiplayer.connected_to_server.disconnect(_on_connect_attempt_ok)
+	if multiplayer.connection_failed.is_connected(_on_connect_attempt_failed):
+		multiplayer.connection_failed.disconnect(_on_connect_attempt_failed)
+	return _connection_succeeded
+
+
+func _on_connect_attempt_ok() -> void:
+	_connection_succeeded = true
+	_awaiting_connection = false
+
+
+func _on_connect_attempt_failed() -> void:
+	_connection_succeeded = false
+	_awaiting_connection = false
+
+
+# ---------------------------------------------------------------------------
 # Debug keys -- placeholder until the real menu UI exists
 # ---------------------------------------------------------------------------
 ## Raw keycodes rather than input actions for host/join, on purpose: these are
@@ -243,11 +358,28 @@ func _unhandled_input(event: InputEvent) -> void:
 		match event.keycode:
 			KEY_F1:
 				host_game()
+				# Unlike --host (which only ever fires once, at boot, before
+				# any gameplay exists), F1 can be pressed interactively at any
+				# time -- including mid-solo-play, to open hosting up to a
+				# friend without losing where you already are. Only enter
+				# gameplay if we're not already in it; a client still needs
+				# somewhere to spawn, but re-triggering start_solo_play() on
+				# an already-active game would fade out and reload it from
+				# scratch for no reason.
+				if not _is_in_gameplay():
+					start_solo_play()
 			KEY_F2:
 				join_game()
-
 	if enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
 		_toggle_local_lifeguard()
+
+
+## ocean1.tscn's root node is named "Main" -- same check this session's own
+## testing has already used elsewhere to tell "in gameplay" apart from "on
+## the menu" (menu.tscn's root is "Menu").
+func _is_in_gameplay() -> bool:
+	var scene := get_tree().current_scene
+	return scene != null and scene.name == "Main"
 
 
 ## Flips is_lifeguard on whichever player body belongs to THIS peer -- for

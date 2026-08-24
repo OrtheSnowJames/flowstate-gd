@@ -2,8 +2,8 @@ extends Node
 
 const TIME_TO_CHANGE_SIZE = 0.25
 # Multipliers for size
-const HOVERED_MULT = 1.75
-const CLICKED_MULT = 0.75
+const HOVERED_MULT = 1.1
+const CLICKED_MULT = 0.95
 const NORMAL_MULT = 1.0
 ## BaseButton, not Button: the_button.tscn's root is a TextureButton, and
 ## Button/TextureButton are siblings under BaseButton, not one a subtype of

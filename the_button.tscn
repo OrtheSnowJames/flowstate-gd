@@ -7,31 +7,40 @@
 [ext_resource type="Script" uid="uid://eujklws7tafo" path="res://other_scripts/button_size_changer.gd" id="4_6d3lx"]
 
 [node name="Button" type="TextureButton" unique_id=755197354]
-offset_right = 40.0
-offset_bottom = 40.0
-texture_normal = ExtResource("1_6d3lx")
-texture_pressed = ExtResource("1_6d3lx")
-texture_hover = ExtResource("1_6d3lx")
-texture_disabled = ExtResource("1_6d3lx")
-texture_focused = ExtResource("1_6d3lx")
+offset_right = 320.0
+offset_bottom = 100.0
+pivot_offset = Vector2(160, 50)
 script = ExtResource("2_inrkj")
 button_text = "hmmm"
+
+[node name="Background" type="NinePatchRect" parent="." unique_id=3921006612]
+show_behind_parent = true
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+texture = ExtResource("1_6d3lx")
+patch_margin_left = 44
+patch_margin_right = 44
 
 [node name="HBoxContainer" type="HBoxContainer" parent="." unique_id=1619802658]
 layout_mode = 0
 offset_right = 40.0
 offset_bottom = 40.0
+mouse_filter = 2
 theme_override_constants/separation = 8
 
 [node name="Arrow" type="TextureRect" parent="HBoxContainer" unique_id=620854228]
 layout_mode = 2
+mouse_filter = 2
 texture = ExtResource("2_clnch")
 
 [node name="LabelSpace" type="Control" parent="." unique_id=594866773]
 anchors_preset = 0
+anchor_right = 1.0
 offset_left = 100.0
-offset_right = 320.0
+offset_right = 0.0
 offset_bottom = 100.0
+mouse_filter = 2
 
 [node name="Label" type="Label" parent="LabelSpace" unique_id=1237839150]
 layout_mode = 1
@@ -46,6 +55,7 @@ offset_right = 32.5
 offset_bottom = 16.0
 grow_horizontal = 2
 grow_vertical = 2
+mouse_filter = 2
 pivot_offset = Vector2(68.5, -37)
 theme_override_fonts/font = ExtResource("3_inrkj")
 theme_override_font_sizes/font_size = 26

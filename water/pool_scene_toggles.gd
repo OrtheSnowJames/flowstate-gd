@@ -39,12 +39,19 @@ extends Node3D
 
 @export_group("Water")
 ## E.g. so the pool reads as empty/drained in the background instead of just
-## having its water invisible.
+## having its water invisible. Takes PushCube with it, not just "water base"
+## itself -- PushCube's Buoyancy component caches a reference to the water
+## node in its own _ready() and calls get_height_at() on it every physics
+## tick, so deleting the water out from under a still-alive PushCube left a
+## dangling reference erroring every frame. A cube with no water to float in
+## has no reason to still be there anyway.
 @export var delete_water: bool = false:
 	set(value):
 		delete_water = value
 		_apply_deletion(water_path, value)
+		_apply_deletion(push_cube_path, value)
 @export var water_path: NodePath = ^"water base"
+@export var push_cube_path: NodePath = ^"PushCube"
 
 @export_group("Players")
 ## Removes the networked-player spawn system outright (the "Players" spawn
@@ -72,6 +79,7 @@ func _ready() -> void:
 	# with the whole subtree present, load or live-editor-toggle alike.
 	_apply_visibility(ui_paths, not hide_ui)
 	_apply_deletion(water_path, delete_water)
+	_apply_deletion(push_cube_path, delete_water)
 	_apply_deletion(players_path, delete_players)
 	_apply_deletion(spawner_path, delete_players)
 

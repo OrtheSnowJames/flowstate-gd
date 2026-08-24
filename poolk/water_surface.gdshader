@@ -22,7 +22,7 @@ uniform float chop        : hint_range(0.0, 2.0)  = 0.7;   // horizontal crest p
 
 uniform vec4  shallow_color : source_color = vec4(0.10, 0.42, 0.45, 1.0);
 uniform vec4  deep_color    : source_color = vec4(0.035, 0.14, 0.21, 1.0);
-uniform float absorption    : hint_range(0.0, 4.0) = 0.15;  // Beer–Lambert coefficient (low = translucent)
+uniform float absorption    : hint_range(0.0, 4.0) = 0.05;  // Beer–Lambert coefficient (low = translucent)
 uniform float refraction_strength : hint_range(0.0, 0.3) = 0.07;
 
 uniform vec4  foam_color : source_color = vec4(0.92, 0.96, 0.98, 1.0);
@@ -106,8 +106,16 @@ void fragment() {
 	// --- Beer–Lambert absorption --------------------------------------------
 	float transmit = exp(-absorption * depth_m);
 	vec3 col = mix(deep_color.rgb, refr * mix(vec3(1.0), shallow_color.rgb, 0.55), transmit);
-	// subtle crest brightening (cheap subsurface scattering read)
-	col += shallow_color.rgb * max(v_h, 0.0) * amplitude * 0.9;
+	// Subtle crest brightening (cheap subsurface scattering read) -- was
+	// unconditionally added on TOP of the depth-based mix above, uncapped and
+	// unscaled by transmit. With amplitude at 1.2 (see ocean1.tscn) and an
+	// interactively-rippled pool, wave crests are up most of the time, so
+	// this was regularly adding over half of shallow_color's own brightness
+	// on top of everything else -- washing the whole surface toward a flat
+	// tint no matter what absorption/depth said underneath, which is why
+	// changing absorption had no visible effect at all. 0.9 -> 0.18 keeps a
+	// highlight at crests without it swamping the actual translucency.
+	col += shallow_color.rgb * max(v_h, 0.0) * amplitude * 0.18;
 
 	// --- Foam ----------------------------------------------------------------
 	float energy = abs(texture(height_tex, v_uv).g - 0.5); // sim velocity channel
