@@ -1,0 +1,72 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://water/revive_prompt.gd" id="1_prompt"]
+[ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="2_font"]
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.1, 0.12, 0.62)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_keycap"]
+content_margin_left = 9.0
+content_margin_top = 4.0
+content_margin_right = 9.0
+content_margin_bottom = 6.0
+bg_color = Color(0.88, 0.88, 0.9, 0.95)
+border_width_bottom = 3
+border_color = Color(0.55, 0.55, 0.6, 0.95)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="RevivePrompt" type="Control"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+mouse_filter = 2
+script = ExtResource("1_prompt")
+
+[node name="Box" type="PanelContainer" parent="."]
+offset_right = 160.0
+offset_bottom = 44.0
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Row" type="HBoxContainer" parent="Box"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Keycap" type="PanelContainer" parent="Box/Row"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="Key" type="Label" parent="Box/Row/Keycap"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_colors/font_color = Color(0.08, 0.08, 0.1, 1)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "R"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="Box/Row"]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.95)
+theme_override_fonts/font = ExtResource("2_font")
+theme_override_font_sizes/font_size = 16
+text = "Revive"
+vertical_alignment = 1

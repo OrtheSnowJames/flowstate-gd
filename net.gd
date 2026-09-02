@@ -16,6 +16,11 @@ extends Node
 const PORT := 7654
 const MAX_PLAYERS := 8
 const PLAYER_SCENE := preload("res://water/player.tscn")
+## The scene's script, preloaded purely to reach its Team enum by name below
+## rather than writing bare 0/1 here. player.gd has no class_name (nothing in
+## this project does -- it's duck-typed throughout), so this is how the enum
+## gets a qualified name on this side.
+const PLAYER_SCRIPT := preload("res://water/player.gd")
 
 ## Where join_game() connects when called with no argument. Point this at a
 ## real address (or read it off a UI field) to play over a network.
@@ -77,9 +82,9 @@ func _apply_command_line() -> void:
 			host_game()
 			start_solo_play()
 		elif arg == "--join":
-			join_game()
+			start_connect(join_ip)
 		elif arg.begins_with("--join="):
-			join_game(arg.trim_prefix("--join="))
+			start_connect(arg.trim_prefix("--join="))
 
 
 ## True once we're hosting or connected -- guards the debug keys against
@@ -196,8 +201,98 @@ func _add_player(id: int) -> void:
 	# add_child so the name is already right when the node enters the tree.
 	player.name = str(id)
 	player.position = spawn_position(id)
+	# Only the host decides sides, and only the host has a roster to balance
+	# against. On a client this is a no-op returning -1: its bodies get their
+	# team from net_sync_teams() instead (or, if the table already arrived,
+	# from player.gd's _ready asking team_of() directly).
+	if multiplayer.is_server() or not is_online():
+		player.team = _assign_team(id)
 	players.add_child(player, true)
+	# After add_child, not before: broadcasting the table is what actually gets
+	# the assignment to the clients, and it has to follow the spawn packet so
+	# the body it refers to already exists on the other end.
+	_broadcast_teams()
 	print("net: spawned player for peer %d" % id)
+
+
+# ---------------------------------------------------------------------------
+# Teams
+# ---------------------------------------------------------------------------
+## Who's on which side, peer id -> Player.Team. The host owns this outright and
+## pushes the whole thing to everyone with net_sync_teams(); clients only ever
+## receive it.
+##
+## Deliberately NOT replicated through the player body's own
+## MultiplayerSynchronizer, which is where this started and where it broke.
+## Two separate problems, either one fatal:
+##   - A spawn-only property (spawn = true, replication_mode = NEVER) never
+##     actually arrived; the client's body came up with the scene default.
+##   - Making it a synced property instead is worse, not better: a client is
+##     the authority on its OWN body, so it would immediately publish its own
+##     default straight back over whatever the host assigned. That's the same
+##     trap spawn_position() documents for `position` -- the value the host
+##     sets doesn't survive contact with the owner's authority.
+## Routing it through here sidesteps both: teams are roster data, the host owns
+## the roster, and an RPC doesn't care who has authority over which node.
+var _teams: Dictionary = {}
+
+
+## This peer's idea of what side `id` is on, or -1 if it hasn't been told yet.
+func team_of(id: int) -> int:
+	return _teams.get(id, -1)
+
+
+## Assigns (once) and returns the side a peer plays for. Host-only: reached
+## only through _add_player(), which only the host runs. Idempotent, so a peer
+## that respawns keeps the side it already had rather than being reshuffled.
+##
+## Balances by counting the roster rather than deriving from the peer id the
+## way spawn_position() does -- peer ids are large random numbers, so anything
+## like `id % 2` would be a coin flip per player and could happily put a whole
+## four-person lobby on red.
+func _assign_team(id: int) -> int:
+	if _teams.has(id):
+		return _teams[id]
+	var red := 0
+	var blue := 0
+	for t in _teams.values():
+		if t == PLAYER_SCRIPT.Team.BLUE:
+			blue += 1
+		else:
+			red += 1
+	_teams[id] = PLAYER_SCRIPT.Team.BLUE if blue < red else PLAYER_SCRIPT.Team.RED
+	return _teams[id]
+
+
+## Host -> everyone, the entire team table. Sent whole rather than per-player
+## so a peer that joins midway gets the sides of everyone already in the pool
+## in one message, with no catch-up path to keep separately correct.
+@rpc("authority", "call_local", "reliable")
+func net_sync_teams(teams: Dictionary) -> void:
+	_teams = teams.duplicate()
+	_apply_teams_to_bodies()
+
+
+## Pushes the current table onto whatever bodies exist right now. Called both
+## when the table changes (net_sync_teams) and when a body turns up after it
+## (player.gd's _ready asks Net directly), so the two possible orderings --
+## table first or body first -- both end up correct.
+func _apply_teams_to_bodies() -> void:
+	var players := _players_root()
+	if players == null:
+		return
+	for p in players.get_children():
+		var pid := String(p.name).to_int()
+		if pid > 0 and _teams.has(pid) and "team" in p:
+			p.team = _teams[pid]
+
+
+## Host-only: hand the current table to everybody. No-op offline, where there's
+## nobody to tell and the local assignment is already in place.
+func _broadcast_teams() -> void:
+	if not is_online() or not multiplayer.is_server():
+		return
+	rpc("net_sync_teams", _teams)
 
 
 ## Where the body belonging to `id` starts. Derived from the peer id rather
@@ -278,6 +373,18 @@ func start_solo_play() -> void:
 ## loading that scene afterward is untested and riskier -- a spawn packet the
 ## host sends the instant a peer connects has nowhere to route if the
 ## client's own MultiplayerSpawner doesn't exist yet.
+##
+## Doesn't share start_connect()'s failure path on purpose: nobody hosting on
+## 127.0.0.1 isn't an error, it just means nobody's started a lobby there yet
+## -- so instead of bouncing back to the menu with "Couldn't connect", this
+## becomes the host itself. Reusing start_connect() and only branching on
+## success/failure at the call site wouldn't work here -- by the time it
+## returns, it's already shown "Couldn't connect", waited out that message,
+## and switched back to menu.tscn (which has no Players/spawner), undoing
+## exactly the state this needs to host into. A real remote address (F2, the
+## CLI) keeps start_connect()'s honest failure instead -- silently starting
+## your own lobby when a friend's real IP didn't answer would hide the actual
+## problem rather than fix it.
 func start_connect_localhost() -> void:
 	await Transition.blur_in()
 	Transition.show_status("Connecting...")
@@ -286,6 +393,51 @@ func start_connect_localhost() -> void:
 	await get_tree().process_frame
 
 	var err := join_game("127.0.0.1")
+	var ok := false
+	if err == OK:
+		ok = await _await_connection_result()
+	if ok:
+		await Transition.hide_status()
+		await Transition.blur_out()
+		return
+
+	# Nobody's home. Undo whatever join_game() left behind before hosting:
+	# on a hard refusal _on_connection_failed() already nulled
+	# multiplayer_peer, but _await_connection_result() giving up on its own
+	# 8s clock (rather than the signal ever firing) leaves the dead client
+	# peer sitting there, and host_game() refuses to run while is_online()
+	# still reads true because of it.
+	if is_online():
+		leave_game()
+	Transition.show_status("Starting a lobby...")
+	host_game()
+	# Belt and suspenders, not a real second spawn: host_game() already
+	# spawns peer 1's own body (our id here, since we're a fresh unconnected
+	# peer), and _add_player() no-ops on a name that already exists. Calling
+	# this too means this line doesn't depend on staying in sync with exactly
+	# which id host_game() happens to self-spawn.
+	spawn_local_player()
+	await get_tree().create_timer(0.3).timeout
+	await Transition.hide_status()
+	await Transition.blur_out()
+
+
+## The whole "join somebody's game" flow, address and all. Split out of
+## start_connect_localhost() so the --join= command line can reuse it rather
+## than calling the bare join_game() and stopping there: join_game() only opens
+## the connection, it doesn't put you in the pool. A client left sitting on
+## menu.tscn has no Players node and no MultiplayerSpawner (see
+## pool_scene_toggles.gd's delete_players, set on menu.tscn's ocean_scene), so
+## the host's spawn packets have nowhere to land -- exactly the same gap
+## --host had before it learned to call start_solo_play().
+func start_connect(ip: String) -> void:
+	await Transition.blur_in()
+	Transition.show_status("Connecting...")
+	get_tree().change_scene_to_file("res://water/ocean1.tscn")
+	await get_tree().process_frame
+	await get_tree().process_frame
+
+	var err := join_game(ip)
 	# Not `err == OK and await ...` -- an explicit if instead of leaning on
 	# `and`'s short-circuit to skip the await when err != OK, since an
 	# await embedded inside a boolean expression is a combination worth
@@ -369,7 +521,16 @@ func _unhandled_input(event: InputEvent) -> void:
 				if not _is_in_gameplay():
 					start_solo_play()
 			KEY_F2:
-				join_game()
+				# start_connect(), not the bare join_game(): opening the
+				# connection without also getting into ocean1.tscn leaves this
+				# peer on the menu with nowhere for the host's spawn packets
+				# to land (same gap --join had). Guarded on is_online() rather
+				# than _is_in_gameplay() like F1 -- join_game() already refuses
+				# to connect on top of a live session, and without the guard
+				# start_connect() would still blur and reload the scene first
+				# before running into that refusal.
+				if not is_online():
+					start_connect(join_ip)
 	if enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
 		_toggle_local_lifeguard()
 

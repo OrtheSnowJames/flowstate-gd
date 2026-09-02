@@ -11,6 +11,11 @@ enum MovementState {
 	JUMP,
 }
 
+enum Team {
+	RED,
+	BLUE,
+}
+
 # Almost a copy of the movement state enum, but with dodge left and right.
 enum AnimationState {
 	IDLE,
@@ -62,6 +67,22 @@ const _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION := 0.1 # the kickboard block: 90% of
 
 const _CHARACTER_MESH := preload("res://mesh/character.glb")
 const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
+const _REVIVE_PROMPT := preload("res://water/revive_prompt.tscn")
+
+# Team kit colours. Both rigs (mesh/character.glb, mesh/lifeguard.glb) are
+# textured off a 16x16 Blockbench atlas whose only pure-white texels are the
+# trunks/trim -- 68 of them on each -- so recolouring exactly white is what
+# turns a body into a team kit without touching skin, hair or the kickboard.
+# See _apply_team_colors().
+const _TEAM_COLORS: Dictionary = {
+	Team.RED: Color("d92d2d"),
+	Team.BLUE: Color("2d6bd9"),
+}
+# How close to white a texel has to be to count as kit. The atlases only ever
+# use pure white (255,255,255) for it, and the next-brightest colour on either
+# rig is the lifeguard's red at (223,45,45) -- whose min channel is 0.18 --
+# so anything above ~0.8 on every channel separates them with room to spare.
+const _TEAM_WHITE_CUTOFF := 0.8
 
 ## Movement-state clip names (see ANIM_MAP) that should genuinely loop
 ## (LOOP_LINEAR) on mesh/character.glb's rig -- they're authored as
@@ -216,6 +237,12 @@ var last_d_press := -1000.0
 @export var revive_shake_strength: float = 0.06
 ## Seconds that jolt takes to decay to nothing.
 @export var revive_shake_time: float = 0.25
+## How close a lifeguard has to be to pick a downed teammate up, in metres.
+## Generous enough that you don't have to fight the water to line the two
+## bodies up, tight enough that it still reads as "standing over them" -- the
+## player capsule is ~2m tall for scale. Also the range the on-screen prompt
+## appears at, since both read _revive_target().
+@export var revive_range: float = 3.0
 
 @export_group("")
 # holy grail #1
@@ -248,6 +275,27 @@ var last_d_press := -1000.0
 ## stamina drain already limits how long it can stay up.
 @export var water_power_cooldown: float = 0.6
 @export var water_attack_cooldown: float = 0.4
+
+@export_group("Teams")
+## Which side this body plays for. Drives the body's colour (see
+## _apply_team_colors(): every white texel on the rig becomes this team's
+## colour) and who a lifeguard is allowed to revive (see _revive_target()).
+##
+## Deliberately NOT a friendly-fire gate -- teammates can absolutely hit each
+## other. take_stamina_damage() doesn't look at teams at all, on purpose.
+##
+## The host picks this per player at spawn (see net.gd's _add_player) and it
+## replicates in the spawn packet, so every peer agrees on every body's team
+## from the moment it appears. Hand-placed bodies outside the networked
+## roster -- menu.tscn's MenuPlayer -- just keep whatever's set here.
+@export var team: Team = Team.RED:
+	set(value):
+		team = value
+		# Same deferred-until-in-tree reasoning as is_lifeguard below: the
+		# mesh this recolours may not exist yet while the scene file is still
+		# being deserialized into this node.
+		if is_inside_tree():
+			_apply_team_colors()
 
 @export_group("Lifeguard")
 ## Off-duty by default. On: swaps blockbench_export for mesh/lifeguard.glb
@@ -335,6 +383,9 @@ var _water_wall_up: bool = false
 # The peer this body belongs to, read off the node name in _enter_tree. 0 when
 # the name isn't a peer id (the scene opened standalone).
 var _owner_peer: int = 0
+# This window's floating "[R] Revive" tag, built on demand -- see
+# _ensure_revive_prompt().
+var _revive_prompt: Node = null
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
@@ -438,6 +489,20 @@ func _ready() -> void:
 	physics_material_override = pm
 	if ocean_path:
 		_ocean = get_node_or_null(ocean_path)
+
+	# What side we're on, if the roster already knows. The host assigns teams
+	# and broadcasts the table (see net.gd's _teams), which may land either
+	# before or after this body exists -- if it arrived first, this picks it up
+	# here; if it arrives later, net_sync_teams() pushes it onto us instead.
+	# Covering both orders is why this asks rather than waiting to be told.
+	#
+	# _owner_peer > 0 only: a hand-placed decorative body (menu.tscn's
+	# MenuPlayer) isn't in the roster at all and keeps whatever team the scene
+	# set on it.
+	if _owner_peer > 0:
+		var assigned := Net.team_of(_owner_peer)
+		if assigned >= 0:
+			team = assigned
 
 	# Kickboard rig + stat buffs if is_lifeguard was baked on for this
 	# instance -- deferred to here rather than applied straight from
@@ -597,6 +662,103 @@ func _apply_mesh_for_lifeguard() -> void:
 	# resource instances), and the never-swapped case still needs it once, same
 	# as before this function existed.
 	_fix_animation_loop_modes()
+	# Likewise unconditional: a swapped-in rig arrives with the untouched
+	# imported material on every surface, so the team kit has to be re-applied
+	# to it. (Swapping between the normal and lifeguard rig with
+	# test_lifeguard_key is a live path, not a theoretical one.)
+	_apply_team_colors()
+
+
+## Paints this body in its team's colours by rebuilding each surface's albedo
+## texture with every white texel replaced, then hanging the result on a
+## surface override.
+##
+## A texture rewrite rather than a custom shader on purpose: the imported
+## materials are alpha-MASK and double-sided, and a spatial shader would have
+## to reproduce all of that (plus the whole lighting model) to look identical.
+## Duplicating the imported StandardMaterial3D and swapping only its
+## albedo_texture keeps every other imported setting exactly as authored.
+##
+## Cheap despite running per body: the atlases are 16x16 (256 texels), and
+## _tinted_texture() caches per source-texture-and-team, so a full lobby of
+## players on two teams builds at most a handful of tiny textures between them.
+func _apply_team_colors() -> void:
+	var rig := get_node_or_null("blockbench_export")
+	if rig == null:
+		return
+	var color: Color = _TEAM_COLORS.get(team, _TEAM_COLORS[Team.RED])
+	for mesh_inst in _mesh_instances_in(rig):
+		if mesh_inst.mesh == null:
+			continue
+		for surface in mesh_inst.mesh.get_surface_count():
+			# Read the material off the MESH RESOURCE, never the active one.
+			# get_active_material() would resolve to the override this
+			# function installed on a previous call, whose white texels are
+			# already painted -- so switching a body from one team to the
+			# other would find no white left to repaint and silently keep the
+			# old colour. The mesh's own material is the untouched import, so
+			# every call re-tints from the same clean source and lands on the
+			# right colour no matter how many times the team changes.
+			var base := mesh_inst.mesh.surface_get_material(surface)
+			if not (base is StandardMaterial3D) or base.albedo_texture == null:
+				continue
+			var tinted := _tinted_texture(base.albedo_texture, color)
+			if tinted == null:
+				continue
+			var mat: StandardMaterial3D = base.duplicate()
+			mat.albedo_texture = tinted
+			mesh_inst.set_surface_override_material(surface, mat)
+
+
+## Every MeshInstance3D at or under `node`. The rigs nest their parts several
+## levels deep (and differ between the two meshes), so this walks rather than
+## assuming any particular layout.
+func _mesh_instances_in(node: Node) -> Array[MeshInstance3D]:
+	var found: Array[MeshInstance3D] = []
+	if node is MeshInstance3D:
+		found.append(node)
+	for child in node.get_children():
+		found.append_array(_mesh_instances_in(child))
+	return found
+
+
+## Cache of recoloured atlases, keyed by source texture + team colour, shared
+## by every player body in the scene. Static so two bodies on the same team
+## reuse one texture instead of each building (and each keeping alive) their
+## own identical copy.
+static var _tint_cache: Dictionary = {}
+
+## A copy of `source` with every near-white texel replaced by `color`.
+## Returns null if the source image can't be read.
+static func _tinted_texture(source: Texture2D, color: Color) -> ImageTexture:
+	var key := [source.get_rid(), color]
+	if _tint_cache.has(key):
+		return _tint_cache[key]
+
+	var img := source.get_image()
+	if img == null:
+		return null
+	img = img.duplicate()
+	# The atlases import as compressed VRAM textures (see the .import files);
+	# get_pixel/set_pixel don't work on a compressed image, so flatten it to a
+	# plain uncompressed format first.
+	if img.is_compressed():
+		if img.decompress() != OK:
+			return null
+	img.convert(Image.FORMAT_RGBA8)
+
+	for y in img.get_height():
+		for x in img.get_width():
+			var px := img.get_pixel(x, y)
+			if px.a > 0.0 and minf(minf(px.r, px.g), px.b) >= _TEAM_WHITE_CUTOFF:
+				# Keep the source alpha: the materials are alpha-MASK, so
+				# overwriting it here would punch holes in (or fill in) parts
+				# of the rig that rely on it.
+				img.set_pixel(x, y, Color(color.r, color.g, color.b, px.a))
+
+	var tex := ImageTexture.create_from_image(img)
+	_tint_cache[key] = tex
+	return tex
 
 ## water_wall is authored to loop for as long as it's held, and (on
 ## mesh/character.glb) so are the movement cycles in _CHARACTER_LOOP_ANIMS --
@@ -730,6 +892,7 @@ func _process(delta: float) -> void:
 		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
 
 	_shake_change(delta)
+	_update_revive_prompt()
 
 ## Decaying camera shake, driven off h_offset/v_offset rather than the camera's
 ## rotation or position: _camera_pivot_change already owns rotation.x, and the
@@ -989,6 +1152,12 @@ func _input(event: InputEvent) -> void:
 	if _unconscious:
 		return
 	detect_death(event)
+	# Reachable only while conscious, thanks to the _unconscious guard above --
+	# which is exactly right: a lifeguard who's out cold themselves can't pick
+	# anyone up. _revive_target() enforces the same rule again on its own, so
+	# the prompt and the key never disagree.
+	if event.is_action_pressed("revive"):
+		_try_revive_nearby()
 	var now := _time_since_start()
 	detect_dodge(now, event)
 	detect_death(event)
@@ -1183,15 +1352,27 @@ func net_death() -> void:
 ## Coming to: the mirror of _death(). Eyes snap back open with a jolt through
 ## the camera, the ringing cuts, and control comes back.
 ##
-## Nothing calls this yet -- wire it to whatever should bring the player round
-## (a lifeguard, a timer, a respawn point). Safe to call at any time; it's a
-## no-op if the player is already conscious.
+## Called on a downed body by a lifeguard standing over it (see
+## _try_revive_nearby()), and safe to call from anywhere else that should bring
+## a player round -- a timer, a respawn point. No-op if already conscious.
 ##
-## Stamina has to come back with it. _stamina_change re-tests `stamina <= 0.0`
-## on the very next tick, so reviving on an empty tank would black straight out
-## again -- and because _death() latches, that second blackout would be silent
-## and eyeless. revive_stamina_fraction is what stops that loop.
+## Broadcast for exactly the same reason _death() is: a body going limp has to
+## go limp in every window, so a body sitting back up has to sit back up in
+## every window too. Unlike _death(), the caller here is usually somebody
+## ELSE's body (the lifeguard), which is fine -- an rpc() targets whatever node
+## it's called on, and net_revive is "any_peer" so a peer that doesn't own this
+## body is still allowed to trigger it.
 func revive() -> void:
+	if not _unconscious:
+		return
+	if Net.is_online():
+		# call_local, so this covers us as well as everyone else.
+		rpc("net_revive")
+	else:
+		net_revive()
+
+@rpc("any_peer", "call_local", "reliable")
+func net_revive() -> void:
 	if not _unconscious:
 		return
 	_unconscious = false
@@ -1199,10 +1380,24 @@ func revive() -> void:
 	stamina = max_stamina * revive_stamina_fraction
 	momentum = 0.0
 	movement_state = MovementState.TREAD
+	# The death clip holds on its last frame and _anim_change() refuses to
+	# touch the AnimationPlayer at all while _unconscious (see there), so the
+	# body is still frozen in the death pose right now. Clearing the latch
+	# above hands control back, but play_anim() skips any clip it believes is
+	# already running -- and _movement_anim_state still says "death" from
+	# net_death(). Resetting it is what actually gets the body up off the
+	# floor rather than leaving it limp but controllable.
+	_movement_anim_state = -1
 	# A double-tap registered before blacking out shouldn't cash in as a dodge
 	# the instant control returns.
 	last_a_press = -1000.0
 	last_d_press = -1000.0
+
+	# Past here is what coming round looks like from behind your own eyes --
+	# the mirror of net_death()'s split. Watching somebody else get picked up
+	# doesn't un-black YOUR screen.
+	if not _is_local():
+		return
 
 	if _muffled_player:
 		_muffled_player.stop()
@@ -1226,6 +1421,81 @@ func revive() -> void:
 			from,
 			0.0,
 			eyelid_open_time)
+
+# ---------------------------------------------------------------------------
+# Lifeguard revives
+# ---------------------------------------------------------------------------
+## The downed teammate this body could pick up right now, or null. Drives both
+## the revive itself and the on-screen prompt (see revive_prompt.gd), so the
+## prompt can never offer a revive that pressing the key wouldn't actually do
+## -- there's one set of rules here, not two that have to be kept in step.
+##
+## Being a lifeguard is the whole job: a normal player standing on a teammate
+## does nothing. Same team only, and you have to be conscious yourself.
+func _revive_target() -> Node:
+	if not is_lifeguard or _unconscious:
+		return null
+	var best: Node = null
+	var best_dist := revive_range
+	for other in get_tree().get_nodes_in_group("player"):
+		if other == self or not is_instance_valid(other):
+			continue
+		# Duck-typed, matching how the rest of this file talks to other bodies:
+		# anything in the "player" group that can be out cold and has a side.
+		if not ("_unconscious" in other and "team" in other):
+			continue
+		if not other._unconscious or other.team != team:
+			continue
+		var dist := global_position.distance_to(other.global_position)
+		if dist <= best_dist:
+			best_dist = dist
+			best = other
+	return best
+
+
+## Picks up whoever _revive_target() nominated. Split from the input handler so
+## the rules live in one place and can be tested without synthesising a key
+## press.
+func _try_revive_nearby() -> void:
+	var target := _revive_target()
+	if target:
+		target.revive()
+
+
+## Builds the floating "[R] Revive" tag for THIS window, once, the first time
+## it's actually needed. Lazy rather than made in _ready() because most bodies
+## never need one: only the local player has a camera to unproject against,
+## and only a lifeguard will ever have a target to point it at.
+##
+## Parented to the HUD CanvasLayer so it draws over the 3D view. `gui` can be
+## absent entirely (a decorative body in a scene with no HUD -- see the comment
+## on that var), in which case there's simply no prompt, same as every other
+## HUD feature here.
+func _ensure_revive_prompt() -> Node:
+	if is_instance_valid(_revive_prompt):
+		return _revive_prompt
+	if gui == null:
+		return null
+	_revive_prompt = _REVIVE_PROMPT.instantiate()
+	gui.add_child(_revive_prompt)
+	return _revive_prompt
+
+
+## Keeps the prompt pointed at whoever we could pick up right now. Called every
+## frame for the local player only (see _process): it's a per-window overlay,
+## and _revive_target() is the same check the revive key runs, so what's on
+## screen and what the key does can't drift apart.
+func _update_revive_prompt() -> void:
+	var target := _revive_target()
+	# Don't build the prompt just to be told there's nobody to revive -- a
+	# normal (non-lifeguard) player would otherwise still get one made for it
+	# on its first frame and keep it forever, hidden.
+	if target == null and not is_instance_valid(_revive_prompt):
+		return
+	var prompt := _ensure_revive_prompt()
+	if prompt:
+		prompt.show_for(target, _camera)
+
 
 ## Turns the body (and the camera, which follows its yaw -- see _process)
 ## while A/D are held, at turn_speed rad/s. Replaces the old mouse-yaw and the
