@@ -1,0 +1,39 @@
+[gd_scene format=3]
+
+[ext_resource type="PackedScene" uid="uid://c4uvje3vnu4ii" path="res://water/ocean1.tscn" id="1_ocean"]
+[ext_resource type="Script" path="res://menu/lobby.gd" id="2_lobby"]
+[ext_resource type="Script" path="res://menu/menu_screen.gd" id="3_menuscreen"]
+[ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="4_font"]
+
+[node name="Lobby" type="Node3D"]
+script = ExtResource("2_lobby")
+
+[node name="ocean_scene" parent="." instance=ExtResource("1_ocean")]
+hide_ui = true
+delete_water = true
+delete_players = true
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.3092244, 0.07972919, -0.9476411, -0.024732945, 0.9968166, 0.07579595, 0.95066744, 0, 0.31021193, -67.14825, 23.90173, 13.267788)
+
+[node name="UI" type="CanvasLayer" parent="."]
+
+[node name="Count" type="Label" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 48.0
+offset_bottom = 148.0
+grow_horizontal = 2
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 28
+text = "1 player in the lobby"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="MenuScreen" type="Control" parent="UI"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+script = ExtResource("3_menuscreen")

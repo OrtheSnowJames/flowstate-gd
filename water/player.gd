@@ -43,7 +43,16 @@ const ANIM_MAP: Dictionary = {
 }
 
 const SWIM_GAIN: float = 10.0
+## Fallback clip length for swim_up, only used if the real length can't be
+## read off the AnimationPlayer. The actual length is measured from the clip
+## itself (see _apply_swim_up_anim_speed) so re-exporting the rig at a
+## different length can't silently put the wind-up out of time.
 const SWIM_UP_ANIMATION_BASE_TIME := 0.5
+## Bounds on the swim_up playback rate. Without a ceiling the last frames blur
+## as the remaining wind-up time goes to zero; without a floor a very slow
+## build-up would leave the clip looking frozen.
+const _SWIM_UP_MIN_SPEED := 0.25
+const _SWIM_UP_MAX_SPEED := 4.0
 const DODGE_DOUBLE_TAP_TIME := 0.25
 const CONTROL_CAMERA := true
 const ANIMATE_PLAYER := true
@@ -94,7 +103,13 @@ const _TEAM_WHITE_CUTOFF := 0.8
 ## equivalents are authored as single held poses instead, per its own
 ## Blockbench project, so they're deliberately left off this list -- see
 ## _fix_animation_loop_modes().
-const _CHARACTER_LOOP_ANIMS: Array[String] = ["idle", "tread", "swim_up", "swim", "glide", "walk", "jump"]
+## swim_up is deliberately NOT in this list, unlike every other movement clip.
+## It isn't a cycle -- it's a one-shot wind-up that plays through exactly once
+## while momentum builds toward the swim threshold, stretched to fit however
+## long that actually takes (see _apply_swim_up_anim_speed). Looping it meant
+## the wind-up restarted over and over for the whole build-up instead of
+## reading as one continuous effort.
+const _CHARACTER_LOOP_ANIMS: Array[String] = ["idle", "tread", "swim", "glide", "walk", "jump"]
 
 ## Grace window for the backstroke -> forward-stroke flip: how long after
 ## last holding S a W press still counts as "flip out of the backstroke".
@@ -386,6 +401,19 @@ var _owner_peer: int = 0
 # This window's floating "[R] Revive" tag, built on demand -- see
 # _ensure_revive_prompt().
 var _revive_prompt: Node = null
+## The stroke scaling _swim() last built momentum with (direction times the
+## lifeguard buff). Cached so _swim_up_time_remaining() paces the wind-up
+## animation off the same number the physics used. Defaults to 1.0, which is
+## also what a remote body ends up using -- momentum isn't replicated, so
+## somebody else's wind-up is paced at the nominal rate rather than exactly.
+var _swim_gain_scale: float = 1.0
+## Set while the round hasn't begun -- bodies are spawned on their team's side
+## of the pool and held there through the countdown, then everyone is released
+## at once (see net.gd's start_round/_run_countdown). Separate from
+## _unconscious even though both mean "takes no input": this one carries none
+## of the blackout's baggage (no death animation, no eyelids, no ear ringing),
+## and a body that goes down mid-round must not come back as "locked".
+var movement_locked: bool = false
 
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
@@ -816,12 +844,23 @@ func play_anim(anim_state: AnimationState) -> void:
 		return
 	_movement_anim_state = anim_state
 	if anim_state == AnimationState.SWIM_UP:
-		# slow down the animation
-		# animation is 0.5 seconds
-		# calculate speed multiplier based on _swim_up_animation_time()
-		var _mult := _swim_up_animation_time() / SWIM_UP_ANIMATION_BASE_TIME
-		_anim_player.play("swim_up", _mult)
+		# Start it from the top at a sane rate; _apply_swim_up_anim_speed()
+		# (called every frame from _anim_change) then fits it to the wind-up.
+		#
+		# This used to read `_anim_player.play("swim_up", mult)`, which never
+		# changed the speed at all: play()'s second argument is custom_blend,
+		# not custom_speed, so the multiplier was being spent on a blend time
+		# and the clip always ran at 1.0. The ratio was upside down too --
+		# stretching a clip over a longer wind-up needs clip_length / time,
+		# not time / clip_length.
+		_anim_player.speed_scale = 1.0
+		_anim_player.play("swim_up")
+		_apply_swim_up_anim_speed()
 	else:
+		# Anything else runs at its authored rate. speed_scale is a property of
+		# the whole AnimationPlayer, so without this reset the wind-up's last
+		# speed would carry straight into the next clip.
+		_anim_player.speed_scale = 1.0
 		_anim_player.play(anim_name_to_string(anim_state))
 
 ## Fires a one-shot animation for water_power/water_attack -- authored to
@@ -832,6 +871,11 @@ func play_anim(anim_state: AnimationState) -> void:
 func _play_water_action_anim(anim_name: String) -> void:
 	if not _anim_player or not _anim_player.has_animation(anim_name):
 		return
+	# speed_scale belongs to the whole AnimationPlayer, and the swim_up
+	# wind-up drives it well away from 1.0 (see _apply_swim_up_anim_speed).
+	# These clips can interrupt a wind-up mid-stroke, so without this reset
+	# they'd inherit whatever rate it had reached and play in slow motion.
+	_anim_player.speed_scale = 1.0
 	_anim_player.play(anim_name)
 	_action_anim_lock_movement_state = movement_state
 	# This clip now owns the AnimationPlayer instead of play_anim()'s own
@@ -847,6 +891,9 @@ func _play_water_wall_anim() -> void:
 	if not _anim_player or not _anim_player.has_animation("water_wall"):
 		return
 	if _anim_player.current_animation != "water_wall":
+		# Same reset, same reason as _play_water_action_anim(): a wind-up
+		# interrupted by raising the wall must not hand its playback rate over.
+		_anim_player.speed_scale = 1.0
 		_anim_player.play("water_wall")
 	_wall_anim_active = true
 	_movement_anim_state = -1 # same reasoning as _play_water_action_anim()
@@ -951,6 +998,11 @@ func _anim_change() -> void:
 			play_anim(AnimationState.TREAD)
 		MovementState.SWIM_UP:
 			play_anim(AnimationState.SWIM_UP)
+			# Every frame, not just on the state change: the wind-up it's being
+			# fitted to keeps moving (see _apply_swim_up_anim_speed), and
+			# play_anim() above returns early once SWIM_UP is already the
+			# current state, so this is the only thing still tracking it.
+			_apply_swim_up_anim_speed()
 		MovementState.SWIM:
 			play_anim(AnimationState.SWIM)
 		MovementState.GLIDE:
@@ -1150,6 +1202,12 @@ func _input(event: InputEvent) -> void:
 	if not _is_local():
 		return
 	if _unconscious:
+		return
+	# Nothing lands before the countdown finishes -- not moves, not the revive
+	# key, not the debug death key. Gated here at the source (the same place
+	# _unconscious is) rather than per-action downstream, so a new action added
+	# later is locked by default instead of having to remember to opt in.
+	if movement_locked:
 		return
 	detect_death(event)
 	# Reachable only while conscious, thanks to the _unconscious guard above --
@@ -1520,6 +1578,22 @@ func _turn_from_input(delta: float) -> void:
 
 	rotate_y(-turn * rate * delta)
 
+## Bleeds off whatever drift is left so the body coasts to a stop instead of
+## sailing on, while buoyancy keeps floating it at the surface. Applied
+## directly rather than through _apply_central_force so they can't be silenced
+## by a stale can_move, and buoyancy stays last for the force-ordering reason
+## in _physics_process.
+##
+## Shared by the two states that take no input but are still in the water:
+## blacked out (_unconscious) and waiting for the round to start
+## (movement_locked).
+func _drift_to_a_stop() -> void:
+	var v := linear_velocity
+	apply_central_force(
+		Vector3(-v.x, 0.0, -v.z) * (water_linear_drag * 1.5) * mass)
+	_apply_buoyancy(_submersion())
+
+
 func _physics_process(delta: float) -> void:
 	# A remote body is a puppet: its transform is replicated in from the peer
 	# that owns it (see _setup_remote_body), and it's frozen so none of the
@@ -1530,15 +1604,16 @@ func _physics_process(delta: float) -> void:
 
 	if _unconscious:
 		# Limp body. Input is ignored -- no turning, no strokes, no momentum --
-		# but the water carries on acting on it: drag bleeds off whatever drift
-		# was left so it coasts to a stop instead of sailing on, and buoyancy
-		# floats it at the surface. Applied directly rather than through
-		# _apply_central_force so they can't be silenced by a stale can_move,
-		# and buoyancy stays last for the force-ordering reason below.
-		var v := linear_velocity
-		apply_central_force(
-			Vector3(-v.x, 0.0, -v.z) * (water_linear_drag * 1.5) * mass)
-		_apply_buoyancy(_submersion())
+		# but the water carries on acting on it (see _drift_to_a_stop).
+		_drift_to_a_stop()
+		return
+
+	if movement_locked:
+		# Same treatment as a limp body, for a completely different reason:
+		# the round hasn't started yet (see net.gd's countdown). Float on the
+		# spot, take no input, but stay in the water properly rather than
+		# hanging frozen above it or sinking through it.
+		_drift_to_a_stop()
 		return
 
 	_turn_from_input(delta)
@@ -1712,6 +1787,74 @@ func _swim_up_animation_time() -> float:
 	var t = momentum / momentum_needed_to_swim
 	return lerp(0.5, 1.5, t)
 
+
+## Seconds of wind-up actually left before momentum reaches the swim
+## threshold, at the current stroke rate.
+##
+## Solved, not sampled -- and that distinction is the whole point. It's
+## tempting to read _swim_up_animation_time() as "how long the wind-up takes",
+## but it's an instantaneous pacing figure, not a duration: _swim() builds
+## momentum at `momentum_needed_to_swim / _swim_up_animation_time() * k` per
+## second, and _swim_up_animation_time() itself grows from 0.5 to 1.5 as
+## momentum rises, so the rate keeps dropping the closer you get. Using it as a
+## duration would badly overstate the time left near the threshold.
+##
+## Writing u = momentum / momentum_needed_to_swim, that gain rate is
+##     du/dt = k / (0.5 + u)
+## so integrating (0.5 + u) du from u to 1 gives the time to cover what's left:
+##     remaining = (1 - u/2 - u^2/2) / k
+## which is 1/k seconds from a standing start and exactly 0 at the threshold.
+## (Checked against a numeric integration of the same gain loop.)
+##
+## k is the stroke scaling _swim() applies -- direction (forward strokes build
+## slower) times the lifeguard's momentum_gain_mult -- cached in
+## _swim_gain_scale so this can't disagree with what the physics actually did.
+func _swim_up_time_remaining() -> float:
+	if momentum_needed_to_swim <= 0.0:
+		return 0.0
+	var k := _swim_gain_scale * momentum_gain_mult
+	if k <= 0.0:
+		return 0.0
+	var u := clampf(momentum / momentum_needed_to_swim, 0.0, 1.0)
+	return (1.0 - u * 0.5 - u * u * 0.5) / k
+
+
+## Paces the swim_up clip so it plays through exactly once over the wind-up,
+## finishing as momentum hits the swim threshold and the swim cycle takes over.
+##
+## Re-evaluated every frame rather than set once when the state is entered,
+## because the thing being fitted to keeps moving: k changes the moment you
+## switch between forward and backward strokes, momentum decays if you stop,
+## and the wind-up can be entered part-way through. Each frame it re-fits
+## whatever is left of the clip to whatever is left of the wind-up, so it
+## self-corrects instead of drifting.
+##
+## Drives speed_scale rather than play()'s custom_speed so it can be adjusted
+## on an already-playing clip without restarting it. speed_scale is global to
+## the AnimationPlayer, which is exactly why _anim_change() puts it back to 1.0
+## for every other state -- otherwise the wind-up's speed would leak into the
+## walk cycle the moment you climbed out of the pool.
+func _apply_swim_up_anim_speed() -> void:
+	if not _anim_player or not _anim_player.has_animation("swim_up"):
+		return
+	# Reads "" once a LOOP_NONE clip has finished and is holding its last
+	# frame; nothing left to pace at that point.
+	if _anim_player.current_animation != "swim_up":
+		return
+	var anim := _anim_player.get_animation("swim_up")
+	var clip_len := anim.length if anim else 0.0
+	if clip_len <= 0.0:
+		clip_len = SWIM_UP_ANIMATION_BASE_TIME
+	var clip_left := maxf(clip_len - _anim_player.current_animation_position, 0.0)
+	var time_left := _swim_up_time_remaining()
+	if clip_left <= 0.0 or time_left <= 0.0:
+		_anim_player.speed_scale = 1.0
+		return
+	# Clamped: right at the threshold time_left goes to zero, and an unclamped
+	# ratio would spike the last frames into a blur.
+	_anim_player.speed_scale = clampf(
+		clip_left / time_left, _SWIM_UP_MIN_SPEED, _SWIM_UP_MAX_SPEED)
+
 ## World-space height of the water surface, used for submersion and so for
 ## buoyancy.
 ##
@@ -1849,6 +1992,10 @@ func _swim(delta: float) -> void:
 		# whether you're still winding up or already past the swim threshold,
 		# it just makes every stroke count for more either way.
 		var gain_scale := forward_swim_gain_mult if input_dir.y < 0.0 else 1.0
+		# Cached for _swim_up_time_remaining(), so the wind-up animation is
+		# paced off the same stroke scaling the momentum actually built at
+		# rather than a second guess at it.
+		_swim_gain_scale = gain_scale
 		var swim_up_time := _swim_up_animation_time()
 		if swim_up_time > 0.0:
 			momentum += momentum_needed_to_swim / swim_up_time * delta * gain_scale * momentum_gain_mult
