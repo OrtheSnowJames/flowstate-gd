@@ -521,7 +521,7 @@ func _ready() -> void:
 	# What side we're on, if the roster already knows. The host assigns teams
 	# and broadcasts the table (see net.gd's _teams), which may land either
 	# before or after this body exists -- if it arrived first, this picks it up
-	# here; if it arrives later, net_sync_teams() pushes it onto us instead.
+	# here; if it arrives later, net_sync_roster() pushes it onto us instead.
 	# Covering both orders is why this asks rather than waiting to be told.
 	#
 	# _owner_peer > 0 only: a hand-placed decorative body (menu.tscn's

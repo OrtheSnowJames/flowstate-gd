@@ -239,6 +239,10 @@ func _add_player(id: int) -> void:
 	if multiplayer.is_server() or not is_online():
 		_assign_team(id)
 	player.team = _teams.get(id, PLAYER_SCRIPT.Team.RED)
+	# One per side, rolled at round start (see _pick_lifeguards). Set before
+	# add_child so the body comes up already wearing the kickboard rig rather
+	# than visibly swapping into it a frame later.
+	player.is_lifeguard = is_lifeguard_peer(id)
 	player.position = spawn_position(id)
 	player.rotation.y = spawn_rotation_y(id)
 	# Held still until the countdown finishes -- see _run_countdown(). Set
@@ -304,6 +308,7 @@ func start_host_lobby() -> void:
 func leave_lobby() -> void:
 	leave_game()
 	_teams.clear()
+	_lifeguards.clear()
 	_arena_ready.clear()
 	round_state = RoundState.LOBBY
 	await Transition.fade_to_black()
@@ -404,6 +409,9 @@ func _everyone_ready() -> bool:
 func _begin_round() -> void:
 	round_state = RoundState.PLAYING
 	_arena_ready.clear()
+	# Before any body is built, so _add_player() can set is_lifeguard from the
+	# roster as it spawns each one rather than swapping rigs afterwards.
+	_pick_lifeguards()
 	for id in _teams.keys():
 		_add_player(id)
 	if is_online():
@@ -481,7 +489,7 @@ func _ensure_countdown_text() -> Node:
 # Teams
 # ---------------------------------------------------------------------------
 ## Who's on which side, peer id -> Player.Team. The host owns this outright and
-## pushes the whole thing to everyone with net_sync_teams(); clients only ever
+## pushes the whole thing to everyone with net_sync_roster(); clients only ever
 ## receive it.
 ##
 ## Deliberately NOT replicated through the player body's own
@@ -526,38 +534,83 @@ func _assign_team(id: int) -> int:
 	return _teams[id]
 
 
-## Host -> everyone, the entire team table. Sent whole rather than per-player
-## so a peer that joins midway gets the sides of everyone already in the pool
-## in one message, with no catch-up path to keep separately correct.
+## Each side's lifeguard, Player.Team -> peer id. Exactly one per team, drawn
+## at random when the round starts (see _pick_lifeguards).
+##
+## Host-owned and broadcast for the same reason the team table is, but with a
+## sharper edge: this one is *random*, so unlike spawn_position() there's no
+## deriving it independently per peer and having everyone agree. Whatever the
+## host rolled is the only answer, and it has to be sent.
+var _lifeguards: Dictionary = {}
+
+
+## Whether `id` is their team's lifeguard -- the only player who can revive
+## (see player.gd's _revive_target).
+func is_lifeguard_peer(id: int) -> bool:
+	var team := team_of(id)
+	return team >= 0 and _lifeguards.get(team, 0) == id
+
+
+## Host-only: roll one lifeguard per team out of that team's current roster.
+## Called at round start, once the lobby is closed and the roster is final, so
+## nobody joining halfway through the countdown changes who was eligible.
+##
+## A team with nobody on it simply gets no entry -- and a team whose lifeguard
+## goes down has no way back (nobody else can revive, including to revive the
+## lifeguard), which is the intended stake rather than an oversight.
+func _pick_lifeguards() -> void:
+	_lifeguards.clear()
+	for team in [PLAYER_SCRIPT.Team.RED, PLAYER_SCRIPT.Team.BLUE]:
+		var roster := _peers_on_team(team)
+		if roster.is_empty():
+			continue
+		_lifeguards[team] = roster[randi() % roster.size()]
+	print("net: lifeguards %s" % _lifeguards)
+
+
+## Host -> everyone, the whole roster: who's on which side, and who each side's
+## lifeguard is. Sent whole rather than per-player so a peer that joins midway
+## gets everyone in one message, with no catch-up path to keep separately
+## correct -- and sent as ONE message rather than two so the two halves can't
+## arrive out of step and briefly disagree about who the lifeguard is.
 @rpc("authority", "call_local", "reliable")
-func net_sync_teams(teams: Dictionary) -> void:
+func net_sync_roster(teams: Dictionary, lifeguards: Dictionary) -> void:
 	_teams = teams.duplicate()
+	_lifeguards = lifeguards.duplicate()
 	_apply_teams_to_bodies()
 	# This table is also the lobby roster (see lobby_count) -- receiving it is
 	# how a client finds out anybody else is even here.
 	lobby_changed.emit()
 
 
-## Pushes the current table onto whatever bodies exist right now. Called both
-## when the table changes (net_sync_teams) and when a body turns up after it
+## Pushes the current roster onto whatever bodies exist right now. Called both
+## when the roster changes (net_sync_roster) and when a body turns up after it
 ## (player.gd's _ready asks Net directly), so the two possible orderings --
-## table first or body first -- both end up correct.
+## roster first or body first -- both end up correct.
 func _apply_teams_to_bodies() -> void:
 	var players := _players_root()
 	if players == null:
 		return
 	for p in players.get_children():
 		var pid := String(p.name).to_int()
-		if pid > 0 and _teams.has(pid) and "team" in p:
+		if pid <= 0:
+			continue
+		if _teams.has(pid) and "team" in p:
 			p.team = _teams[pid]
+		# Assigned from the roster, not left to the scene default: the whole
+		# point is that the host's random roll is the single answer, so a body
+		# that came up before the roster arrived gets corrected here. Its
+		# setter swaps the kickboard rig to match (see player.gd).
+		if "is_lifeguard" in p:
+			p.is_lifeguard = is_lifeguard_peer(pid)
 
 
-## Host-only: hand the current table to everybody. No-op offline, where there's
-## nobody to tell and the local assignment is already in place.
+## Host-only: hand the current roster to everybody. No-op offline, where
+## there's nobody to tell and the local assignment is already in place.
 func _broadcast_teams() -> void:
 	if not is_online() or not multiplayer.is_server():
 		return
-	rpc("net_sync_teams", _teams)
+	rpc("net_sync_roster", _teams, _lifeguards)
 
 
 ## Where the body belonging to `id` starts, and which way it faces.
@@ -649,8 +702,22 @@ func _on_peer_disconnected(id: int) -> void:
 		players.get_node(str(id)).queue_free()
 	# Drop them from the roster too, or the lobby keeps counting someone who
 	# left and _assign_team keeps balancing new arrivals against a ghost.
+	var was_team := team_of(id)
+	var was_lifeguard := is_lifeguard_peer(id)
 	_teams.erase(id)
 	_arena_ready.erase(id)
+	# A lifeguard who quits isn't the same as one who's been knocked out. The
+	# latter is the intended stake -- their side is stuck until... well, it
+	# isn't, which is the point. But leaving _lifeguards pointing at a peer
+	# who no longer exists would strand their team with no lifeguard at all
+	# and no way for one to appear, so hand the whistle to a teammate.
+	if was_lifeguard:
+		_lifeguards.erase(was_team)
+		var remaining := _peers_on_team(was_team)
+		if not remaining.is_empty():
+			_lifeguards[was_team] = remaining[randi() % remaining.size()]
+			print("net: lifeguard %d left, %d takes over for team %d" % [
+				id, _lifeguards[was_team], was_team])
 	_broadcast_teams()
 	lobby_changed.emit()
 	# They may have been the last peer the host was waiting on before it could
@@ -693,6 +760,7 @@ func start_solo_play() -> void:
 	# A roster of exactly us. Cleared first so a previous session's leftovers
 	# can't put phantom players in the round.
 	_teams.clear()
+	_lifeguards.clear()
 	_arena_ready.clear()
 	_assign_team(multiplayer.get_unique_id())
 	round_state = RoundState.LOBBY
