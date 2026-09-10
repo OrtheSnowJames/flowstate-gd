@@ -1350,6 +1350,21 @@ func net_death() -> void:
 	# reads a single action. revive() turns it back on.
 	set_process_input(false)
 
+	# That may have been the last one standing on this side. Told rather than
+	# polled, and told from here specifically because this runs on EVERY peer
+	# with _unconscious already set -- so whoever is the authority is looking
+	# at a complete, current picture of who's up. Net itself decides whether
+	# it's allowed to act on it (see on_player_down).
+	#
+	# Deferred, and that is not cosmetic. Called straight through, it runs
+	# BEFORE the rest of this function -- so a death that ends the round
+	# triggers the end-of-round revive here, and then execution carries on
+	# down this same function and blacks the screen out again on top of it,
+	# leaving a body that is conscious but sitting behind fallen eyelids
+	# playing a death animation. Deferring lets the death finish applying
+	# first, so the revive has a settled state to undo.
+	Net.call_deferred("on_player_down")
+
 	# A wall left standing when its owner blacks out would hang in the pool
 	# with nobody holding it up, since the input that drops it stops running.
 	if _water_wall_up:

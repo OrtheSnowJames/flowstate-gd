@@ -83,6 +83,19 @@ func blur_out() -> void:
 	await _tween_blur(0.0)
 
 
+## Every _tween_* below awaits a wall-clock timer rather than the tween's own
+## `finished` signal, and that is load-bearing rather than a stylistic choice.
+##
+## These all use the kill-and-recreate idiom: a second call kills the tween
+## the first one is still animating. A killed Tween never emits `finished` --
+## so anything sitting on `await tween.finished` when it gets superseded waits
+## forever. That is not hypothetical: returning to the lobby ends with a
+## fade_from_black(), and a host starting the next round during that ~0.35s
+## killed the fade_to_black() the round-load was awaiting, hanging the load
+## and leaving everyone stuck in the lobby with no arena.
+##
+## A timer always fires, so a superseded caller resumes on schedule instead of
+## never. The tween still owns the visual; the timer only owns the timing.
 func _tween_blur(target: float) -> void:
 	if _blur_tween and _blur_tween.is_valid():
 		_blur_tween.kill()
@@ -91,7 +104,7 @@ func _tween_blur(target: float) -> void:
 	_blur_tween.tween_method(
 		func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v),
 		from, target, _BLUR_DURATION)
-	await _blur_tween.finished
+	await get_tree().create_timer(_BLUR_DURATION).timeout
 
 
 ## Fades the whole screen to solid black. Awaitable -- the intended use is
@@ -114,7 +127,7 @@ func _tween_fade(target: float) -> void:
 	_fade_tween.tween_method(
 		func(v: float) -> void: _fade_rect.color.a = v,
 		from, target, _FADE_DURATION)
-	await _fade_tween.finished
+	await get_tree().create_timer(_FADE_DURATION).timeout
 
 
 ## Status text (e.g. "Connecting..."), faded independently of the blur/fade
@@ -137,4 +150,4 @@ func _tween_status(target: float) -> void:
 	_status_tween.tween_method(
 		func(v: float) -> void: _status_label.modulate.a = v,
 		from, target, _STATUS_DURATION)
-	await _status_tween.finished
+	await get_tree().create_timer(_STATUS_DURATION).timeout

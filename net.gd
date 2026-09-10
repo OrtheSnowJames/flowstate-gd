@@ -22,7 +22,7 @@ const PLAYER_SCENE := preload("res://water/player.tscn")
 ## gets a qualified name on this side.
 const PLAYER_SCRIPT := preload("res://water/player.gd")
 ## The 3-2-1-GO! label. Instantiated into the arena's HUD at round start --
-## see _ensure_countdown_text().
+## see _ensure_message_text().
 const COUNTDOWN_TEXT := preload("res://menu/appear_disappear_text.tscn")
 ## Where connecting lands you. A path rather than a preload: menu/lobby.tscn
 ## instances ocean1.tscn for its background, and preloading it here (from an
@@ -439,13 +439,188 @@ func _run_countdown() -> void:
 	# the "3" has appeared.
 	_set_movement_locked(true)
 	await Transition.fade_from_black()
-	var prompt := _ensure_countdown_text()
+	var prompt := _ensure_message_text()
 	for word in ["3", "2", "1", "GO!"]:
 		if prompt and is_instance_valid(prompt):
 			await prompt.play(word)
 		else:
 			await get_tree().create_timer(1.0).timeout
 	_set_movement_locked(false)
+
+
+# ---------------------------------------------------------------------------
+# Winning and losing
+# ---------------------------------------------------------------------------
+## Set the moment a round is decided, cleared once everyone is back up. Stops
+## a wipe being declared twice: net_death fires for every body, so without
+## this the second and third members of a wiped team would each announce the
+## same result again.
+var _round_over := false
+
+
+## Called from player.gd's net_death() every time anybody goes under. Decides
+## whether that finished the round.
+##
+## Host-only, like every other roster decision here -- net_death() runs on
+## every peer, so without this guard each of them would reach its own verdict
+## and broadcast it. Offline (solo) there's no server, so the local instance
+## is the authority by default.
+func on_player_down() -> void:
+	if is_online() and not multiplayer.is_server():
+		return
+	if round_state != RoundState.PLAYING or _round_over:
+		return
+	var players := _players_root()
+	if players == null:
+		return
+
+	# Tally per side, counting only sides somebody is actually playing -- an
+	# empty team must never register as "everyone on it is dead", or solo play
+	# would declare a winner the moment the round started.
+	var total := {}
+	var downed := {}
+	for p in players.get_children():
+		if not ("team" in p and "_unconscious" in p):
+			continue
+		total[p.team] = total.get(p.team, 0) + 1
+		if p._unconscious:
+			downed[p.team] = downed.get(p.team, 0) + 1
+	if total.is_empty():
+		return
+
+	var any_wiped := false
+	var winners := []
+	for team in total:
+		if downed.get(team, 0) >= total[team]:
+			any_wiped = true
+		else:
+			winners.append(team)
+	if not any_wiped:
+		return
+
+	# winners can legitimately come back empty -- both sides going under
+	# together, or solo play where the only side there is the one that just
+	# went down. Nobody won, so nobody is told they did.
+	_round_over = true
+	if is_online():
+		rpc("net_round_over", winners)
+	else:
+		net_round_over(winners)
+
+
+## Everyone: freeze the pool, open everyone's eyes, show this window's own
+## verdict, then head back to the lobby.
+##
+## Nobody gets another input from here on -- the round is decided, and the
+## revive is cosmetic (see _revive_everyone), not a second chance.
+@rpc("authority", "call_local", "reliable")
+func net_round_over(winners: Array) -> void:
+	_round_over = true
+	# Down tools immediately, before anything else: the round is decided the
+	# moment the last body drops, so the surviving side shouldn't get a free
+	# second of swimming (or hitting) while the result is on screen.
+	_set_movement_locked(true)
+	# Stop replicating here rather than just before the scene change: nothing
+	# moves from this point, and every peer reaching this within a frame or so
+	# of the others means they all go quiet at once -- whereas doing it on the
+	# way out gives whoever tears down first a window to be shouted at about
+	# bodies it has already freed. Safe despite the revive landing after this:
+	# net_revive is an RPC that sets movement_state on every peer directly, so
+	# nothing in the rest of this sequence relies on the synchronizers.
+	_silence_synchronizers()
+
+	# Revive BEFORE the banner, not after. The whole point of it is that the
+	# losing side reads their result through open eyes -- doing it afterwards
+	# meant they spent the entire banner staring at the blackout it exists to
+	# clear, and then had it lift just as the screen changed anyway.
+	#
+	# One peer drives it: revive() broadcasts per body, so having every peer
+	# call it on every body would send the same news N times over. The banner
+	# below gives that broadcast time to land before anyone's looking.
+	if not is_online() or multiplayer.is_server():
+		_revive_everyone()
+
+	var won := winners.has(team_of(multiplayer.get_unique_id()))
+	var prompt := _ensure_message_text()
+	if prompt and is_instance_valid(prompt):
+		await prompt.play("YOU WIN" if won else "GET BETTER")
+	else:
+		await get_tree().create_timer(1.0).timeout
+
+	# Everyone, not just the host -- each peer walks itself back out.
+	await _return_to_lobby()
+
+
+## Back to the waiting room after a round, with the roster intact so the same
+## group can go again. Every peer runs this for itself.
+##
+## Resetting the round bookkeeping here rather than on the way in is what
+## makes a second round possible at all: start_round() refuses unless the
+## state is LOBBY, _round_over would block the next result from being
+## declared, and a stale _arena_ready would have the host think peers were
+## already loaded before they'd loaded anything. _lifeguards is cleared too --
+## _pick_lifeguards() rolls a fresh pair next round, so keeping the old one
+## around would only ever be stale.
+func _return_to_lobby() -> void:
+	round_state = RoundState.LOBBY
+	_round_over = false
+	_arena_ready.clear()
+	_lifeguards.clear()
+	await Transition.fade_to_black()
+	get_tree().change_scene_to_file(LOBBY_SCENE)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await Transition.fade_from_black()
+
+
+## Stops the player bodies broadcasting, as soon as the round is decided.
+##
+## Everyone is frozen from that moment (net_round_over locks movement first),
+## so there is nothing left worth replicating. Left running, they keep
+## publishing right through the round-end banner and the scene change -- and
+## since peers don't free their arenas on the exact same frame, whoever tears
+## down first spends that gap rejecting sync packets for bodies it no longer
+## has ("Ignoring sync data ... for missing node"). Nothing breaks, but it's a
+## burst of errors in the log for data nobody wants by then.
+func _silence_synchronizers() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	# The whole scene, not just the player bodies. The players were the
+	# obvious suspects and silencing only them changed nothing -- the arena
+	# also replicates PushCube (ocean1.tscn gives it its own synchronizer, so
+	# its physics can live on the host), and that was what carried on
+	# broadcasting into the teardown.
+	for sync in _synchronizers_in(scene):
+		sync.public_visibility = false
+
+
+func _synchronizers_in(node: Node) -> Array[MultiplayerSynchronizer]:
+	var found: Array[MultiplayerSynchronizer] = []
+	if node is MultiplayerSynchronizer:
+		found.append(node)
+	for child in node.get_children():
+		found.append_array(_synchronizers_in(child))
+	return found
+
+
+## Opens everyone's eyes again. This is cosmetic, not a second chance: being
+## knocked out blacks your screen out (see player.gd's _death -- the eyelids
+## fall and the ear ringing starts), and reading your result through that is
+## no way to end a round. revive() is what tweens the lids back open and cuts
+## the ringing, so it's used purely for that. Nobody gets to move either way --
+## net_round_over() locks movement first and never unlocks it.
+##
+## Applied to everyone, not just the downed side: revive() no-ops on anyone
+## already conscious, so the winners cost nothing and there's no roster to
+## keep straight.
+func _revive_everyone() -> void:
+	var players := _players_root()
+	if players == null:
+		return
+	for p in players.get_children():
+		if p.has_method("revive"):
+			p.revive()
 
 
 ## Locks or releases every body in the arena. Applied to all of them, not just
@@ -461,21 +636,24 @@ func _set_movement_locked(locked: bool) -> void:
 			p.movement_locked = locked
 
 
-## The countdown label, built on demand into the arena's HUD layer. Made here
-## rather than baked into ocean1.tscn so the arena scene needs no edit and the
-## label can't linger between rounds.
-func _ensure_countdown_text() -> Node:
+## The big centred message label, built on demand into the arena's HUD layer.
+## Shared by the countdown and the round-result banner -- it's one "say a word
+## in the middle of the screen" widget, and two of them would only be able to
+## fight over the same patch of screen. Made here rather than baked into
+## ocean1.tscn so the arena scene needs no edit and the label can't linger
+## between rounds.
+func _ensure_message_text() -> Node:
 	var scene := get_tree().current_scene
 	if scene == null:
 		return null
 	var gui := scene.get_node_or_null("gui")
 	if gui == null:
 		return null
-	var existing := gui.get_node_or_null("Countdown")
+	var existing := gui.get_node_or_null("Message")
 	if existing:
 		return existing
 	var prompt := COUNTDOWN_TEXT.instantiate()
-	prompt.name = "Countdown"
+	prompt.name = "Message"
 	# No layout fixup needed here: appear_disappear_text.tscn anchors itself
 	# full-rect (root AND its CenterContainer), so it centres on whatever it's
 	# added to. Doing it from this side was tried and couldn't work anyway --
