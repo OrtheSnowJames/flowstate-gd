@@ -291,6 +291,24 @@ var last_d_press := -1000.0
 @export var water_power_cooldown: float = 0.6
 @export var water_attack_cooldown: float = 0.4
 
+## How much extra water_power strength banked momentum buys, on top of the
+## baseline 1.0 you get standing still -- full momentum makes a cast this many
+## times stronger overall (see _water_power_strength()). "Overall" because
+## strength isn't just a damage multiplier in ocean_fluid_bridge.gd's
+## send_wave() -- reach, width and knockback all scale with it too, so a
+## momentum-boosted cast genuinely reaches further and hits harder, the same
+## way charging in with speed would in real water.
+##
+## Only water_power (key 1) reads momentum this way -- water_attack is the
+## close-range, stand-your-ground option, so tying it to how fast you're
+## already moving wouldn't fit it the same way.
+@export var water_power_momentum_bonus: float = 1.5
+## Diminishing returns on the momentum bonus, same idiom (and same reasoning)
+## as jump_momentum_exponent above: below 1.0, the early momentum you build
+## pays off faster than the last bit, rather than the bonus scaling linearly
+## all the way to max_momentum.
+@export_range(0.1, 1.0, 0.01) var water_power_momentum_exponent: float = 0.6
+
 @export_group("Teams")
 ## Which side this body plays for. Drives the body's colour (see
 ## _apply_team_colors(): every white texel on the rig becomes this team's
@@ -1308,6 +1326,21 @@ func _jump(on_ground: bool) -> void:
 	momentum = 0.0
 	movement_state = MovementState.JUMP
 
+## The strength a water_power cast fires at right now: 1.0 baseline (a cast
+## at zero momentum is unchanged from before this existed), plus a
+## diminishing-returns bonus from banked momentum -- same curve shape as
+## _jump()'s momentum -> launch height, just applied to a wave instead. Reads
+## momentum but doesn't spend it -- the caller does that (see the water_power
+## block above), all at once, the same way _jump() spends it on a launch:
+## you're cashing in what you've built, not just consulting it.
+##
+## ocean_fluid_bridge.gd's send_wave() clamps whatever strength it's handed to
+## [0.3, 4.0] regardless, so this can't accidentally exceed that ceiling no
+## matter how the two exports above are tuned.
+func _water_power_strength() -> float:
+	var t := clampf(momentum / max_momentum, 0.0, 1.0)
+	return 1.0 + water_power_momentum_bonus * pow(t, water_power_momentum_exponent)
+
 ## Sets the camera's rotation.x straight to the baked overhead tilt, with no
 ## smoothing. Used once at startup so the camera doesn't visibly lerp in from
 ## rotation 0 on the first frame; every frame after that, _process settles it
@@ -1709,9 +1742,15 @@ func _physics_process(delta: float) -> void:
 		origin.y = _water_height()
 		# The wave and its animation are raised on every peer from inside the
 		# RPC, this one included -- see _cast_water_move.
-		_cast_water_move(WaterMove.POWER, origin, aim, 1.0)
+		_cast_water_move(WaterMove.POWER, origin, aim, _water_power_strength())
 		stamina -= water_power_stamina_cost
 		_water_power_cooldown_timer = water_power_cooldown
+		# Spent, not banked -- _water_power_strength() already read momentum to
+		# compute the strength argument above (evaluated before the call), so
+		# zeroing it here can't undersell the cast that's already on its way
+		# out. Same all-or-nothing spend as _jump(): a big cast is a decision
+		# to burn what you've built, not a free multiplier you keep afterward.
+		momentum = 0.0
 
 	# Water attack (water_attack action): close-range counterpart to water
 	# power -- a much bigger, denser burst that barely travels, a shove right
