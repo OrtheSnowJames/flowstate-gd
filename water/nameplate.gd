@@ -22,7 +22,7 @@ func setup(new_target: Node3D, camera: Camera3D, display_name: String) -> void:
 
 
 func _process(_delta: float) -> void:
-	if not is_instance_valid(target) or not target.is_inside_tree() \
+	if Net.is_spectating() or not is_instance_valid(target) or not target.is_inside_tree() \
 			or not is_instance_valid(_camera) or not _camera.is_inside_tree():
 		_box.visible = false
 		return

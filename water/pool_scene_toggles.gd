@@ -51,6 +51,8 @@ const _PERFORMANCE_WATER := {
 }
 
 func _enter_tree() -> void:
+	# physics bodies opt in while frame driven effects stay uninterpolated
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	if not Engine.is_editor_hint():
 		_apply_performance_mode()
 

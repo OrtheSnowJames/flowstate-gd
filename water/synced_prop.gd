@@ -4,6 +4,8 @@ extends RigidBody3D
 
 func _ready() -> void:
 	if is_multiplayer_authority():
+		physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON
+		reset_physics_interpolation()
 		return
 
 	# freeze_mode_kinematic not static the body still shoves what it runs into as the replicated

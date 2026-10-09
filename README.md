@@ -49,3 +49,12 @@ What you've all been waiting for, finally, the moves.
 1. Water Power - Launches a long range wave that hits harder the farther away the enemy is.
 2. Water Attack - Shoots a burst of short range water that hits harder the closer the enemy is.
 3. Water Wall - Halves incoming damage while it's up, no matter which direction it comes from.
+
+## Death and Spectating
+
+When your stamina reaches zero, you unfortunately drown/faint. Don't worry!
+You can still look at your team! There's a gray guy on the sidelines who flies a drone.
+This drone allows you to spectate the lifeguard while you're fainted, until the lifeguard revives you.
+If the lifeguard dies, you can only see an overhead view of the pool. All hope is lost.
+
+If a game just started, you can still spectate! When you join, press the spectate button.

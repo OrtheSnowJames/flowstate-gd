@@ -52,6 +52,8 @@ const DODGE_DOUBLE_TAP_TIME := 0.25
 const CONTROL_CAMERA := true
 const ANIMATE_PLAYER := true
 const DEBUG_IN_SHALLOW_WATER: bool = false
+const _REMOTE_UPDATE_INTERVAL := 0.1
+const _REMOTE_SNAP_DISTANCE := 12.0
 
 # normal vs lifeguard numbers for is_lifeguards stat buffs see _apply_lifeguard_loadout below both sides are
 const _NORMAL_WATER_POWER_DAMAGE_MAX := 30.0
@@ -264,6 +266,27 @@ var _swim_gain_scale: float = 1.0
 # set while the round hasnt begun bodies are spawned on their teams side of
 var movement_locked: bool = false
 
+# keep received transforms separate so late joins get the latest network position
+var _remote_transform := Transform3D.IDENTITY
+var _remote_from := Transform3D.IDENTITY
+var _remote_blend := 1.0
+var _has_remote_transform := false
+var replicated_transform: Transform3D:
+	get:
+		return _remote_transform if _has_remote_transform and not _is_local() else transform
+	set(value):
+		var snap := not is_node_ready() or _is_local() or not _has_remote_transform \
+			or position.distance_to(value.origin) > _REMOTE_SNAP_DISTANCE
+		if not snap and value.is_equal_approx(_remote_transform):
+			return
+		_remote_from = transform
+		_remote_blend = 1.0 if snap else 0.0
+		_remote_transform = value
+		_has_remote_transform = true
+		if snap:
+			transform = value
+			reset_physics_interpolation()
+
 @onready var _camera: Camera3D = $CamPivot/SpringArm3D/Camera3D
 @onready var _cam_pivot: Node3D = $CamPivot
 # get_node_or_null see the comment on gui above same failure mode
@@ -354,6 +377,8 @@ func _is_local() -> bool:
 	return is_multiplayer_authority()
 
 func _ready() -> void:
+	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON if _is_local() else Node.PHYSICS_INTERPOLATION_MODE_OFF
+	_cam_pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	mass = body_mass
 	_gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	# keep the capsule upright buoyancy torque shouldnt tip the player over
@@ -394,6 +419,7 @@ func _ready() -> void:
 	# place ourselves rather than waiting to be told where we are the host sets
 	if _owner_peer > 0:
 		position = Net.spawn_position(_owner_peer)
+	reset_physics_interpolation()
 
 	# drive the bars ranges from the real stat maxima theyre authored in the scene
 	if gui:
@@ -615,6 +641,7 @@ func _process(delta: float) -> void:
 
 	# the camera the cursor and the shake are per window so they only make
 	if not _is_local():
+		_interpolate_remote_movement(delta)
 		return
 
 	if CONTROL_CAMERA:
@@ -626,6 +653,13 @@ func _process(delta: float) -> void:
 	_shake_change(delta)
 	_update_revive_prompt()
 	_update_nameplates()
+
+
+func _interpolate_remote_movement(delta: float) -> void:
+	if _is_local() or not _has_remote_transform:
+		return
+	_remote_blend = minf(_remote_blend + delta / _REMOTE_UPDATE_INTERVAL, 1.0)
+	transform = _remote_from.interpolate_with(_remote_transform, _remote_blend)
 
 # decaying camera shake driven off h_offset v_offset rather than the cameras rotation or position
 func _shake_change(delta: float) -> void:
@@ -754,10 +788,11 @@ func _camera_pivot_change(delta: float) -> void:
 	if not is_instance_valid(_cam_pivot) or not _cam_pivot.is_inside_tree():
 		return
 
-	var target_pos := global_position + Vector3.UP * _cam_pivot_height
+	var view_transform := get_global_transform_interpolated()
+	var target_pos := view_transform.origin + Vector3.UP * _cam_pivot_height
 	_cam_pivot.global_position = _cam_pivot.global_position.lerp(
 		target_pos, 1.0 - exp(-camera_follow_speed * delta))
-	var target_yaw := global_transform.basis.get_euler().y
+	var target_yaw := view_transform.basis.get_euler().y
 	var target_pitch := deg_to_rad(default_camera_pitch_deg)
 	var target_angles := Vector2(target_yaw, target_pitch)
 	if Input.is_action_pressed("look_scoreboard"):
@@ -974,6 +1009,7 @@ func net_death() -> void:
 	if _muffled_player:
 		_muffled_player.play()
 
+	_eyelid_tween = create_tween()
 	if _eyelid and _eyelid.material:
 		# 0 0 is a wide open eye 1 0 fully shut see eye_closing gdshader
 		_eyelid.material.set_shader_parameter("progress", 0.0)
@@ -981,7 +1017,6 @@ func net_death() -> void:
 		var _duration := blackout_time
 		if _muffled_player and _muffled_player.stream:
 			_duration = _muffled_player.stream.get_length() / 2
-		_eyelid_tween = create_tween()
 		# linear on purpose progress isnt one animation any more its the clock the shader
 		_eyelid_tween.set_trans(Tween.TRANS_LINEAR)
 		_eyelid_tween.tween_method(
@@ -991,13 +1026,12 @@ func net_death() -> void:
 			0.0,
 			1.0,
 			_duration)
-		await get_tree().create_timer(_duration).timeout
-		if _unconscious and is_inside_tree():
-			Net.enter_spectator_after_faint()
 	else:
-		await get_tree().create_timer(blackout_time).timeout
+		_eyelid_tween.tween_interval(blackout_time)
+	# hand off after the final eyelid update so it cannot cover the spectator view
+	_eyelid_tween.tween_callback(func() -> void:
 		if _unconscious and is_inside_tree():
-			Net.enter_spectator_after_faint()
+			Net.enter_spectator_after_faint())
 
 # coming to the mirror of _death eyes snap back open with a jolt through
 func revive() -> void:
@@ -1037,10 +1071,10 @@ func net_revive() -> void:
 
 	shake_camera(revive_shake_strength, revive_shake_time)
 
+	# cancel the close and its spectator handoff
+	if _eyelid_tween and _eyelid_tween.is_valid():
+		_eyelid_tween.kill()
 	if _eyelid and _eyelid.material:
-		# kill the close if its still running or the two tweens would drive progress
-		if _eyelid_tween and _eyelid_tween.is_valid():
-			_eyelid_tween.kill()
 		# snap open from wherever the lids actually are not from a fixed value so
 		var from: float = _eyelid.material.get_shader_parameter("progress")
 		_eyelid_tween = create_tween()

@@ -147,15 +147,18 @@ func set_spectator_target(target_peer: int) -> void:
 		net_watch_lifeguard(target_peer)
 
 
-func living_lifeguard() -> Node3D:
+func living_lifeguard(watcher: int = 0) -> Node3D:
 	var players := _players_root()
-	if players == null:
+	if players == null or multiplayer.multiplayer_peer == null:
 		return null
+	var team := team_of(watcher if watcher > 0 else multiplayer.get_unique_id())
 	var best: Node3D = null
 	for player in players.get_children():
 		var id := str(player.name).to_int()
 		if id <= 0 or player.is_queued_for_deletion() \
 				or not player.is_lifeguard or player._unconscious:
+			continue
+		if team >= 0 and player.team != team:
 			continue
 		if best == null or id < str(best.name).to_int():
 			best = player
@@ -192,6 +195,7 @@ func _can_watch_lifeguard(watcher: int, target_peer: int) -> bool:
 		return false
 	var target := players.get_node_or_null(str(target_peer))
 	return target != null and not target.is_queued_for_deletion() \
+		and (team_of(watcher) < 0 or target.team == team_of(watcher)) \
 		and target.is_lifeguard and not target._unconscious
 
 
@@ -254,6 +258,10 @@ func _clear_spectator_drones() -> void:
 
 
 func _clear_blackout_view() -> void:
+	var players := _players_root()
+	var player := players.get_node_or_null(str(multiplayer.get_unique_id())) if players else null
+	if player and player._eyelid_tween and player._eyelid_tween.is_valid():
+		player._eyelid_tween.kill()
 	var muffled := get_node_or_null("/root/Main/muffled_player")
 	if muffled and muffled.has_method("stop"):
 		muffled.stop()
@@ -1137,7 +1145,7 @@ func net_spectator_ready() -> void:
 	_arena_ready[id] = true
 	rpc("net_sync_arena_peers", _arena_ready)
 	# launch the drone when the spectator joins the loaded match
-	var target := living_lifeguard()
+	var target := living_lifeguard(id)
 	if target and _can_watch_lifeguard(id, str(target.name).to_int()):
 		_spectator_targets[id] = str(target.name).to_int()
 		_broadcast_spectator_targets()

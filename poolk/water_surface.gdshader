@@ -98,7 +98,13 @@ void fragment() {
 	} else {
 		// water depth from the scene depth buffer
 		float draw = texture(depth_tex, SCREEN_UV).r;
-		vec4 vpos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, draw, 1.0);
+		// compatibility uses a different depth range
+		#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+		vec3 ndc = vec3(SCREEN_UV, draw) * 2.0 - 1.0;
+		#else
+		vec3 ndc = vec3(SCREEN_UV * 2.0 - 1.0, draw);
+		#endif
+		vec4 vpos = INV_PROJECTION_MATRIX * vec4(ndc, 1.0);
 		vpos.xyz /= vpos.w;
 		float depth_m = clamp(-vpos.z - (-VERTEX.z), 0.0, 200.0);
 
