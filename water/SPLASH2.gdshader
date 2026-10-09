@@ -25,10 +25,10 @@ float vnoise(vec2 p) {
 }
 
 void vertex() {
-	float rim_fac = 1.0 - UV.y;   // 1 at rim, 0 at base
+	float rim_fac = 1.0 - UV.y; // 1 at rim 0 at base
 	float angle   = atan(VERTEX.x, VERTEX.z);
 
-	// Smooth petals: round valleys AND round peaks, no sqrt-near-zero spike
+	// smooth petals round valleys and round peaks no sqrt near zero spike
 	float petal = pow(smoothstep(-1.0, 1.0, cos(angle * float(spike_count) * 0.5)), spike_sharpness);
 
 	float crown_t     = clamp((elapsed - 0.28) / 0.72, 0.0, 1.0);
@@ -38,7 +38,7 @@ void vertex() {
 	float flare_anim  = smoothstep(0.0, 0.7, ct);
 	float fold        = smoothstep(0.45, 1.0, ct);
 
-	// Phase 1: whole mesh rises from below water (0 → 0.38)
+	// phase 1 whole mesh rises from below water 0 0 38
 	float rise = smoothstep(0.0, 0.38, elapsed);
 	VERTEX.y  += (rise - 1.0) * max_height;
 

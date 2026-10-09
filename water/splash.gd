@@ -89,7 +89,7 @@ func _init_land() -> void:
 	mat.emission_ring_radius       = 1.3
 	mat.emission_ring_inner_radius = 0.8
 	mat.emission_ring_height       = 0.05
-	# Spread outward and low — like water hitting a flat surface
+	# spread outward and low like water hitting a flat surface
 	mat.direction             = Vector3(0, 0.3, 0)
 	mat.spread                = 80.0
 	mat.flatness              = 0.85
@@ -136,9 +136,7 @@ func _init_mats() -> void:
 		var mat := child.get_surface_override_material(0) as ShaderMaterial
 		if mat == null:
 			continue
-		# Duplicate so each mesh gets its own instance with a unique render_priority.
-		# This is what fixes z-fighting — Godot sorts transparent objects by priority
-		# so they composite in the right order instead of fighting the depth buffer.
+		# duplicate so each mesh gets its own instance with a unique render_priority this is
 		var copy := mat.duplicate() as ShaderMaterial
 		copy.render_priority = priority
 		priority += 1

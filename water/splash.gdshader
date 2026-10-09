@@ -30,13 +30,13 @@ void vertex() {
 
 	float petal = pow(smoothstep(-1.0, 1.0, cos(angle * float(spike_count) * 0.5)), spike_sharpness);
 
-	// Phase 1: whole mesh rises from below water (0 → 0.38)
+	// phase 1 whole mesh rises from below water 0 0 38
 	float rise = smoothstep(0.0, 0.38, elapsed);
 	VERTEX.y  += (rise - 1.0) * max_height;
 
-	// Phase 2: crown bursts out, begins overlapping with rise at 0.28
+	// phase 2 crown bursts out begins overlapping with rise at 0 28
 	float crown_t  = clamp((elapsed - 0.28) / 0.72, 0.0, 1.0);
-	// Ease-out: derivative → 0 as crown_t → 1, slowing the end of the animation
+	// ease out derivative 0 as crown_t 1 slowing the end of the animation
 	float ct          = crown_t;
 	float s           = sin(pow(ct, 0.8) * 3.14159265);
 	float height_anim = s * s;
@@ -58,23 +58,23 @@ void vertex() {
 void fragment() {
 	float h = v_h;
 
-	// Two-octave noise along the surface for organic edge variation
+	// two octave noise along the surface for organic edge variation
 	float n = vnoise(UV * 5.0) * 0.6 + vnoise(UV * 11.0) * 0.4;
 	float noise_shift = (n - 0.5) * 0.22;
 
-	// Very soft glass-water gradient — no harsh bands
+	// very soft glass water gradient no harsh bands
 	vec3 col = base_shadow_color.rgb;
 	col = mix(col, mid_color.rgb,  smoothstep(0.0,  0.75, h));
 	col = mix(col, foam_color.rgb, smoothstep(0.55, 1.0,  h));
-	// Barely-there soft tip — no hard line
+	// barely there soft tip no hard line
 	col = mix(col, vec3(1.0), smoothstep(0.75 + noise_shift, 1.0, h) * 0.25);
-	// Blinn-Phong specular — bright catch-light on the dark surface
+	// blinn phong specular bright catch light on the dark surface
 	vec3 light_dir = normalize(vec3(0.5, 0.8, 0.3));
 	vec3 half_vec  = normalize(normalize(VIEW) + light_dir);
 	float spec     = pow(max(0.0, dot(NORMAL, half_vec)), 28.0);
 	col = mix(col, vec3(1.0), spec * 0.85);
 
-	// Fresnel edge glow — brightens rim like wet water
+	// fresnel edge glow brightens rim like wet water
 	float fresnel = pow(1.0 - abs(dot(normalize(VIEW), NORMAL)), 2.0);
 	col = mix(col, vec3(0.88, 0.97, 1.0), fresnel * 0.5);
 
@@ -82,13 +82,12 @@ void fragment() {
 	zone_alpha       = mix(zone_alpha,           foam_color.a, smoothstep(0.55, 1.0, h));
 	zone_alpha      *= 0.22;
 
-	// Wide smoothsteps = blobby soft edges, no sharp cuts between petals
+	// wide smoothsteps blobby soft edges no sharp cuts between petals
 	float alpha  = smoothstep(0.0, 0.3,  v_h);
 	alpha       *= smoothstep(0.0, 0.45, v_petal);
 	alpha       *= zone_alpha;
 	alpha       *= smoothstep(0.0, 0.18, elapsed);
-	// Noise dissolve: sweeps a threshold across the noise field so patches
-	// disappear irregularly rather than fading uniformly
+	// noise dissolve sweeps a threshold across the noise field so patches disappear irregularly rather
 	float decay    = smoothstep(0.78, 1.0, elapsed);
 	float d_noise  = vnoise(UV * 6.0) * 0.55 + vnoise(UV * 13.0) * 0.45;
 	alpha         *= smoothstep(decay - 0.1, decay + 0.1, d_noise);

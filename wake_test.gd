@@ -15,13 +15,13 @@ func _physics_process(_delta: float) -> bool:
 	var player: RigidBody3D = root.get_node("Main/our_player")
 	var water: Area3D = root.get_node("Main/water base")
 
-	# --- how big is the visible player, really -------------------------------
+	# how big is the visible player really
 	var model: Node3D = player.get_node("blockbench_export")
 	var box := AABB()
 	var first := true
 	for mi in _all_meshes(model):
 		var a: AABB = mi.get_aabb()
-		# into player-local space
+		# into player local space
 		var t: Transform3D = player.global_transform.affine_inverse() * mi.global_transform
 		var local := t * a
 		box = local if first else box.merge(local)
@@ -36,7 +36,7 @@ func _physics_process(_delta: float) -> bool:
 					+ player.body_half_height,
 			player.target_submersion])
 
-	# --- how tall is the swim wake -------------------------------------------
+	# how tall is the swim wake
 	print("\nWAKE   sim clamps displacement to +/-0.5, shown at amplitude=%.2f" % water.amplitude)
 	print("       so the tallest possible wave is %.2f m\n" % (0.5 * water.amplitude))
 	var mass_f: float = clampf(sqrt(player.body_mass / water.default_mass), 0.35, 2.5)

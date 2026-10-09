@@ -1,7 +1,6 @@
 [gd_scene format=4 uid="uid://c4uvje3vnu4ii"]
 
-[ext_resource type="PackedScene" uid="uid://ds3li10clocta" path="res://pine.tscn" id="1_fywoq"]
-[ext_resource type="Script" path="res://water/tree_multimesh.gd" id="1_treemm"]
+[ext_resource type="Script" uid="uid://b0wyri3koeeoc" path="res://water/tree_multimesh.gd" id="1_treemm"]
 [ext_resource type="Material" uid="uid://d0db6ctnjv00e" path="res://water/tile.tres" id="4_jfse0"]
 [ext_resource type="Script" uid="uid://cajkpw6dc1dpw" path="res://water/fps_counter.gd" id="5_8tehq"]
 [ext_resource type="Texture2D" uid="uid://cniixylcjhie3" path="res://img/bars/momentum_under.png" id="6_7r1ms"]
@@ -24,6 +23,7 @@
 [ext_resource type="ArrayMesh" uid="uid://sptcpdx6wtm8" path="res://addons/simplegrasstextured/default_mesh.tres" id="19_614yo"]
 [ext_resource type="Script" uid="uid://2juaclm8gc1n" path="res://addons/simplegrasstextured/grass.gd" id="20_biqxj"]
 [ext_resource type="Script" uid="uid://dh1ieqgns8isx" path="res://water/pool_scene_toggles.gd" id="21_pooltog"]
+[ext_resource type="PackedScene" uid="uid://dyvcl2ci11em" path="res://poolk/scoreboard.tscn" id="24_614yo"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -163,7 +163,7 @@ albedo_texture = ExtResource("16_lta4o")
 [sub_resource type="PlaneMesh" id="PlaneMesh_2qpaf"]
 size = Vector2(20, 80)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_gu18f"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_614yo"]
 render_priority = 0
 shader = ExtResource("17_fywoq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
@@ -696,7 +696,7 @@ mesh = SubResource("PlaneMesh_2qpaf")
 
 [node name="SimpleGrassTextured" type="MultiMeshInstance3D" parent="StaticBody3D2" unique_id=844937069]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
-material_override = SubResource("ShaderMaterial_gu18f")
+material_override = SubResource("ShaderMaterial_614yo")
 multimesh = SubResource("MultiMesh_fywoq")
 script = ExtResource("20_biqxj")
 sgt_radius = 2.0
@@ -740,3 +740,6 @@ shape = SubResource("BoxShape3D_concrete_floor_3")
 
 [node name="Bathroom" parent="." unique_id=1134696406 instance=ExtResource("16_mvkr7")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 9, -5)
+
+[node name="Scoreboard" parent="." unique_id=2009443230 instance=ExtResource("24_614yo")]
+transform = Transform3D(6.38, 0, 0, 0, 6.9, 0, 0, 0, 1, -6, 15, -30)

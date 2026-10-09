@@ -1,9 +1,4 @@
-## Demo: a pool you can fight in.
-##   LMB          throw a light ball        (mass 2)
-##   MMB          throw a heavy cannonball  (mass 45)
-##   F            water push attack — sends a travelling wave from the cursor
-##                in the camera's facing direction
-##   RMB drag     orbit camera   ·   wheel: zoom
+# demo a pool you can fight in lmb throw a light ball mass 2
 extends Node3D
 
 const FluidBoxScript := preload("res://poolk/fluid_box.gd")
@@ -11,7 +6,7 @@ const FluidBoxScript := preload("res://poolk/fluid_box.gd")
 const POOL_W := 11.0
 const POOL_L := 7.5
 const WATER_DEPTH := 1.7
-const WATER_Y := 1.7            # world height of the rest surface
+const WATER_Y := 1.7 # world height of the rest surface
 
 var _water: FluidBox
 var _cam: Camera3D
@@ -59,10 +54,10 @@ func _build_pool() -> void:
 	tile.albedo_color = Color(0.75, 0.79, 0.8)
 	tile.roughness = 0.35
 	var floor_mat := StandardMaterial3D.new()
-	floor_mat.albedo_color = Color(0.55, 0.72, 0.75)  # light pool bottom shows depth tint
+	floor_mat.albedo_color = Color(0.55, 0.72, 0.75) # light pool bottom shows depth tint
 	floor_mat.roughness = 0.4
 
-	_add_box(Vector3(POOL_W + 1.2, 0.4, POOL_L + 1.2), Vector3(0, -0.2, 0), floor_mat)  # bottom
+	_add_box(Vector3(POOL_W + 1.2, 0.4, POOL_L + 1.2), Vector3(0, -0.2, 0), floor_mat) # bottom
 	var wall_h := WATER_Y + 0.45
 	var t := 0.6
 	_add_box(Vector3(POOL_W + 2.0 * t, wall_h, t), Vector3(0, wall_h * 0.5, -(POOL_L * 0.5 + t * 0.5)), tile)
@@ -183,8 +178,7 @@ func _throw(mass: float, radius: float, color: Color, speed: float) -> void:
 
 
 func _water_push_attack() -> void:
-	# Intersect the mouse ray with the rest-surface plane, then shove a
-	# travelling dipole wave in the camera's horizontal facing direction.
+	# intersect the mouse ray with the rest surface plane then shove a travelling dipole
 	var ray := _mouse_ray()
 	var plane := Plane(Vector3.UP, WATER_Y)
 	var hit = plane.intersects_ray(ray[0], ray[1])
@@ -193,8 +187,7 @@ func _water_push_attack() -> void:
 	var fwd := -_cam.global_transform.basis.z
 	fwd.y = 0.0
 	fwd = fwd.normalized()
-	# dipole = 1 -> a directed wave that keeps travelling; elongation widens
-	# it into a front instead of a dot.
+	# dipole 1 a directed wave that keeps travelling elongation widens it into a front
 	_water.add_impulse(hit, 0.30, 0.55, fwd, 1.0, 2.2)
 	# a bit of spray at the origin sells the effort
 	_water.splash_at(hit, 60.0, 0.4)

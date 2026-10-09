@@ -1,6 +1,6 @@
 extends MeshInstance3D
 
-@export var subdivisions: int = 3  # 3 = 64x triangles, enough for dome displacement
+@export var subdivisions: int = 3 # 3 64x triangles enough for dome displacement
 
 func _ready() -> void:
     call_deferred("_subdivide")

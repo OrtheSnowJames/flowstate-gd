@@ -20,10 +20,9 @@ uniform float normal_strength   : hint_range(0.0,  8.0, 0.1)   = 4.0;
 uniform float wave_height       : hint_range(0.0,  2.0, 0.01)  = 0.25;
 uniform float wave_frequency    : hint_range(0.01, 1.0, 0.01)  = 0.25;
 uniform float wave_time_scale   : hint_range(0.01, 2.0, 0.01)  = 0.60;
-// Shared wave clock driven by ocean.gd so CPU buoyancy matches the GPU surface.
+// shared wave clock driven by ocean gd so cpu buoyancy matches the gpu surface
 uniform float wave_time = 0.0;
-// Global scale on the swell amplitude (buoyancy reads this too, so waves and
-// bobbing stay in sync when you tune it).
+// global scale on the swell amplitude buoyancy reads this too so waves and bobbing
 uniform float wave_amp_scale : hint_range(0.0, 3.0, 0.05) = 1.0;
 uniform float caustic_scale     : hint_range(0.5,  8.0, 0.1)   = 2.5;
 uniform float caustic_speed     : hint_range(0.0,  2.0, 0.01)  = 0.25;
@@ -97,7 +96,7 @@ float ripple_from(vec2 xz, int i, float t) {
 	float delta = dist - front;
 	float fade  = exp(-age * ripple_decay)
 	            * (1.0 - smoothstep(ripple_radius * 0.6, ripple_radius, dist));
-	// Main ring at wavefront + 2 harmonic rings trailing behind it
+	// main ring at wavefront 2 harmonic rings trailing behind it
 	float r0 = exp(-delta * delta * ripple_freq);
 	float r1 = exp(-(delta + 0.8) * (delta + 0.8) * ripple_freq) * 0.6;
 	float r2 = exp(-(delta + 1.6) * (delta + 1.6) * ripple_freq) * 0.35;
@@ -111,9 +110,7 @@ float total_ripple(vec2 xz, float t) {
 	return v * ripple_str;
 }
 
-// One directional wave (sum-of-sines heightfield): returns its height and
-// accumulates its horizontal gradient. MUST stay identical to ocean.gd's
-// _wave_term so buoyancy matches the visible surface.
+// one directional wave sum of sines heightfield returns its height and accumulates its horizontal
 float wave_term(vec2 p, vec2 d, float wl, float amp, float sp, inout vec2 grad) {
 	d = normalize(d);
 	float w  = 6.2831853 / wl;
@@ -122,8 +119,7 @@ float wave_term(vec2 p, vec2 d, float wl, float amp, float sp, inout vec2 grad) 
 	return amp * sin(ph);
 }
 
-// World-space swell: a few layered directional waves. Small amplitudes for a
-// pool. Identical set lives in ocean.gd (_wave_height).
+// world space swell a few layered directional waves small amplitudes for a pool identical
 float wave_h(vec2 p, out vec2 grad) {
 	grad = vec2(0.0);
 	float h = 0.0;
@@ -150,20 +146,20 @@ void fragment() {
 
 	float rip = total_ripple(xz, t);
 
-	// Ripple normals — 2 samples instead of 4, reuse rip as base
+	// ripple normals 2 samples instead of 4 reuse rip as base
 	float e = 0.2;
 	float rip_dx = total_ripple(xz + vec2(e, 0.0), t) - rip;
 	float rip_dz = total_ripple(xz + vec2(0.0, e), t) - rip;
 
 	vec2 wn = surface_normal(sxz / wave_scale, t * wave_speed);
 	wn += vec2(rip_dx, rip_dz) * 2.5;
-	wn += v_wave_grad * 4.0;   // big swell tilts the normals so waves catch light
+	wn += v_wave_grad * 4.0; // big swell tilts the normals so waves catch light
 
 	float chop    = choppiness(sxz / wave_scale, t * wave_speed);
 	vec3  col     = mix(color_deep.rgb, color_shallow.rgb, chop);
 	col = mix(col, color_ripple.rgb, clamp(rip * color_ripple.a, 0.0, 1.0));
 
-	// Edge foam + shore distortion rings
+	// edge foam shore distortion rings
 	float raw_depth  = texture(DEPTH_TEXTURE, SCREEN_UV).r;
 	vec4  view_pos   = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, raw_depth, 1.0);
 	view_pos.xyz    /= view_pos.w;
@@ -173,7 +169,7 @@ void fragment() {
 	float edge_foam   = 1.0 - smoothstep(0.0, foam_distance, depth_diff);
 	col = mix(col, color_foam.rgb, edge_foam * foam_strength);
 
-	// Shore distortion rings — multiple rings expanding from waterline into water
+	// shore distortion rings multiple rings expanding from waterline into water
 	float shore_reach = foam_distance * 2.0;
 	float shore_mask  = smoothstep(shore_reach, 0.0, depth_diff);
 	float sd  = depth_diff * 4.0 - t * 1.5;
@@ -190,7 +186,7 @@ void fragment() {
 	float caus = caustics(sxz / caustic_scale, t * caustic_speed);
 	col = clamp(col + vec3(caus * caustic_strength * 0.15), 0.0, 1.0);
 
-	// Sun shimmer — sharp specular highlight that dances with the animated water normals
+	// sun shimmer sharp specular highlight that dances with the animated water normals
 	vec3  sun      = normalize(sun_dir);
 	vec3  w_norm   = normalize(vec3(wn.x, 1.0 / max(normal_strength, 0.01), wn.y));
 	vec3  half_v   = normalize(sun + VIEW);

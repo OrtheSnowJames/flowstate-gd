@@ -139,9 +139,11 @@ revive={
 
 [rendering]
 
+textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 anti_aliasing/screen_space_roughness_limiter/enabled=false
 anti_aliasing/quality/smaa_edge_detection_threshold=0.01
+textures/default_filters/texture_mipmap_bias=0.5
 
 [shader_globals]
 

@@ -1,15 +1,7 @@
 @tool
 extends Control
 
-## A settings row: a static name on the left ("Camera Height") and an
-## amount with a left/right arrow pair on the right ("< 3.2m >") -- right
-## arrow increments, left arrow decrements. Unlike the_button.tscn (one
-## clickable node with one `pressed` signal), this wraps three interactive
-## children, so it exposes two signals instead and menu_screen.gd wires each
-## to its own callback. Declared `extends Control` (not `extends Node` like
-## the_button_interface.gd) specifically so `self` is already statically a
-## Control here -- no get_parent()/self typing workaround needed, since this
-## script is only ever meant to sit on a Control-rooted scene.
+# a settings row a static name on the left camera height and an amount
 
 signal left_pressed
 signal right_pressed

@@ -1,62 +1,43 @@
-## FluidBox — drop-in interactive 3D water volume for Godot 4 (4.2+, Forward+).
-##
-## The node origin sits AT the water surface; the volume extends `size.y`
-## metres downward. Everything (mesh, sim viewports, collision area, splash
-## particles) is built in _ready(), so usage is just:
-##
-##     var water := FluidBox.new()
-##     water.size = Vector3(10, 2, 7)
-##     add_child(water)
-##     water.global_position = Vector3(0, 1.8, 0)   # y = surface height
-##
-## RigidBody3D / CharacterBody3D nodes that overlap the volume automatically
-## produce entry splashes, wakes and bow waves scaled by mass × velocity.
-##
-## Gameplay API (for "pool fighting"):
-##     add_impulse(world_pos, strength_m, radius_m, dir, dipole, elongation)
-##     splash_at(world_pos, power, radius_m)
-##     get_height_at(world_pos)          # needs enable_height_queries = true
-##     signal body_splashed(body, power)
+# fluidbox drop in interactive 3d water volume for godot 4 4 2 forward the
 class_name FluidBox
 extends Area3D
 
 signal body_splashed(body: Node3D, power: float)
 
 @export_group("Volume")
-## Water volume in metres. X/Z = surface extent, Y = depth below the surface.
+# water volume in metres x z surface extent y depth below the surface
 @export var size := Vector3(10.0, 2.0, 10.0)
 
 @export_group("Simulation")
-## Sim cells along the longest surface axis. 192–320 is a good range.
+# sim cells along the longest surface axis 192 320 is a good range
 @export_range(64, 512) var sim_resolution := 256
-## Wave propagation speed factor (0..0.5). Higher = faster waves. >0.5 unstable.
+# wave propagation speed factor 0 0 5 higher faster waves 0 5 unstable
 @export_range(0.05, 0.5) var wave_transfer := 0.30
-## Energy retained per sim step. 1.0 = waves never die.
+# energy retained per sim step 1 0 waves never die
 @export_range(0.9, 1.0) var wave_damping := 0.996
-## Softens reflections off pool walls (0 = perfect mirror walls).
+# softens reflections off pool walls 0 perfect mirror walls
 @export_range(0.0, 1.0) var edge_damping := 0.35
 
 @export_group("Surface Look")
-## Height in metres of a full-strength sim value. Bigger = taller waves.
+# height in metres of a full strength sim value bigger taller waves
 @export_range(0.0, 2.0) var amplitude := 0.35
 @export_range(60, 300) var mesh_resolution := 160
 @export var surface_material_override: ShaderMaterial
 
 @export_group("Body Interaction")
-## Bodies slower than this on entry don't get a particle splash.
+# bodies slower than this on entry dont get a particle splash
 @export var min_splash_speed := 1.2
-## Global multiplier for how deep a falling body dents the water.
+# global multiplier for how deep a falling body dents the water
 @export var splash_strength := 1.0
-## Multiplier for the bow wave / wake of bodies moving horizontally.
+# multiplier for the bow wave wake of bodies moving horizontally
 @export var wake_strength := 1.0
-## Horizontal speed below which no wake is produced.
+# horizontal speed below which no wake is produced
 @export var wake_min_speed := 0.35
-## Mass assumed for bodies without a `mass` property (CharacterBody3D etc).
+# mass assumed for bodies without a mass property characterbody3d etc
 @export var default_mass := 70.0
 
 @export_group("Height Queries")
-## Enables get_height_at() via async-ish GPU readback. Costs ~0.3–1 ms every
-## `readback_interval` frames — leave off unless gameplay needs wave heights.
+# enables get_height_at via async ish gpu readback costs 0 3 1 ms every readback_interval
 @export var enable_height_queries := false
 @export_range(1, 30) var readback_interval := 4
 
@@ -75,8 +56,8 @@ var _flip := false
 var _reset_frames := 3
 var _sim_size := Vector2i(256, 256)
 
-var _pending: Array[Dictionary] = []          # impulses queued this frame
-var _tracked: Dictionary = {}                  # instance_id -> body state
+var _pending: Array[Dictionary] = [] # impulses queued this frame
+var _tracked: Dictionary = {} # instance_id body state
 var _splash_pool: Array[GPUParticles3D] = []
 var _splash_idx := 0
 var _readback_img: Image
@@ -91,20 +72,18 @@ func _ready() -> void:
 	_build_splash_pool()
 
 
-# ---------------------------------------------------------------------------
-# Construction
-# ---------------------------------------------------------------------------
+# construction
 func _build_collision() -> void:
 	var cs := CollisionShape3D.new()
 	var box := BoxShape3D.new()
 	box.size = size
 	cs.shape = box
-	cs.position = Vector3(0.0, -size.y * 0.5, 0.0)  # volume hangs below surface
+	cs.position = Vector3(0.0, -size.y * 0.5, 0.0) # volume hangs below surface
 	add_child(cs)
 
 
 func _build_sim() -> void:
-	# Cells are square in world space: scale the shorter axis of the texture.
+	# cells are square in world space scale the shorter axis of the texture
 	var aspect := size.z / size.x
 	if aspect <= 1.0:
 		_sim_size = Vector2i(sim_resolution, maxi(int(sim_resolution * aspect), 16))
@@ -115,7 +94,7 @@ func _build_sim() -> void:
 	_vp_b = _make_sim_viewport()
 	_mat_a = (_vp_a.get_child(0) as ColorRect).material
 	_mat_b = (_vp_b.get_child(0) as ColorRect).material
-	# Static ping-pong wiring: A reads B, B reads A.
+	# static ping pong wiring a reads b b reads a
 	_mat_a.set_shader_parameter("prev_tex", _vp_b.get_texture())
 	_mat_b.set_shader_parameter("prev_tex", _vp_a.get_texture())
 
@@ -124,7 +103,7 @@ func _make_sim_viewport() -> SubViewport:
 	var vp := SubViewport.new()
 	vp.size = _sim_size
 	vp.disable_3d = true
-	vp.use_hdr_2d = true                     # RGBA16F — precision + signed range
+	vp.use_hdr_2d = true # rgba16f precision signed range
 	vp.render_target_clear_mode = SubViewport.CLEAR_MODE_NEVER
 	vp.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	var rect := ColorRect.new()
@@ -163,7 +142,7 @@ func _build_surface() -> void:
 	_surf_mat.set_shader_parameter("amplitude", amplitude)
 	_surf_mat.set_shader_parameter("height_tex", _vp_a.get_texture())
 	_mesh.material_override = _surf_mat
-	# Displaced verts can leave the flat AABB — pad it so waves never get culled.
+	# displaced verts can leave the flat aabb pad it so waves never get culled
 	_mesh.custom_aabb = AABB(
 		Vector3(-size.x * 0.5, -amplitude * 1.5, -size.z * 0.5),
 		Vector3(size.x, amplitude * 3.0, size.z))
@@ -208,9 +187,7 @@ func _build_splash_pool() -> void:
 		_splash_pool.append(p)
 
 
-# ---------------------------------------------------------------------------
-# Per-frame: run the sim (render cadence) & interact with bodies (physics)
-# ---------------------------------------------------------------------------
+# per frame run the sim render cadence interact with bodies physics
 func _process(_delta: float) -> void:
 	_flip = not _flip
 	var dst_mat := _mat_a if _flip else _mat_b
@@ -271,14 +248,14 @@ func _physics_process(delta: float) -> void:
 			_tracked[id].pos = pos
 		_continuous_interaction(body, vel, mass, radius, delta)
 
-	# Exit splashes (body left or was freed).
+	# exit splashes body left or was freed
 	for id in _tracked.keys():
 		if not seen.has(id):
 			var st: Dictionary = _tracked[id]
 			var b = st.body
 			if is_instance_valid(b):
 				var vel := _body_velocity(b)
-				if vel.y > min_splash_speed:  # jumped OUT of the water
+				if vel.y > min_splash_speed: # jumped out of the water
 					var p: float = _body_mass(b) * vel.length()
 					add_impulse(st.pos, 0.35 * splash_strength * clampf(p * 0.002, 0.02, 0.25), st.r * 1.3)
 					_spawn_splash(_surface_point(st.pos), p * 0.5, st.r)
@@ -289,8 +266,7 @@ func _on_body_enter(body: Node3D, vel: Vector3, mass: float, radius: float) -> v
 	var speed := vel.length()
 	if speed < 0.05:
 		return
-	# Momentum drives everything: p = m·v. sqrt keeps heavy/fast bodies from
-	# instantly saturating the sim while still feeling much bigger.
+	# momentum drives everything p m v sqrt keeps heavy fast bodies from instantly saturating
 	var momentum := mass * speed
 	var strength := -splash_strength * clampf(sqrt(momentum) * 0.032, 0.03, 0.45)
 	var r := radius * 1.25 + clampf(speed * 0.03, 0.0, 0.4)
@@ -303,44 +279,33 @@ func _on_body_enter(body: Node3D, vel: Vector3, mass: float, radius: float) -> v
 
 func _continuous_interaction(body: Node3D, vel: Vector3, mass: float, radius: float, delta: float) -> void:
 	var local := to_local(body.global_position)
-	# Only bodies near the surface disturb it (deep swimmers don't).
+	# only bodies near the surface disturb it deep swimmers dont
 	var depth_factor := clampf(1.0 + local.y / maxf(radius * 2.0, 0.3), 0.0, 1.0)
 	if depth_factor <= 0.0:
 		return
 	var mass_f := clampf(sqrt(mass / default_mass), 0.35, 2.5)
 
-	# --- Bow wave / wake from horizontal motion -----------------------------
+	# bow wave wake from horizontal motion
 	var hvel := Vector3(vel.x, 0.0, vel.z)
 	var hspeed := hvel.length()
 	if hspeed > wake_min_speed:
 		var dir := hvel / hspeed
 		var ahead := body.global_position + dir * radius * 0.7
-		# Dipole travelling in `dir`: crest pushed forward, trough dragged behind
-		# — a real bow wave that keeps propagating after the body slows. The
-		# per-frame crest scales with how fast the body moves (Froude-like):
-		# `speed_amt` ramps 0->1 across a realistic swim/push range, so a slow
-		# drift barely ripples while a fast shove throws a clear mini bow wave.
-		# It's velocity-based with no constant floor, and framerate-independent
-		# because it's multiplied by delta.
+		# dipole travelling in dir crest pushed forward trough dragged behind a real bow wave
 		var speed_amt := clampf(hspeed / 5.0, 0.0, 1.0)
 		var push := wake_strength * mass_f * speed_amt * delta * 7.0
-		# elongation stretches the crest into a forward FRONT the faster it goes.
+		# elongation stretches the crest into a forward front the faster it goes
 		add_impulse(ahead, push, radius * 1.2, dir, 1.0, clampf(hspeed * 0.32, 0.0, 3.5))
-		# Plus the hole the hull carves (depression at the body).
+		# plus the hole the hull carves depression at the body
 		add_impulse(body.global_position, -push * 0.55 * depth_factor, radius)
 
-	# --- Vertical bobbing near the surface ----------------------------------
+	# vertical bobbing near the surface
 	if absf(vel.y) > 0.25 and depth_factor > 0.05:
 		var s := clampf(-vel.y * delta * 0.9, -0.06, 0.06) * mass_f * depth_factor
 		add_impulse(body.global_position, s * splash_strength, radius * 1.1)
 
 
-# ---------------------------------------------------------------------------
-# Public gameplay API
-# ---------------------------------------------------------------------------
-## Inject a disturbance. strength_m: signed metres (negative = press water down,
-## positive = raise it). dir + dipole=1.0 makes a travelling wave (attack push);
-## elongation stretches it along dir.
+# public gameplay api inject a disturbance strength_m signed metres negative press water down positive
 func add_impulse(world_pos: Vector3, strength_m: float, radius_m: float,
 		dir: Vector3 = Vector3.ZERO, dipole := 0.0, elongation := 0.0) -> void:
 	var local := to_local(world_pos)
@@ -356,15 +321,13 @@ func add_impulse(world_pos: Vector3, strength_m: float, radius_m: float,
 	})
 
 
-## Cosmetic splash + ripple at a point (e.g. a bullet hit or a spell).
-## power ≈ mass · speed of the equivalent impact.
+# cosmetic splash ripple at a point e g a bullet hit or a spell
 func splash_at(world_pos: Vector3, power: float, radius_m := 0.3) -> void:
 	add_impulse(world_pos, -clampf(sqrt(maxf(power, 0.0)) * 0.03, 0.02, 0.4), radius_m)
 	_spawn_splash(_surface_point(world_pos), power, radius_m)
 
 
-## Wave height above the rest surface, in metres. Requires
-## enable_height_queries = true; otherwise returns 0.
+# wave height above the rest surface in metres requires enable_height_queries true otherwise returns 0
 func get_height_at(world_pos: Vector3) -> float:
 	if _readback_img == null:
 		return 0.0
@@ -376,20 +339,18 @@ func get_height_at(world_pos: Vector3) -> float:
 	return (_readback_img.get_pixel(px, py).r - 0.5) * amplitude
 
 
-## World-space position of the rest surface directly above/below `world_pos`.
+# world space position of the rest surface directly above below world_pos
 func _surface_point(world_pos: Vector3) -> Vector3:
 	var local := to_local(world_pos)
 	local.y = 0.0
 	return to_global(local)
 
 
-# ---------------------------------------------------------------------------
-# Splash particles — amount, size and speed scale with momentum (mass × speed)
-# ---------------------------------------------------------------------------
+# splash particles amount size and speed scale with momentum mass speed
 func _spawn_splash(pos: Vector3, momentum: float, radius: float) -> void:
 	var p := _splash_pool[_splash_idx]
 	_splash_idx = (_splash_idx + 1) % _splash_pool.size()
-	var t := clampf(momentum / 300.0, 0.0, 1.0)   # 0 = pebble, 1 = ~anvil at speed
+	var t := clampf(momentum / 300.0, 0.0, 1.0) # 0 pebble 1 anvil at speed
 	var pm: ParticleProcessMaterial = p.process_material
 	pm.initial_velocity_min = lerpf(1.8, 6.5, t)
 	pm.initial_velocity_max = lerpf(3.5, 12.0, t)
@@ -402,9 +363,7 @@ func _spawn_splash(pos: Vector3, momentum: float, radius: float) -> void:
 	p.restart()
 
 
-# ---------------------------------------------------------------------------
-# Body helpers (robust across body types)
-# ---------------------------------------------------------------------------
+# body helpers robust across body types
 func _body_velocity(body: Node3D) -> Vector3:
 	if body is RigidBody3D:
 		return body.linear_velocity

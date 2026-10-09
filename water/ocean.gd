@@ -22,7 +22,7 @@ func _ready() -> void:
 	var shader = load("res://water/water shader 2.gdshader") as Shader
 	_mat = ShaderMaterial.new()
 	_mat.shader = shader
-	# Copy saved parameter values from the .tres material so colors/waves stay intact
+	# copy saved parameter values from the tres material so colors waves stay intact
 	var base := get_active_material(0) as ShaderMaterial
 	if base:
 		for param in base.shader.get_shader_uniform_list():
@@ -43,11 +43,7 @@ func _ready() -> void:
 	_mat.set_shader_parameter("ripple_str",    0.4)
 	_mat.set_shader_parameter("ripple_freq",   40.0)
 	_mat.set_shader_parameter("ripple_speed",  4.0)
-	# ripple_decay is per-second in the shader's exp(-age * ripple_decay), and
-	# ripple_radius is a hard distance cutoff -- at the old 2.0/50.0 a ripple's
-	# wavefront (age * ripple_speed) could travel several meters before fading,
-	# reading as a splash's ring crossing the whole pool. Decay much faster in
-	# time and clamp the distance tight so ripples die out locally instead.
+	# ripple_decay is per second in the shaders exp age ripple_decay and ripple_radius is a
 	_mat.set_shader_parameter("ripple_radius", 12.0)
 	_mat.set_shader_parameter("ripple_decay",  6.0)
 	_mat.set_shader_parameter("player_radius", 1.2)
@@ -56,7 +52,7 @@ func _ready() -> void:
 
 func _init_wake() -> void:
 	var mat := ParticleProcessMaterial.new()
-	# Use SPHERE not RING — guaranteed available in all Godot 4 versions
+	# use sphere not ring guaranteed available in all godot 4 versions
 	mat.emission_shape         = ParticleProcessMaterial.EMISSION_SHAPE_SPHERE
 	mat.emission_sphere_radius = 1.4
 	mat.direction              = Vector3(0, 1, 0)
@@ -139,33 +135,26 @@ func _init_bubbles() -> void:
 	_bubbles.draw_pass_1      = bubble_mesh
 	call_deferred("_add_bubbles")
 
-## World-space height of the water surface at the given point. The surface is
-## flat for buoyancy purposes, so x/z are ignored. The mesh's vertices are
-## offset from the node origin (see its AABB), so add that offset to land on the
-## actual visible surface rather than the node position.
+# world space height of the water surface at the given point the surface is
 func get_height_at(world_pos: Vector3) -> float:
 	var box := get_aabb()
 	var base := global_position.y + box.position.y + box.size.y * 0.5
-	# Add the live swell height so buoyant bodies bob with the visible waves.
+	# add the live swell height so buoyant bodies bob with the visible waves
 	return base + _wave_height(world_pos.x, world_pos.z)
 
-## The undisturbed surface, with no swell on top. player.gd needs the baseline
-## separately from get_height_at so it can bound how far a dip in the water is
-## allowed to weaken buoyancy -- see its _water_height().
+# the undisturbed surface with no swell on top player gd needs the baseline separately
 func get_rest_height() -> float:
 	var box := get_aabb()
 	return global_position.y + box.position.y + box.size.y * 0.5
 
-## One directional wave. MUST stay identical to wave_term() in the water shader.
+# one directional wave must stay identical to wave_term in the water shader
 func _wave_term(p: Vector2, d: Vector2, wl: float, amp: float, sp: float) -> float:
 	d = d.normalized()
 	var w := TAU / wl
 	var ph := w * d.dot(p) + _elapsed * sp * w
 	return amp * sin(ph)
 
-## World-space swell height at (x,z). The wave set here is identical to wave_h()
-## in the shader, and both read _elapsed / wave_time, so the CPU height the player
-## floats on exactly matches the surface you see.
+# world space swell height at x z the wave set here is identical to
 func _wave_height(x: float, z: float) -> float:
 	var p := Vector2(x, z)
 	var h := 0.0
@@ -180,10 +169,7 @@ func _wave_height(x: float, z: float) -> float:
 			amp_scale = v
 	return h * amp_scale
 
-## Spawn a big blue water eruption at `world_pos`: a tall central jet punching
-## straight up plus a wide crown of droplets spraying outward, all arcing back
-## down under gravity. `strength` (~0.5 to 2.5) scales count, height and size.
-## Call whenever something breaks the surface. Frees itself when it finishes.
+# spawn a big blue water eruption at world_pos a tall central jet punching straight
 func splash_at(world_pos: Vector3, strength: float = 1.0) -> void:
 	strength = clampf(strength, 0.2, 4.0)
 
@@ -191,16 +177,16 @@ func splash_at(world_pos: Vector3, strength: float = 1.0) -> void:
 	get_parent().add_child(root)
 	root.global_position = world_pos
 
-	# Central jet: a tight column of small droplets that shoots up.
+	# central jet a tight column of small droplets that shoots up
 	var jet := _make_droplet_burst(
-		int(clampf(34.0 * strength, 12, 180)),  # amount (unchanged)
-		0.10,                                    # emission radius (tight)
-		14.0,                                    # spread degrees (narrow column)
-		4.5 * strength, 6.5 * strength,          # velocity min/max (calmer)
-		0.03, 0.09,                              # droplet scale min/max (small)
-		1.2)                                     # lifetime (up and back down)
+		int(clampf(34.0 * strength, 12, 180)), # amount unchanged
+		0.10, # emission radius tight
+		14.0, # spread degrees narrow column
+		4.5 * strength, 6.5 * strength, # velocity min max calmer
+		0.03, 0.09, # droplet scale min max small
+		1.2) # lifetime up and back down
 
-	# Crown: a fan of fine droplets spraying out sideways.
+	# crown a fan of fine droplets spraying out sideways
 	var crown := _make_droplet_burst(
 		int(clampf(70.0 * strength, 20, 320)),
 		0.20 * strength,
@@ -213,12 +199,10 @@ func splash_at(world_pos: Vector3, strength: float = 1.0) -> void:
 	root.add_child(crown)
 	jet.emitting = true
 	crown.emitting = true
-	# The jet lives longest, so freeing on its finish clears the whole burst.
+	# the jet lives longest so freeing on its finish clears the whole burst
 	jet.finished.connect(root.queue_free)
 
-## Fire a fast, tight cone of water forward from `origin` along `direction` --
-## the visual for a "water push" attack. Only lightly pulled down so it reads as
-## a forward shove of water rather than a fountain. Frees itself when done.
+# fire a fast tight cone of water forward from origin along direction the visual
 func water_blast(origin: Vector3, direction: Vector3, strength: float = 1.0) -> void:
 	strength = clampf(strength, 0.2, 4.0)
 	var dir := direction.normalized()
@@ -228,23 +212,19 @@ func water_blast(origin: Vector3, direction: Vector3, strength: float = 1.0) -> 
 	get_parent().add_child(root)
 	root.global_position = origin
 	var blast := _make_droplet_burst(
-		int(clampf(60.0 * strength, 24, 300)),  # amount
-		0.15,                                    # emission radius
-		24.0,                                    # cone spread degrees
-		8.0 * strength, 12.0 * strength,         # fast, forward
-		0.03, 0.09,                              # small droplets
-		0.55,                                    # short-lived -> a quick shove
-		dir,                                     # travel along the push direction
-		Vector3(0, -4.0, 0))                     # light gravity so it sags a bit
+		int(clampf(60.0 * strength, 24, 300)), # amount
+		0.15, # emission radius
+		24.0, # cone spread degrees
+		8.0 * strength, 12.0 * strength, # fast forward
+		0.03, 0.09, # small droplets
+		0.55, # short lived a quick shove
+		dir, # travel along the push direction
+		Vector3(0, -4.0, 0)) # light gravity so it sags a bit
 	root.add_child(blast)
 	blast.emitting = true
 	blast.finished.connect(root.queue_free)
 
-## Send a real wave -- a curved crest of translucent water that rises from the
-## surface at `origin` and skims forward along `direction`, refracting the world
-## behind it and foaming at the top, before fading out. Travel is forced
-## horizontal (it rides the water; it can't be aimed up or down). `strength`
-## scales its size and how far it reaches.
+# send a real wave a curved crest of translucent water that rises from the
 func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
@@ -265,19 +245,17 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0) -> vo
 
 	get_parent().add_child(mi)
 	mi.global_position = origin
-	# Aim the crest (built facing -Z) along the travel direction.
+	# aim the crest built facing z along the travel direction
 	mi.look_at(origin + travel_dir, Vector3.UP)
 
 	var set_alpha := func(a: float) -> void: mat.set_shader_parameter("alpha_mul", a)
 	var tw := create_tween()
-	tw.tween_method(set_alpha, 0.0, 1.0, 0.12)                                             # rise in
-	tw.tween_property(mi, "global_position", origin + travel_dir * distance, travel_time)  # skim forward
-	tw.tween_method(set_alpha, 1.0, 0.0, 0.35)                                             # fade out
+	tw.tween_method(set_alpha, 0.0, 1.0, 0.12) # rise in
+	tw.tween_property(mi, "global_position", origin + travel_dir * distance, travel_time) # skim forward
+	tw.tween_method(set_alpha, 1.0, 0.0, 0.35) # fade out
 	tw.tween_callback(mi.queue_free)
 
-## Build a curved wave-crest sheet: highest and leading in the middle, tapering
-## at the ends, with the top curling forward (toward -Z). UV.y carries the height
-## fraction (0 base, 1 crest) for the shader's foam/tint.
+# build a curved wave crest sheet highest and leading in the middle tapering at
 func _build_wave_mesh(width: float, height: float, curl: float, bow: float) -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)
@@ -303,15 +281,14 @@ func _build_wave_mesh(width: float, height: float, curl: float, bow: float) -> A
 	return st.commit()
 
 func _wave_point(u: float, v: float, w: float, h: float, curl: float, bow: float) -> Vector3:
-	var edge := sin(u * PI)                 # 0 at the ends, 1 in the middle
+	var edge := sin(u * PI) # 0 at the ends 1 in the middle
 	var x := (u - 0.5) * w
-	var y := v * h * (0.35 + 0.65 * edge)   # crest highest in the centre
-	# Concave crescent (centre leads) plus the top curling forward, both toward -Z.
+	var y := v * h * (0.35 + 0.65 * edge) # crest highest in the centre
+	# concave crescent centre leads plus the top curling forward both toward z
 	var z := bow * (1.0 - edge) - curl * v * v
 	return Vector3(x, y, z)
 
-## Build one one-shot GPUParticles3D of ballistic blue droplets. Shared by the
-## jet and crown layers of splash_at.
+# build one one shot gpuparticles3d of ballistic blue droplets shared by the jet and
 func _make_droplet_burst(amount: int, emit_radius: float, spread: float,
 		vmin: float, vmax: float, scale_min: float, scale_max: float,
 		lifetime: float, dir := Vector3(0, 1, 0),
@@ -323,13 +300,13 @@ func _make_droplet_burst(amount: int, emit_radius: float, spread: float,
 	mat.spread                 = spread
 	mat.initial_velocity_min   = vmin
 	mat.initial_velocity_max   = vmax
-	# A touch heavier than real gravity so it snaps up and falls back crisply.
+	# a touch heavier than real gravity so it snaps up and falls back crisply
 	mat.gravity                = grav
 	mat.damping_min            = 0.0
 	mat.damping_max            = 0.0
 	mat.scale_min              = scale_min
 	mat.scale_max              = scale_max
-	# Thin out as they fly, like droplets stretching and breaking up.
+	# thin out as they fly like droplets stretching and breaking up
 	var scale_curve := Curve.new()
 	scale_curve.add_point(Vector2(0.0, 1.0))
 	scale_curve.add_point(Vector2(1.0, 0.15))
@@ -339,8 +316,7 @@ func _make_droplet_burst(amount: int, emit_radius: float, spread: float,
 	mat.angular_velocity_min   = -300.0
 	mat.angular_velocity_max   =  300.0
 
-	# White + alpha only; the droplet shader supplies the blue. Stays opaque
-	# then fades out over the last third of the arc.
+	# white alpha only the droplet shader supplies the blue stays opaque then fades out
 	var grad := Gradient.new()
 	grad.colors  = PackedColorArray([
 		Color(1, 1, 1, 1),
@@ -366,7 +342,7 @@ func _make_droplet_burst(amount: int, emit_radius: float, spread: float,
 	p.amount          = amount
 	p.lifetime        = lifetime
 	p.one_shot        = true
-	p.explosiveness   = 1.0   # whole burst leaves at the instant of impact
+	p.explosiveness   = 1.0 # whole burst leaves at the instant of impact
 	p.local_coords    = false
 	p.visibility_aabb = AABB(Vector3(-8, -2, -8), Vector3(16, 16, 16))
 	p.process_material = mat
@@ -407,7 +383,7 @@ func _ensure_body(body: RigidBody3D) -> void:
 		_reset_body(body)
 		_spawn_splash(body)
 	elif _bodies[body]["leaving"]:
-		# Body re-entered water
+		# body re entered water
 		_bodies[body]["leaving"] = false
 		_spawn_splash(body)
 
@@ -415,18 +391,18 @@ func _process(delta: float) -> void:
 	if _mat == null:
 		return
 	_elapsed += delta
-	# Drive the shader's wave clock from the same value the CPU height uses.
+	# drive the shaders wave clock from the same value the cpu height uses
 	_mat.set_shader_parameter("wave_time", _elapsed)
 
 	var active := _get_bodies_in_water()
 
-	# Mark bodies that left — record the exact time they left
+	# mark bodies that left record the exact time they left
 	for b in _bodies.keys():
 		if not active.has(b) and not _bodies[b]["leaving"]:
 			_bodies[b]["leaving"]   = true
 			_bodies[b]["leave_time"] = _elapsed
 
-	# Remove leaving bodies after a fixed fade window (4 seconds)
+	# remove leaving bodies after a fixed fade window 4 seconds
 	var fade_window : float = 4.0
 	for b in _bodies.keys():
 		if _bodies[b]["leaving"]:
@@ -466,7 +442,7 @@ func _process(delta: float) -> void:
 	_mat.set_shader_parameter("trail_pos", _trail_pos)
 	_mat.set_shader_parameter("trail_age", _trail_age)
 
-	# Wake particles: follow active body, only emit while moving
+	# wake particles follow active body only emit while moving
 	var wake_active := false
 	for b in _bodies.keys():
 		if not _bodies[b]["leaving"]:

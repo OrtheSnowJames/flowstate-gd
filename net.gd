@@ -1,110 +1,57 @@
-## Host-based multiplayer (a listen server): whoever hosts runs the world AND
-## plays in it. There's no dedicated-server build and nothing here assumes one.
-##
-## Connecting is hardcoded for now -- see join_ip and the F1/F2 debug keys at
-## the bottom. host_game()/join_game() are the entire public API, so a menu UI
-## can drive this later by calling them and deleting _unhandled_input.
-##
-## Who owns what:
-##  - Each player body is owned by the peer it belongs to (see player.gd's
-##    _enter_tree), which broadcasts its own position/animation and decides its
-##    own stamina and death.
-##  - The host owns the world: PushCube's physics, and spawning/despawning the
-##    player bodies themselves.
+# host based multiplayer a listen server whoever hosts runs the world and plays in
 extends Node
 
 const PORT := 7654
 const MAX_PLAYERS := 8
 const PLAYER_SCENE := preload("res://water/player.tscn")
-## The scene's script, preloaded purely to reach its Team enum by name below
-## rather than writing bare 0/1 here. player.gd has no class_name (nothing in
-## this project does -- it's duck-typed throughout), so this is how the enum
-## gets a qualified name on this side.
+# the scenes script preloaded purely to reach its team enum by name below rather
 const PLAYER_SCRIPT := preload("res://water/player.gd")
-## The 3-2-1-GO! label. Instantiated into the arena's HUD at round start --
-## see _ensure_message_text().
+# the 3 2 1 go label instantiated into the arenas hud at round start
 const COUNTDOWN_TEXT := preload("res://menu/appear_disappear_text.tscn")
-## Where connecting lands you. A path rather than a preload: menu/lobby.tscn
-## instances ocean1.tscn for its background, and preloading it here (from an
-## autoload, which resolves before the scene tree exists) would drag that whole
-## arena in at boot.
+# where connecting lands you a path rather than a preload menu lobby tscn instances
 const LOBBY_SCENE := "res://menu/lobby.tscn"
 
-## Where join_game() connects when called with no argument. Point this at a
-## real address (or read it off a UI field) to play over a network.
+# where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
 
-## Off by default, on purpose: pressing test_lifeguard_key (see project.godot's
-## input map -- "L" as of writing) with this off does nothing at all. Unlike
-## the F1/F2 host/join keys (harmless if someone leaves them in and presses
-## one by accident), a live lifeguard toggle is a permanent gameplay-changing
-## buff -- a stray keypress handing that out for real is worth its own
-## explicit switch, not just "delete before shipping" discipline. Flip this
-## on in the Inspector only while actually testing is_lifeguard.
+# off by default on purpose pressing test_lifeguard_key see project godots input map l as
 @export var enable_lifeguard_test_key: bool = true
 
-## Spawn point of the player that used to be baked into ocean1.tscn. Players
-## are fanned out around it so two peers don't spawn inside each other.
+# spawn point of the player that used to be baked into ocean1 tscn players
 const _SPAWN_ORIGIN := Vector3(0.0, 15.134187, 0.0)
 const _SPAWN_SPREAD := 2.5
 
-## How far off the pool's centre line each team starts, in metres along Z --
-## the axis the teams are split on (see spawn_position). The water box is 46
-## deep (ocean1.tscn's "water base" size), so ±11 puts each team in the middle
-## of its own half rather than pinned against the back wall.
+# how far off the pools centre line each team starts in metres along z
 const _TEAM_SPAWN_Z := 11.0
-## Gap between teammates along X, the deep/shallow axis.
+# gap between teammates along x the deep shallow axis
 const _TEAM_SPAWN_SPACING := 3.0
 
 func _ready() -> void:
-	# Connected once here rather than inside host_game(): hosting twice would
-	# otherwise stack duplicate connections and spawn two bodies per peer.
+	# connected once here rather than inside host_game hosting twice would otherwise stack duplicate connections
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
 	multiplayer.connected_to_server.connect(_on_connected_to_server)
 	multiplayer.connection_failed.connect(_on_connection_failed)
 	multiplayer.server_disconnected.connect(_on_server_disconnected)
 
-	# Deferred because the scene tree isn't built yet during an autoload _ready.
+	# deferred because the scene tree isnt built yet during an autoload _ready
 	call_deferred("_spawn_for_direct_scene_launch")
-	# Runs after the above, so hosting sees any already-spawned body and
-	# no-ops on it, and joining clears it.
+	# runs after the above so hosting sees any already spawned body and no ops
 	call_deferred("_apply_command_line")
 
 
-## Opening water/ocean1.tscn directly -- in the editor, pressing play on the
-## arena itself rather than coming through the menu -- still has to put a
-## usable body in the pool. The player used to be baked into that scene, and
-## taking it out to spawn per-peer would otherwise leave that workflow with
-## nothing to control.
-##
-## Marking the round live before spawning is the load-bearing part, not
-## incidental: bodies now spawn movement_locked and are released by the
-## countdown (see _add_player/_run_countdown), and there's no lobby, no host
-## and no countdown anywhere in this path -- so without this the body would
-## come up frozen with nothing left to ever unlock it.
-##
-## Boots that DO come through the menu land here first with no Players node at
-## all (menu.tscn and lobby.tscn both set delete_players), and just return.
+# opening water ocean1 tscn directly in the editor pressing play on the arena itself
 func _spawn_for_direct_scene_launch() -> void:
 	if _players_root() == null:
 		return
 	round_state = RoundState.PLAYING
 	_assign_team(multiplayer.get_unique_id())
+	net_report_name(Settings.player_name)
+	_reset_round_scoreboard()
 	_add_player(multiplayer.get_unique_id())
 
 
-## Lets two instances be launched straight into a session from a terminal:
-##   godot -- --host
-##   godot -- --join=192.168.1.42
-## purely so multiplayer can be tested without alt-tabbing to press F1/F2.
-## The debug keys and join_ip still work exactly the same; delete this along
-## with _unhandled_input when the menu UI lands.
-##
-## --host opens a lobby and waits in it, rather than dropping straight into
-## the pool: that's what hosting means now (see start_round). The round begins
-## when someone presses Start, so a peer connecting with --join lands in the
-## same lobby and both go in together.
+# lets two instances be launched straight into a session from a terminal godot host
 func _apply_command_line() -> void:
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--host":
@@ -115,14 +62,7 @@ func _apply_command_line() -> void:
 			start_connect(arg.trim_prefix("--join="))
 
 
-## True once we're hosting or connected -- guards the debug keys against
-## re-hosting on top of a live session.
-##
-## The OfflineMultiplayerPeer check is load-bearing, not defensive: Godot always
-## has a multiplayer_peer set, defaulting to an OfflineMultiplayerPeer that
-## reports itself CONNECTION_CONNECTED. A plain null/status check is therefore
-## true even when nothing is networked, which made this return true before the
-## first connection and silently refuse every host_game()/join_game() call.
+# true once were hosting or connected guards the debug keys against re hosting on
 func is_online() -> bool:
 	var peer := multiplayer.multiplayer_peer
 	return peer != null \
@@ -140,15 +80,11 @@ func host_game() -> Error:
 		push_error("net: couldn't host on port %d (error %d)" % [PORT, err])
 		return err
 	multiplayer.multiplayer_peer = peer
-	# The host plays too, so it takes a lobby slot (and a side) right away --
-	# but NOT a body. Bodies are spawned by a round starting, not by connecting
-	# (see start_round); handing the host one here would leave it swimming
-	# around on its own while everyone else is still sitting in the lobby.
-	# Callers that want to go straight into the pool without a lobby say so
-	# explicitly -- see start_solo_play() and the --host command line.
+	# the host plays too so it takes a lobby slot and a side right
 	round_state = RoundState.LOBBY
 	_assign_team(multiplayer.get_unique_id())
-	_broadcast_teams()
+	# direct call not update_my_name we only just became the host inside this very function
+	net_report_name(Settings.player_name)
 	lobby_changed.emit()
 	print("net: hosting on port %d as peer %d" % [PORT, multiplayer.get_unique_id()])
 	return OK
@@ -164,10 +100,7 @@ func join_game(ip := "") -> Error:
 	if err != OK:
 		push_error("net: couldn't reach %s:%d (error %d)" % [address, PORT, err])
 		return err
-	# Drop the solo body _ready spawned. As a client our peer id won't be 1 any
-	# more, so that body isn't ours -- and the host's MultiplayerSpawner is
-	# about to send us the real roster, this one included, which would collide
-	# with it by name.
+	# drop the solo body _ready spawned as a client our peer id wont be
 	_clear_players()
 	multiplayer.multiplayer_peer = peer
 	print("net: connecting to %s:%d ..." % [address, PORT])
@@ -182,30 +115,18 @@ func leave_game() -> void:
 	print("net: left the game")
 
 
-# ---------------------------------------------------------------------------
-# Player bodies
-# ---------------------------------------------------------------------------
-## Spawns a body for whichever peer this is, right now, in whatever scene is
-## currently active. _ready()'s own deferred spawn only ever fires once, at
-## boot, against whichever scene happened to be current then -- with menu.tscn
-## as run/main_scene that's the menu itself (no "Players" node, so it's a
-## no-op there), so Solo Play needs its own explicit spawn once it's actually
-## switched to a scene that has one. See menu.gd's Solo Play handler.
+# player bodies spawns a body for whichever peer this is right now in whatever
 func spawn_local_player() -> void:
 	_add_player(multiplayer.get_unique_id())
 
 
-## Where spawned players live. The MultiplayerSpawner in ocean1.tscn watches
-## this node, so the host adding a child here is what replicates it to every
-## client -- clients never add players themselves.
+# where spawned players live the multiplayerspawner in ocean1 tscn watches this node so the
 func _players_root() -> Node:
 	var scene := get_tree().current_scene
 	return scene.get_node_or_null("Players") if scene else null
 
 
-## Removes every player body. Used when switching what session we're in --
-## joining someone else's game, or leaving one -- so stale bodies from the
-## previous state can't linger or collide by name with the incoming roster.
+# removes every player body used when switching what session were in joining someone elses
 func _clear_players() -> void:
 	var players := _players_root()
 	if players == null:
@@ -218,77 +139,48 @@ func _clear_players() -> void:
 func _add_player(id: int) -> void:
 	var players := _players_root()
 	if players == null:
-		# A warning, not an error: this fires on every scene load that doesn't
-		# want the networked player roster at all -- the menu background (see
-		# menu/menu.gd) drops its own standalone player.tscn instance directly
-		# instead, deliberately outside this system. That's a legitimate scene,
-		# not a bug, so this shouldn't read as one in the log.
+		# a warning not an error this fires on every scene load that doesnt want
 		push_warning("net: no Players node in the current scene -- can't spawn peer %d" % id)
 		return
 	if players.has_node(str(id)):
 		return
 	var player := PLAYER_SCENE.instantiate()
-	# The name IS the peer id: it replicates with the node, and player.gd reads
-	# it back in _enter_tree to decide who controls this body. Set before
-	# add_child so the name is already right when the node enters the tree.
+	# the name is the peer id it replicates with the node and player gd
 	player.name = str(id)
-	# Sides are settled back in the lobby, well before anyone gets a body (see
-	# _assign_team, called from _on_peer_connected). By the time a round starts
-	# the table has been synced to everyone, so both ends work out the same
-	# spawn point for the same player without it having to be sent.
+	# sides are settled back in the lobby well before anyone gets a body see
 	if multiplayer.is_server() or not is_online():
 		_assign_team(id)
 	player.team = _teams.get(id, PLAYER_SCRIPT.Team.RED)
-	# One per side, rolled at round start (see _pick_lifeguards). Set before
-	# add_child so the body comes up already wearing the kickboard rig rather
-	# than visibly swapping into it a frame later.
+	# one per side rolled at round start see _pick_lifeguards set before add_child so the
 	player.is_lifeguard = is_lifeguard_peer(id)
 	player.position = spawn_position(id)
 	player.rotation.y = spawn_rotation_y(id)
-	# Held still until the countdown finishes -- see _run_countdown(). Set
-	# before add_child so a body is locked from the very first frame it
-	# exists, rather than getting one free frame of input.
+	# held still until the countdown finishes see _run_countdown set before add_child so a body
 	player.movement_locked = round_state != RoundState.PLAYING
 	players.add_child(player, true)
-	# After add_child, not before: broadcasting the table is what actually gets
-	# the assignment to the clients, and it has to follow the spawn packet so
-	# the body it refers to already exists on the other end.
-	_broadcast_teams()
+	# after add_child not before broadcasting the table is what actually gets the assignment to
+	_broadcast_roster()
 	print("net: spawned player for peer %d" % id)
 
 
-# ---------------------------------------------------------------------------
-# Lobby and round lifecycle
-# ---------------------------------------------------------------------------
-## Peers connect into a lobby and sit there with no bodies in the world at
-## all; the host pressing Start is what puts everyone in the pool. That's the
-## whole reason for this state: it tells _on_peer_connected whether a peer
-## joining should get a body right now (mid-round) or just a lobby slot.
+# lobby and round lifecycle peers connect into a lobby and sit there with no
 enum RoundState {
-	LOBBY,    ## connected, waiting for the host to start
-	LOADING,  ## everyone's switching to the arena; host is waiting on them
-	PLAYING,  ## bodies spawned, countdown done or running
+	LOBBY, # connected waiting for the host to start
+	LOADING, # everyones switching to the arena host is waiting on them
+	PLAYING, # bodies spawned countdown done or running
 }
 var round_state: RoundState = RoundState.LOBBY
 
-## The lobby roster changed -- someone joined, left, or the team table
-## arrived. The lobby UI redraws off this rather than polling.
+# the lobby roster changed someone joined left or the team table arrived the lobby
 signal lobby_changed
-## The host has started; everyone is loading the arena. Lets the lobby screen
-## stop offering a Start button the moment it's been pressed.
+# the host has started everyone is loading the arena lets the lobby screen stop
 signal round_loading
 
-## Host-only: which peers have told us they've finished loading the arena (see
-## net_arena_ready). Spawning before a client's MultiplayerSpawner exists means
-## the spawn packet lands with nowhere to route -- the same failure that shaped
-## start_connect()'s scene-then-connect ordering -- so the host waits for this
-## set to fill rather than guessing at a delay.
+# host only which peers have told us theyve finished loading the arena see net_arena_ready
 var _arena_ready: Dictionary = {}
 
 
-## Open a lobby and wait in it. The host's half of start_connect_localhost(),
-## reached directly by --host and F1 rather than by trying to connect to
-## yourself first and failing.
+# open a lobby and wait in it the hosts half of start_connect_localhost reached directly
 func start_host_lobby() -> void:
 	if is_online():
 		push_warning("net: already online, ignoring start_host_lobby()")
@@ -301,10 +193,7 @@ func start_host_lobby() -> void:
 	await Transition.fade_from_black()
 
 
-## Drop out of the session and go back to the main menu. Separate from
-## leave_game() (which only tears down the connection) because the lobby needs
-## the scene change too, and that has to happen from an autoload -- it frees
-## the lobby node partway through.
+# drop out of the session and go back to the main menu separate from
 func leave_lobby() -> void:
 	leave_game()
 	_teams.clear()
@@ -318,18 +207,12 @@ func leave_lobby() -> void:
 	await Transition.fade_from_black()
 
 
-## How many peers are in the session, host included. The team table doubles as
-## the lobby roster: the host writes an entry the moment a peer connects and
-## broadcasts the whole thing, so every peer already has the full list without
-## needing a second roster message of its own. (ENet's client/server topology
-## means clients never see each other's peer_connected -- they only ever hear
-## about the server -- so this table is genuinely the only roster they get.)
+# how many peers are in the session host included the team table doubles as
 func lobby_count() -> int:
 	return _teams.size()
 
 
-## Host-only: put everyone in the pool. Safe to call twice -- the state check
-## makes the second press a no-op rather than restarting a round in progress.
+# host only put everyone in the pool safe to call twice the state check
 func start_round() -> void:
 	if not multiplayer.is_server() and is_online():
 		push_warning("net: only the host can start the round")
@@ -342,8 +225,7 @@ func start_round() -> void:
 		net_load_arena()
 
 
-## Everyone: switch to the arena, then report back. The host doesn't spawn
-## anybody until every peer has said it's here -- see _arena_ready.
+# everyone switch to the arena then report back the host doesnt spawn anybody until
 @rpc("authority", "call_local", "reliable")
 func net_load_arena() -> void:
 	round_state = RoundState.LOADING
@@ -351,20 +233,11 @@ func net_load_arena() -> void:
 	_load_arena()
 
 
-## Deliberately leaves the screen black at the end rather than fading back in
-## here. Bodies don't exist yet at this point -- the host only spawns them once
-## every peer has reported in -- and with no local body there's no camera
-## either, so fading in here would reveal an empty, un-viewed pool for however
-## long the slowest peer takes to load. net_countdown() does the fade instead,
-## by which time there's a body to look through.
+# deliberately leaves the screen black at the end rather than fading back in here
 func _load_arena() -> void:
 	await Transition.fade_to_black()
 	get_tree().change_scene_to_file("res://water/ocean1.tscn")
-	# Wait for the Players node to genuinely exist rather than counting frames
-	# and hoping. change_scene_to_file() is deferred, and reporting ready one
-	# frame early means the host starts sending spawn packets at a peer whose
-	# MultiplayerSpawner isn't in the tree yet -- they land with nowhere to
-	# route and that peer spends the round bodiless.
+	# wait for the players node to genuinely exist rather than counting frames and hoping
 	var waited := 0.0
 	while _players_root() == null and waited < 10.0:
 		await get_tree().process_frame
@@ -372,16 +245,15 @@ func _load_arena() -> void:
 	if _players_root() == null:
 		push_error("net: arena never came up -- can't join the round")
 		return
-	# The arena (and with it Players + MultiplayerSpawner) exists now, so it's
-	# safe for the host to start sending spawn packets at us.
+	_apply_round_scoreboard_to_scene()
+	# the arena and with it players multiplayerspawner exists now so its safe for the
 	if is_online():
 		rpc_id(1, "net_arena_ready")
 	else:
 		net_arena_ready()
 
 
-## Host-only in practice: a peer reporting its arena is up. Once everyone has
-## checked in, the host spawns the whole roster and starts the countdown.
+# host only in practice a peer reporting its arena is up once everyone has
 @rpc("any_peer", "call_local", "reliable")
 func net_arena_ready() -> void:
 	if is_online() and not multiplayer.is_server():
@@ -405,12 +277,12 @@ func _everyone_ready() -> bool:
 	return true
 
 
-## Host-only: spawn the whole roster, then set everyone counting down.
+# host only spawn the whole roster then set everyone counting down
 func _begin_round() -> void:
 	round_state = RoundState.PLAYING
 	_arena_ready.clear()
-	# Before any body is built, so _add_player() can set is_lifeguard from the
-	# roster as it spawns each one rather than swapping rigs afterwards.
+	_reset_round_scoreboard()
+	# before any body is built so _add_player can set is_lifeguard from the roster as
 	_pick_lifeguards()
 	for id in _teams.keys():
 		_add_player(id)
@@ -420,23 +292,16 @@ func _begin_round() -> void:
 		net_countdown()
 
 
-## Everyone: hold the bodies still, count in, then hand control over. Driven
-## by one broadcast from the host rather than each peer starting its own clock
-## when it happens to finish loading, so the counts line up across windows.
+# everyone hold the bodies still count in then hand control over driven by one
 @rpc("authority", "call_local", "reliable")
 func net_countdown() -> void:
 	round_state = RoundState.PLAYING
 	_run_countdown()
 
 
-## The 3-2-1-GO! itself. Each number is one full play() of
-## menu/appear_disappear_text.tscn (it holds, then spins and shrinks away),
-## and nothing unlocks until the last one has finished.
+# the 3 2 1 go itself each number is one full play of menu
 func _run_countdown() -> void:
-	# Lock first, fade second: the bodies exist by now, and this is the last
-	# moment before the player can see them. Releasing input even for the
-	# frames the fade takes would let someone with fast hands swim off before
-	# the "3" has appeared.
+	# lock first fade second the bodies exist by now and this is the last
 	_set_movement_locked(true)
 	await Transition.fade_from_black()
 	var prompt := _ensure_message_text()
@@ -448,23 +313,11 @@ func _run_countdown() -> void:
 	_set_movement_locked(false)
 
 
-# ---------------------------------------------------------------------------
-# Winning and losing
-# ---------------------------------------------------------------------------
-## Set the moment a round is decided, cleared once everyone is back up. Stops
-## a wipe being declared twice: net_death fires for every body, so without
-## this the second and third members of a wiped team would each announce the
-## same result again.
+# winning and losing set the moment a round is decided cleared once everyone is
 var _round_over := false
 
 
-## Called from player.gd's net_death() every time anybody goes under. Decides
-## whether that finished the round.
-##
-## Host-only, like every other roster decision here -- net_death() runs on
-## every peer, so without this guard each of them would reach its own verdict
-## and broadcast it. Offline (solo) there's no server, so the local instance
-## is the authority by default.
+# called from player gds net_death every time anybody goes under decides whether that finished
 func on_player_down() -> void:
 	if is_online() and not multiplayer.is_server():
 		return
@@ -474,9 +327,7 @@ func on_player_down() -> void:
 	if players == null:
 		return
 
-	# Tally per side, counting only sides somebody is actually playing -- an
-	# empty team must never register as "everyone on it is dead", or solo play
-	# would declare a winner the moment the round started.
+	# tally per side counting only sides somebody is actually playing an empty team must
 	var total := {}
 	var downed := {}
 	for p in players.get_children():
@@ -488,6 +339,9 @@ func on_player_down() -> void:
 	if total.is_empty():
 		return
 
+	_remember_fainted_players(players)
+	_sync_round_scoreboard()
+
 	var any_wiped := false
 	var winners := []
 	for team in total:
@@ -498,9 +352,7 @@ func on_player_down() -> void:
 	if not any_wiped:
 		return
 
-	# winners can legitimately come back empty -- both sides going under
-	# together, or solo play where the only side there is the one that just
-	# went down. Nobody won, so nobody is told they did.
+	# winners can legitimately come back empty both sides going under together or solo play
 	_round_over = true
 	if is_online():
 		rpc("net_round_over", winners)
@@ -508,35 +360,16 @@ func on_player_down() -> void:
 		net_round_over(winners)
 
 
-## Everyone: freeze the pool, open everyone's eyes, show this window's own
-## verdict, then head back to the lobby.
-##
-## Nobody gets another input from here on -- the round is decided, and the
-## revive is cosmetic (see _revive_everyone), not a second chance.
+# everyone freeze the pool open everyones eyes show this windows own verdict then head
 @rpc("authority", "call_local", "reliable")
 func net_round_over(winners: Array) -> void:
 	_round_over = true
-	# Down tools immediately, before anything else: the round is decided the
-	# moment the last body drops, so the surviving side shouldn't get a free
-	# second of swimming (or hitting) while the result is on screen.
+	# down tools immediately before anything else the round is decided the moment the last
 	_set_movement_locked(true)
-	# Stop replicating here rather than just before the scene change: nothing
-	# moves from this point, and every peer reaching this within a frame or so
-	# of the others means they all go quiet at once -- whereas doing it on the
-	# way out gives whoever tears down first a window to be shouted at about
-	# bodies it has already freed. Safe despite the revive landing after this:
-	# net_revive is an RPC that sets movement_state on every peer directly, so
-	# nothing in the rest of this sequence relies on the synchronizers.
+	# stop replicating here rather than just before the scene change nothing moves from this
 	_silence_synchronizers()
 
-	# Revive BEFORE the banner, not after. The whole point of it is that the
-	# losing side reads their result through open eyes -- doing it afterwards
-	# meant they spent the entire banner staring at the blackout it exists to
-	# clear, and then had it lift just as the screen changed anyway.
-	#
-	# One peer drives it: revive() broadcasts per body, so having every peer
-	# call it on every body would send the same news N times over. The banner
-	# below gives that broadcast time to land before anyone's looking.
+	# revive before the banner not after the whole point of it is that the
 	if not is_online() or multiplayer.is_server():
 		_revive_everyone()
 
@@ -547,20 +380,11 @@ func net_round_over(winners: Array) -> void:
 	else:
 		await get_tree().create_timer(1.0).timeout
 
-	# Everyone, not just the host -- each peer walks itself back out.
+	# everyone not just the host each peer walks itself back out
 	await _return_to_lobby()
 
 
-## Back to the waiting room after a round, with the roster intact so the same
-## group can go again. Every peer runs this for itself.
-##
-## Resetting the round bookkeeping here rather than on the way in is what
-## makes a second round possible at all: start_round() refuses unless the
-## state is LOBBY, _round_over would block the next result from being
-## declared, and a stale _arena_ready would have the host think peers were
-## already loaded before they'd loaded anything. _lifeguards is cleared too --
-## _pick_lifeguards() rolls a fresh pair next round, so keeping the old one
-## around would only ever be stale.
+# back to the waiting room after a round with the roster intact so the
 func _return_to_lobby() -> void:
 	round_state = RoundState.LOBBY
 	_round_over = false
@@ -573,24 +397,12 @@ func _return_to_lobby() -> void:
 	await Transition.fade_from_black()
 
 
-## Stops the player bodies broadcasting, as soon as the round is decided.
-##
-## Everyone is frozen from that moment (net_round_over locks movement first),
-## so there is nothing left worth replicating. Left running, they keep
-## publishing right through the round-end banner and the scene change -- and
-## since peers don't free their arenas on the exact same frame, whoever tears
-## down first spends that gap rejecting sync packets for bodies it no longer
-## has ("Ignoring sync data ... for missing node"). Nothing breaks, but it's a
-## burst of errors in the log for data nobody wants by then.
+# stops the player bodies broadcasting as soon as the round is decided everyone is
 func _silence_synchronizers() -> void:
 	var scene := get_tree().current_scene
 	if scene == null:
 		return
-	# The whole scene, not just the player bodies. The players were the
-	# obvious suspects and silencing only them changed nothing -- the arena
-	# also replicates PushCube (ocean1.tscn gives it its own synchronizer, so
-	# its physics can live on the host), and that was what carried on
-	# broadcasting into the teardown.
+	# the whole scene not just the player bodies the players were the obvious suspects
 	for sync in _synchronizers_in(scene):
 		sync.public_visibility = false
 
@@ -604,16 +416,7 @@ func _synchronizers_in(node: Node) -> Array[MultiplayerSynchronizer]:
 	return found
 
 
-## Opens everyone's eyes again. This is cosmetic, not a second chance: being
-## knocked out blacks your screen out (see player.gd's _death -- the eyelids
-## fall and the ear ringing starts), and reading your result through that is
-## no way to end a round. revive() is what tweens the lids back open and cuts
-## the ringing, so it's used purely for that. Nobody gets to move either way --
-## net_round_over() locks movement first and never unlocks it.
-##
-## Applied to everyone, not just the downed side: revive() no-ops on anyone
-## already conscious, so the winners cost nothing and there's no roster to
-## keep straight.
+# opens everyones eyes again this is cosmetic not a second chance being knocked out
 func _revive_everyone() -> void:
 	var players := _players_root()
 	if players == null:
@@ -623,10 +426,7 @@ func _revive_everyone() -> void:
 			p.revive()
 
 
-## Locks or releases every body in the arena. Applied to all of them, not just
-## the local one: a remote body ignores input anyway, but keeping the flag
-## consistent everywhere means a peer that looks at someone else's body (the
-## revive prompt does) sees the same state its owner does.
+# locks or releases every body in the arena applied to all of them not
 func _set_movement_locked(locked: bool) -> void:
 	var players := _players_root()
 	if players == null:
@@ -636,12 +436,94 @@ func _set_movement_locked(locked: bool) -> void:
 			p.movement_locked = locked
 
 
-## The big centred message label, built on demand into the arena's HUD layer.
-## Shared by the countdown and the round-result banner -- it's one "say a word
-## in the middle of the screen" widget, and two of them would only be able to
-## fight over the same patch of screen. Made here rather than baked into
-## ocean1.tscn so the arena scene needs no edit and the label can't linger
-## between rounds.
+# round scoreboard
+var _round_faints: Dictionary = {
+	PLAYER_SCRIPT.Team.RED: {},
+	PLAYER_SCRIPT.Team.BLUE: {},
+}
+var _round_red_score := 0
+var _round_blue_score := 0
+var _round_red_goal := 0
+var _round_blue_goal := 0
+
+
+func _reset_round_scoreboard() -> void:
+	_round_faints[PLAYER_SCRIPT.Team.RED] = {}
+	_round_faints[PLAYER_SCRIPT.Team.BLUE] = {}
+	_sync_round_scoreboard()
+
+
+func _remember_fainted_players(players: Node) -> void:
+	for p in players.get_children():
+		if not ("team" in p and "_unconscious" in p):
+			continue
+		if not p._unconscious:
+			continue
+		var scoring_team := _opponent_team(p.team)
+		if scoring_team < 0:
+			continue
+		var id := String(p.name).to_int()
+		if id <= 0:
+			id = p.get_instance_id()
+		_round_faints[scoring_team][id] = true
+
+
+func _forget_round_faint(id: int) -> void:
+	for team in _round_faints.keys():
+		_round_faints[team].erase(id)
+
+
+func _opponent_team(team: int) -> int:
+	if team == PLAYER_SCRIPT.Team.RED:
+		return PLAYER_SCRIPT.Team.BLUE
+	if team == PLAYER_SCRIPT.Team.BLUE:
+		return PLAYER_SCRIPT.Team.RED
+	return -1
+
+
+func _round_score_for(team: int) -> int:
+	return int(_round_faints.get(team, {}).size())
+
+
+func _round_goal_for(team: int) -> int:
+	var opponent := _opponent_team(team)
+	return _peers_on_team(opponent).size() if opponent >= 0 else 0
+
+
+@rpc("authority", "call_local", "reliable")
+func net_sync_round_scoreboard(red_score: int, blue_score: int, red_goal: int, blue_goal: int) -> void:
+	_round_red_score = red_score
+	_round_blue_score = blue_score
+	_round_red_goal = red_goal
+	_round_blue_goal = blue_goal
+	_apply_round_scoreboard_to_scene()
+
+
+func _sync_round_scoreboard() -> void:
+	var red := _round_score_for(PLAYER_SCRIPT.Team.RED)
+	var blue := _round_score_for(PLAYER_SCRIPT.Team.BLUE)
+	var red_goal := _round_goal_for(PLAYER_SCRIPT.Team.RED)
+	var blue_goal := _round_goal_for(PLAYER_SCRIPT.Team.BLUE)
+	if is_online() and multiplayer.is_server():
+		rpc("net_sync_round_scoreboard", red, blue, red_goal, blue_goal)
+	else:
+		net_sync_round_scoreboard(red, blue, red_goal, blue_goal)
+
+
+func _apply_round_scoreboard_to_scene() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	var scoreboard := scene.get_node_or_null("Scoreboard")
+	if scoreboard and scoreboard.has_method("set_round_progress"):
+		scoreboard.set_round_progress(
+			_round_red_score,
+			_round_blue_score,
+			_round_red_goal,
+			_round_blue_goal)
+
+
+# the big centred message label built on demand into the arenas hud layer shared
 func _ensure_message_text() -> Node:
 	var scene := get_tree().current_scene
 	if scene == null:
@@ -654,50 +536,21 @@ func _ensure_message_text() -> Node:
 		return existing
 	var prompt := COUNTDOWN_TEXT.instantiate()
 	prompt.name = "Message"
-	# No layout fixup needed here: appear_disappear_text.tscn anchors itself
-	# full-rect (root AND its CenterContainer), so it centres on whatever it's
-	# added to. Doing it from this side was tried and couldn't work anyway --
-	# the root isn't what was mispositioned, the 40x40 CenterContainer inside
-	# it was, and nothing set on the root reaches that.
+	# no layout fixup needed here appear_disappear_text tscn anchors itself full rect root and its
 	gui.add_child(prompt)
 	return prompt
 
 
-# ---------------------------------------------------------------------------
-# Teams
-# ---------------------------------------------------------------------------
-## Who's on which side, peer id -> Player.Team. The host owns this outright and
-## pushes the whole thing to everyone with net_sync_roster(); clients only ever
-## receive it.
-##
-## Deliberately NOT replicated through the player body's own
-## MultiplayerSynchronizer, which is where this started and where it broke.
-## Two separate problems, either one fatal:
-##   - A spawn-only property (spawn = true, replication_mode = NEVER) never
-##     actually arrived; the client's body came up with the scene default.
-##   - Making it a synced property instead is worse, not better: a client is
-##     the authority on its OWN body, so it would immediately publish its own
-##     default straight back over whatever the host assigned. That's the same
-##     trap spawn_position() documents for `position` -- the value the host
-##     sets doesn't survive contact with the owner's authority.
-## Routing it through here sidesteps both: teams are roster data, the host owns
-## the roster, and an RPC doesn't care who has authority over which node.
+# teams whos on which side peer id player team the host owns this outright
 var _teams: Dictionary = {}
 
 
-## This peer's idea of what side `id` is on, or -1 if it hasn't been told yet.
+# this peers idea of what side id is on or 1 if it hasnt
 func team_of(id: int) -> int:
 	return _teams.get(id, -1)
 
 
-## Assigns (once) and returns the side a peer plays for. Host-only: reached
-## only through _add_player(), which only the host runs. Idempotent, so a peer
-## that respawns keeps the side it already had rather than being reshuffled.
-##
-## Balances by counting the roster rather than deriving from the peer id the
-## way spawn_position() does -- peer ids are large random numbers, so anything
-## like `id % 2` would be a coin flip per player and could happily put a whole
-## four-person lobby on red.
+# assigns once and returns the side a peer plays for host only reached only
 func _assign_team(id: int) -> int:
 	if _teams.has(id):
 		return _teams[id]
@@ -712,30 +565,59 @@ func _assign_team(id: int) -> int:
 	return _teams[id]
 
 
-## Each side's lifeguard, Player.Team -> peer id. Exactly one per team, drawn
-## at random when the round starts (see _pick_lifeguards).
-##
-## Host-owned and broadcast for the same reason the team table is, but with a
-## sharper edge: this one is *random*, so unlike spawn_position() there's no
-## deriving it independently per peer and having everyone agree. Whatever the
-## host rolled is the only answer, and it has to be sent.
+# peer display name same host owned broadcast pattern as _teams and _lifeguards but the
+var _names: Dictionary = {}
+
+const _DEFAULT_NAME := "Player"
+# keeps lobby rows and nameplates a sane width regardless of what got typed
+const _MAX_NAME_LEN := 20
+
+
+# ids chosen display name or a generic fallback if it hasnt reported one yet
+func name_of(id: int) -> String:
+	return _names.get(id, _DEFAULT_NAME)
+
+
+# trims length caps and falls back to _default_name for anything thats blank after trimming
+func _sanitize_name(raw: String) -> String:
+	var trimmed := raw.strip_edges()
+	if trimmed.is_empty():
+		return _DEFAULT_NAME
+	return trimmed.substr(0, _MAX_NAME_LEN)
+
+
+# every peer calls this once its actually connected see _on_connected_to_server host_game _spawn_for_direct_scene_launch and again
+@rpc("any_peer", "reliable")
+func net_report_name(display_name: String) -> void:
+	if is_online() and not multiplayer.is_server():
+		return
+	# get_remote_sender_id is 0 when this wasnt reached via an actual incoming rpc i e
+	var sender := multiplayer.get_remote_sender_id()
+	var id := sender if sender != 0 else multiplayer.get_unique_id()
+	_names[id] = _sanitize_name(display_name)
+	_broadcast_roster()
+	lobby_changed.emit()
+
+
+# sends this peers current settings player_name to whoever owns the roster the host itself
+func update_my_name() -> void:
+	if is_online() and not multiplayer.is_server():
+		rpc_id(1, "net_report_name", Settings.player_name)
+	else:
+		net_report_name(Settings.player_name)
+
+
+# each sides lifeguard player team peer id exactly one per team drawn at random
 var _lifeguards: Dictionary = {}
 
 
-## Whether `id` is their team's lifeguard -- the only player who can revive
-## (see player.gd's _revive_target).
+# whether id is their teams lifeguard the only player who can revive see player
 func is_lifeguard_peer(id: int) -> bool:
 	var team := team_of(id)
 	return team >= 0 and _lifeguards.get(team, 0) == id
 
 
-## Host-only: roll one lifeguard per team out of that team's current roster.
-## Called at round start, once the lobby is closed and the roster is final, so
-## nobody joining halfway through the countdown changes who was eligible.
-##
-## A team with nobody on it simply gets no entry -- and a team whose lifeguard
-## goes down has no way back (nobody else can revive, including to revive the
-## lifeguard), which is the intended stake rather than an oversight.
+# host only roll one lifeguard per team out of that teams current roster called
 func _pick_lifeguards() -> void:
 	_lifeguards.clear()
 	for team in [PLAYER_SCRIPT.Team.RED, PLAYER_SCRIPT.Team.BLUE]:
@@ -746,25 +628,18 @@ func _pick_lifeguards() -> void:
 	print("net: lifeguards %s" % _lifeguards)
 
 
-## Host -> everyone, the whole roster: who's on which side, and who each side's
-## lifeguard is. Sent whole rather than per-player so a peer that joins midway
-## gets everyone in one message, with no catch-up path to keep separately
-## correct -- and sent as ONE message rather than two so the two halves can't
-## arrive out of step and briefly disagree about who the lifeguard is.
+# host everyone the whole roster whos on which side who each sides lifeguard is
 @rpc("authority", "call_local", "reliable")
-func net_sync_roster(teams: Dictionary, lifeguards: Dictionary) -> void:
+func net_sync_roster(teams: Dictionary, lifeguards: Dictionary, names: Dictionary) -> void:
 	_teams = teams.duplicate()
 	_lifeguards = lifeguards.duplicate()
+	_names = names.duplicate()
 	_apply_teams_to_bodies()
-	# This table is also the lobby roster (see lobby_count) -- receiving it is
-	# how a client finds out anybody else is even here.
+	# this table is also the lobby roster see lobby_count receiving it is how a
 	lobby_changed.emit()
 
 
-## Pushes the current roster onto whatever bodies exist right now. Called both
-## when the roster changes (net_sync_roster) and when a body turns up after it
-## (player.gd's _ready asks Net directly), so the two possible orderings --
-## roster first or body first -- both end up correct.
+# pushes the current roster onto whatever bodies exist right now called both when the
 func _apply_teams_to_bodies() -> void:
 	var players := _players_root()
 	if players == null:
@@ -775,51 +650,28 @@ func _apply_teams_to_bodies() -> void:
 			continue
 		if _teams.has(pid) and "team" in p:
 			p.team = _teams[pid]
-		# Assigned from the roster, not left to the scene default: the whole
-		# point is that the host's random roll is the single answer, so a body
-		# that came up before the roster arrived gets corrected here. Its
-		# setter swaps the kickboard rig to match (see player.gd).
+		# assigned from the roster not left to the scene default the whole point is
 		if "is_lifeguard" in p:
 			p.is_lifeguard = is_lifeguard_peer(pid)
 
 
-## Host-only: hand the current roster to everybody. No-op offline, where
-## there's nobody to tell and the local assignment is already in place.
-func _broadcast_teams() -> void:
+# host only hand the current roster to everybody no op offline where theres nobody
+func _broadcast_roster() -> void:
 	if not is_online() or not multiplayer.is_server():
 		return
-	rpc("net_sync_roster", _teams, _lifeguards)
+	rpc("net_sync_roster", _teams, _lifeguards, _names)
 
 
-## Where the body belonging to `id` starts, and which way it faces.
-##
-## The pool's deep end and shallow end are laid out along X (ocean1.tscn puts
-## `shallow` at x=-17, `transition` at x=+11.7 and `deep` at x=+20.5). Teams
-## are split along Z instead -- perpendicular to that -- specifically so the
-## split doesn't hand one side the deep end and the other the shallow end:
-## each team's half runs the whole length of the pool, so both get half the
-## deep water and half the shallow.
-##
-## Both peers work out the same answer for the same player without any of it
-## having to survive the network, which is the point. A joining client used to
-## come up at the scene's default (0, 0, 0) -- under the pool -- because the
-## position the host set at spawn didn't reach it before its own physics
-## started running, and being its own body's authority it then published that
-## wrong position to everyone. Computing it locally means there's nothing to
-## arrive late. That still holds here: the input is the team table, which is
-## already synced to everyone before a round can start.
+# where the body belonging to id starts and which way it faces the pools
 func spawn_position(id: int) -> Vector3:
 	var team := team_of(id)
 	if team < 0:
-		# No team known (solo play, or a body spawned before the table
-		# arrived) -- fall back to the old fan-around-the-centre spawn.
+		# no team known solo play or a body spawned before the table arrived fall
 		var slot := absi(id) % MAX_PLAYERS
 		var angle := float(slot) * TAU / float(MAX_PLAYERS)
 		return _SPAWN_ORIGIN + Vector3(cos(angle), 0.0, sin(angle)) * _SPAWN_SPREAD
 
-	# Spread teammates along X (the deep/shallow axis) and centre the row on
-	# x = 0, so everyone starts an equal swim from both ends rather than one
-	# unlucky teammate spawning in the deep end every time.
+	# spread teammates along x the deep shallow axis and centre the row on x
 	var mates := _peers_on_team(team)
 	var slot := maxi(mates.find(id), 0)
 	var offset := (float(slot) - float(maxi(mates.size(), 1) - 1) * 0.5) * _TEAM_SPAWN_SPACING
@@ -827,21 +679,16 @@ func spawn_position(id: int) -> Vector3:
 	return Vector3(offset, _SPAWN_ORIGIN.y, z)
 
 
-## Which way the body belonging to `id` faces on spawn: across the pool at the
-## other team, rather than at whatever wall the scene's default rotation
-## happened to point at.
+# which way the body belonging to id faces on spawn across the pool at
 func spawn_rotation_y(id: int) -> float:
 	var team := team_of(id)
 	if team < 0:
 		return 0.0
-	# Red starts on -Z looking toward +Z; blue starts on +Z looking back.
-	return 0.0 if team == PLAYER_SCRIPT.Team.RED else PI
+	# red is on z and needs to face z toward blue pi blue is
+	return PI if team == PLAYER_SCRIPT.Team.RED else 0.0
 
 
-## Every peer on `team`, sorted, so "which slot am I" is the same answer on
-## every machine. Sorted rather than insertion-ordered because a Dictionary's
-## iteration order depends on insertion, and peers learn about each other in
-## whatever order the table happened to be built in on the host.
+# every peer on team sorted so which slot am i is the same answer
 func _peers_on_team(team: int) -> Array:
 	var out := []
 	for id in _teams:
@@ -853,21 +700,16 @@ func _peers_on_team(team: int) -> Array:
 
 func _on_peer_connected(id: int) -> void:
 	print("net: peer %d connected" % id)
-	# A client hears about the server connecting and nothing else (ENet is
-	# client/server, not a mesh), so everything below is the host's job.
+	# a client hears about the server connecting and nothing else enet is client server
 	if not multiplayer.is_server():
 		return
-	# A lobby slot first, and only then -- if there's already a round running
-	# -- a body. Assigning the side here rather than at spawn time is what
-	# lets the lobby show who's on which team before anyone's in the water,
-	# and it means the spawn point (which is derived from the team) is already
-	# agreed on by both ends by the time the body appears.
+	# a lobby slot first and only then if theres already a round running a
 	_assign_team(id)
-	_broadcast_teams()
+	_broadcast_roster()
 	if round_state == RoundState.PLAYING:
-		# Joining mid-round: straight into the pool rather than being stuck
-		# watching from a lobby nobody is going to press Start on again.
+		# joining mid round straight into the pool rather than being stuck watching from a
 		_add_player(id)
+		_sync_round_scoreboard()
 	lobby_changed.emit()
 
 
@@ -878,17 +720,13 @@ func _on_peer_disconnected(id: int) -> void:
 	var players := _players_root()
 	if players and players.has_node(str(id)):
 		players.get_node(str(id)).queue_free()
-	# Drop them from the roster too, or the lobby keeps counting someone who
-	# left and _assign_team keeps balancing new arrivals against a ghost.
+	# drop them from the roster too or the lobby keeps counting someone who left
 	var was_team := team_of(id)
 	var was_lifeguard := is_lifeguard_peer(id)
 	_teams.erase(id)
 	_arena_ready.erase(id)
-	# A lifeguard who quits isn't the same as one who's been knocked out. The
-	# latter is the intended stake -- their side is stuck until... well, it
-	# isn't, which is the point. But leaving _lifeguards pointing at a peer
-	# who no longer exists would strand their team with no lifeguard at all
-	# and no way for one to appear, so hand the whistle to a teammate.
+	_forget_round_faint(id)
+	# a lifeguard who quits isnt the same as one whos been knocked out the
 	if was_lifeguard:
 		_lifeguards.erase(was_team)
 		var remaining := _peers_on_team(was_team)
@@ -896,16 +734,19 @@ func _on_peer_disconnected(id: int) -> void:
 			_lifeguards[was_team] = remaining[randi() % remaining.size()]
 			print("net: lifeguard %d left, %d takes over for team %d" % [
 				id, _lifeguards[was_team], was_team])
-	_broadcast_teams()
+	_broadcast_roster()
+	if round_state == RoundState.PLAYING:
+		_sync_round_scoreboard()
 	lobby_changed.emit()
-	# They may have been the last peer the host was waiting on before it could
-	# start the round -- don't hang the whole session on someone who's gone.
+	# they may have been the last peer the host was waiting on before it
 	if round_state == RoundState.LOADING and _everyone_ready():
 		_begin_round()
 
 
 func _on_connected_to_server() -> void:
 	print("net: connected as peer %d" % multiplayer.get_unique_id())
+	# the host has no way to know our chosen name until we tell it
+	update_my_name()
 
 
 func _on_connection_failed() -> void:
@@ -918,51 +759,21 @@ func _on_server_disconnected() -> void:
 	leave_game()
 
 
-# ---------------------------------------------------------------------------
-# Menu flow orchestration
-# ---------------------------------------------------------------------------
-## These two exist here, not in menu.gd, for a real reason: both span a
-## change_scene_to_file() call, and that FREES the node any menu.gd method
-## would be running on partway through -- an `await` in menu.gd that crosses
-## that boundary would be resuming a coroutine on a doomed node. Net (and
-## Transition, which these lean on for the visuals) are autoloads, so they're
-## still around on the other side. menu.gd just fire-and-forgets a call to
-## one of these; it doesn't await either of them itself.
+# menu flow orchestration these two exist here not in menu gd for a real
 
-## Solo Play: a one-player round. Runs the exact same load -> everyone-ready
-## -> spawn -> countdown path the lobby uses rather than a shortcut of its own,
-## so there's one sequence to keep correct instead of two that drift apart.
-## Offline, every step of that path collapses to a direct local call (see
-## start_round/net_load_arena/net_arena_ready), so it costs nothing.
+# solo play a one player round runs the exact same load everyone ready spawn
 func start_solo_play() -> void:
-	# A roster of exactly us. Cleared first so a previous session's leftovers
-	# can't put phantom players in the round.
+	# a roster of exactly us cleared first so a previous sessions leftovers cant put
 	_teams.clear()
 	_lifeguards.clear()
 	_arena_ready.clear()
 	_assign_team(multiplayer.get_unique_id())
+	net_report_name(Settings.player_name)
 	round_state = RoundState.LOBBY
 	start_round()
 
 
-## Connect to Localhost: lands in the LOBBY either way -- joining an existing
-## one if somebody's hosting, starting one if nobody is. Nobody gets a body
-## until the host presses Start (see start_round).
-##
-## Loading the lobby scene before connecting, rather than the arena, drops the
-## old scene-then-connect constraint that used to shape this: a spawn packet
-## arriving before the client's MultiplayerSpawner existed was the hazard, and
-## now no spawn packet can be sent at all until every peer has confirmed its
-## arena is up (see net_arena_ready). The lobby genuinely doesn't need a
-## Players node.
-##
-## Doesn't share start_connect()'s failure path on purpose: nobody hosting on
-## 127.0.0.1 isn't an error, it just means nobody's started a lobby there yet
-## -- so instead of bouncing back to the menu with "Couldn't connect", this
-## becomes the host itself. A real remote address (F2, the CLI) keeps
-## start_connect()'s honest failure instead -- silently starting your own
-## lobby when a friend's real IP didn't answer would hide the actual problem
-## rather than fix it.
+# connect to localhost lands in the lobby either way joining an existing one if
 func start_connect_localhost() -> void:
 	await Transition.blur_in()
 	Transition.show_status("Connecting...")
@@ -979,12 +790,7 @@ func start_connect_localhost() -> void:
 		await Transition.blur_out()
 		return
 
-	# Nobody's home. Undo whatever join_game() left behind before hosting:
-	# on a hard refusal _on_connection_failed() already nulled
-	# multiplayer_peer, but _await_connection_result() giving up on its own
-	# 8s clock (rather than the signal ever firing) leaves the dead client
-	# peer sitting there, and host_game() refuses to run while is_online()
-	# still reads true because of it.
+	# nobodys home undo whatever join_game left behind before hosting on a hard refusal _on_connection_failed
 	if is_online():
 		leave_game()
 	Transition.show_status("Starting a lobby...")
@@ -994,13 +800,7 @@ func start_connect_localhost() -> void:
 	await Transition.blur_out()
 
 
-## The whole "join somebody's game" flow, address and all. Split out of
-## start_connect_localhost() so the --join= command line can reuse it rather
-## than calling the bare join_game() and stopping there: join_game() only opens
-## the connection, it doesn't get you into the session proper.
-##
-## Lands in the lobby, same as start_connect_localhost -- the difference
-## between the two is purely what happens when nobody answers.
+# the whole join somebodys game flow address and all split out of start_connect_localhost so
 func start_connect(ip: String) -> void:
 	await Transition.blur_in()
 	Transition.show_status("Connecting...")
@@ -1009,10 +809,7 @@ func start_connect(ip: String) -> void:
 	await get_tree().process_frame
 
 	var err := join_game(ip)
-	# Not `err == OK and await ...` -- an explicit if instead of leaning on
-	# `and`'s short-circuit to skip the await when err != OK, since an
-	# await embedded inside a boolean expression is a combination worth
-	# just not risking.
+	# not err ok and await an explicit if instead of leaning on ands short
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result()
@@ -1030,15 +827,11 @@ func start_connect(ip: String) -> void:
 	await Transition.blur_out()
 
 
-# Set while _await_connection_result() is waiting -- see there.
+# set while _await_connection_result is waiting see there
 var _awaiting_connection := false
 var _connection_succeeded := false
 
-## Races multiplayer's own connected_to_server/connection_failed signals
-## (join_game() already wires the general-purpose _on_connected_to_server/
-## _on_connection_failed handlers above for logging; this is a separate,
-## one-shot pair specific to a single connection attempt), with a timeout in
-## case neither ever fires. Returns true on success.
+# races multiplayers own connected_to_server connection_failed signals join_game already wires the general purpose _on_connected_to_server _on_connection_failed
 func _await_connection_result(timeout := 8.0) -> bool:
 	_awaiting_connection = true
 	_connection_succeeded = false
@@ -1065,52 +858,23 @@ func _on_connect_attempt_failed() -> void:
 	_awaiting_connection = false
 
 
-# ---------------------------------------------------------------------------
-# Debug keys -- placeholder until the real menu UI exists
-# ---------------------------------------------------------------------------
-## Raw keycodes rather than input actions for host/join, on purpose: these are
-## temporary, and this way project.godot's input map stays clean for them.
-## Delete that half once the menu calls host_game()/join_game() directly.
-##
-## test_lifeguard_key is different -- it's a real registered action (someone
-## added it to the input map on purpose for this), so it's read the normal
-## way, and it's gated by enable_lifeguard_test_key rather than being
-## unconditionally live like F1/F2.
+# debug keys placeholder until the real menu ui exists raw keycodes rather than input
 func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F1:
-				# Opens a lobby and waits in it, same as --host. The old
-				# behaviour -- opening an already-running solo game up to a
-				# friend in place -- doesn't survive the lobby model: a round
-				# has already started and been counted in by then, so there's
-				# no lobby left to join. Guarded on is_online() so pressing it
-				# twice doesn't try to host on top of a live session.
+				# opens a lobby and waits in it same as host the old behaviour opening
 				if not is_online():
 					start_host_lobby()
 			KEY_F2:
-				# start_connect(), not the bare join_game(): opening the
-				# connection without also getting into the lobby leaves this
-				# peer sitting on the menu, connected to a session it can't
-				# see or start (same gap --join had). Guarded on is_online()
-				# because join_game() already refuses to connect on top of a
-				# live session, and without the guard start_connect() would
-				# still blur and reload the scene before hitting that refusal.
+				# start_connect not the bare join_game opening the connection without also getting into the lobby
 				if not is_online():
 					start_connect(join_ip)
 	if enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
 		_toggle_local_lifeguard()
 
 
-## Flips is_lifeguard on whichever player body belongs to THIS peer -- for
-## testing the buffs (see water/player.gd's is_lifeguard) without needing a
-## real second player to fight. A toggle rather than a one-way "make me a
-## lifeguard" so both states are reachable from the same key while testing.
-##
-## Searches the "player" group (see player.gd's _enter_tree) rather than
-## assuming a fixed location, since the local player could be under a real
-## gameplay scene's "Players" spawner or a hand-placed instance like
-## menu.tscn's MenuPlayer, which sits outside that whole system.
+# flips is_lifeguard on whichever player body belongs to this peer for testing the buffs
 func _toggle_local_lifeguard() -> void:
 	for p in get_tree().get_nodes_in_group("player"):
 		if p.is_multiplayer_authority():

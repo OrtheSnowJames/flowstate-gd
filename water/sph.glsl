@@ -1,26 +1,14 @@
 #[compute]
 #version 450
 
-// =============================================================================
-// sph.glsl — GPU Smoothed-Particle-Hydrodynamics fluid step.
-//
-// A genuine SPH solver (Müller et al. 2003 kernels). Neighbour search is
-// brute-force O(N^2) on purpose: it has no spatial-hash bookkeeping to get
-// wrong, and the GPU eats a few thousand particles squared without noticing.
-//
-// Run twice per substep via the `stage` push constant:
-//   stage 0 -> density + pressure for every particle
-//   stage 1 -> pressure/viscosity/gravity forces, integrate, collide
-// A memory barrier between the two guarantees every density is written before
-// any force reads it.
-// =============================================================================
+// sph glsl gpu smoothed particle hydrodynamics fluid step a genuine sph solver m ller
 
 layout(local_size_x = 64) in;
 
 struct Particle {
-	vec4 pos;   // xyz position (+w pad)
-	vec4 vel;   // xyz velocity (+w pad)
-	vec4 aux;   // x = density, y = pressure, zw unused
+	vec4 pos; // xyz position w pad
+	vec4 vel; // xyz velocity w pad
+	vec4 aux; // x density y pressure zw unused
 };
 
 layout(set = 0, binding = 0, std430) restrict buffer Particles {
@@ -30,16 +18,16 @@ layout(set = 0, binding = 0, std430) restrict buffer Particles {
 layout(set = 0, binding = 1, std430) restrict buffer Params {
 	float dt;
 	float count;
-	float h;             // smoothing radius
+	float h; // smoothing radius
 	float rest_density;
-	float stiffness;     // pressure stiffness (gas constant)
+	float stiffness; // pressure stiffness gas constant
 	float viscosity;
 	float mass;
 	float _pad0;
-	vec4 gravity;        // xyz
-	vec4 bmin;           // box lower corner (local space) + w pad
-	vec4 bmax;           // box upper corner (local space) + w pad
-	vec4 player;         // xyz = player centre (local), w = radius (0 disables)
+	vec4 gravity; // xyz
+	vec4 bmin; // box lower corner local space w pad
+	vec4 bmax; // box upper corner local space w pad
+	vec4 player; // xyz player centre local w radius 0 disables
 } U;
 
 layout(push_constant, std430) uniform Push {
@@ -60,7 +48,7 @@ void main() {
 	float h2 = h * h;
 
 	if (pc.stage == 0) {
-		// -------- density & pressure --------------------------------------
+		// density pressure
 		vec3 xi = P.p[i].pos.xyz;
 		float poly6 = 315.0 / (64.0 * PI * pow(h, 9.0));
 		float density = 0.0;
@@ -77,7 +65,7 @@ void main() {
 		P.p[i].aux.x = density;
 		P.p[i].aux.y = pressure;
 	} else {
-		// -------- forces, integrate, collide ------------------------------
+		// forces integrate collide
 		vec3 xi = P.p[i].pos.xyz;
 		vec3 vi = P.p[i].vel.xyz;
 		float di = max(P.p[i].aux.x, 1e-4);
@@ -110,12 +98,12 @@ void main() {
 		vec3 accel = force / di;
 		vi += accel * U.dt;
 
-		// clamp speed so a bad frame can't launch a particle to infinity
+		// clamp speed so a bad frame cant launch a particle to infinity
 		float vmax = 40.0;
 		float sp = length(vi);
 		if (sp > vmax) vi *= vmax / sp;
 
-		// --- player collision: shove particles out of the body sphere -----
+		// player collision shove particles out of the body sphere
 		if (U.player.w > 0.0) {
 			vec3 pr = xi - U.player.xyz;
 			float pd = length(pr);
@@ -123,13 +111,13 @@ void main() {
 				vec3 nrm = pr / pd;
 				xi = U.player.xyz + nrm * U.player.w;
 				float vn = dot(vi, nrm);
-				if (vn < 0.0) vi -= nrm * vn * 1.6;   // bounce outward
+				if (vn < 0.0) vi -= nrm * vn * 1.6; // bounce outward
 			}
 		}
 
 		xi += vi * U.dt;
 
-		// --- box boundaries with restitution + a little friction ----------
+		// box boundaries with restitution a little friction
 		float rest = 0.35;
 		if (xi.x < U.bmin.x) { xi.x = U.bmin.x; vi.x = abs(vi.x) * rest; vi.yz *= 0.98; }
 		if (xi.x > U.bmax.x) { xi.x = U.bmax.x; vi.x = -abs(vi.x) * rest; vi.yz *= 0.98; }

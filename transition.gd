@@ -1,15 +1,4 @@
-## Full-screen overlay for menu transitions and connection status -- a blur
-## (menu/blur_overlay.gdshader), a solid fade-to-black, and a status label,
-## all owned by one CanvasLayer that IS this autoload (added straight to
-## /root the moment the game boots, same as Net), so it survives every
-## change_scene_to_file() automatically instead of needing to be re-added per
-## scene.
-##
-## Every public method kills-and-recreates its own Tween and reads the
-## CURRENT value as that tween's starting point -- same idiom water/player.gd
-## already uses for the eyelid close/open tweens -- so calling blur_in()
-## while blur_out() is still running (or vice versa) reverses smoothly
-## instead of the two fighting over the same parameter.
+# full screen overlay for menu transitions and connection status a blur menu blur_overlay gdshader
 extends CanvasLayer
 
 const _BLUR_SHADER := preload("res://menu/blur_overlay.gdshader")
@@ -29,16 +18,12 @@ var _status_tween: Tween
 
 
 func _ready() -> void:
-	# Above everything else drawn in any scene, including that scene's own
-	# CanvasLayers (default layer 1, same as e.g. water/ocean1.tscn's "gui").
+	# above everything else drawn in any scene including that scenes own canvaslayers default layer
 	layer = 100
 
 	_blur_mat = ShaderMaterial.new()
 	_blur_mat.shader = _BLUR_SHADER
-	# Explicit, not relying on the shader's own declared default -- whether
-	# get_shader_parameter() resolves an never-set parameter to that default
-	# or returns null is more than I want to bet a typed `float` assignment
-	# on in _tween_blur() below.
+	# explicit not relying on the shaders own declared default whether get_shader_parameter resolves an never
 	_blur_mat.set_shader_parameter("amount", 0.0)
 	_blur_rect = _make_full_rect()
 	_blur_rect.material = _blur_mat
@@ -59,11 +44,7 @@ func _ready() -> void:
 	add_child(_status_label)
 
 
-## Fully transparent, but still a real Control rect sitting on top of every
-## other CanvasLayer -- MOUSE_FILTER_IGNORE is load-bearing, not tidiness:
-## without it this would swallow every click in the game the instant it's
-## added, blur/fade visible or not, since Controls intercept input by rect,
-## not by how transparent they currently look.
+# fully transparent but still a real control rect sitting on top of every other
 func _make_full_rect() -> ColorRect:
 	var r := ColorRect.new()
 	r.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -71,31 +52,17 @@ func _make_full_rect() -> ColorRect:
 	return r
 
 
-## Brings the blur+darken in. Awaitable -- resolves once the tween finishes,
-## so callers can `await Transition.blur_in()` before doing whatever needs to
-## happen while the screen is obscured.
+# brings the blur darken in awaitable resolves once the tween finishes so callers can
 func blur_in() -> void:
 	await _tween_blur(1.0)
 
 
-## Same, in reverse.
+# same in reverse
 func blur_out() -> void:
 	await _tween_blur(0.0)
 
 
-## Every _tween_* below awaits a wall-clock timer rather than the tween's own
-## `finished` signal, and that is load-bearing rather than a stylistic choice.
-##
-## These all use the kill-and-recreate idiom: a second call kills the tween
-## the first one is still animating. A killed Tween never emits `finished` --
-## so anything sitting on `await tween.finished` when it gets superseded waits
-## forever. That is not hypothetical: returning to the lobby ends with a
-## fade_from_black(), and a host starting the next round during that ~0.35s
-## killed the fade_to_black() the round-load was awaiting, hanging the load
-## and leaving everyone stuck in the lobby with no arena.
-##
-## A timer always fires, so a superseded caller resumes on schedule instead of
-## never. The tween still owns the visual; the timer only owns the timing.
+# every _tween_ below awaits a wall clock timer rather than the tweens own finished
 func _tween_blur(target: float) -> void:
 	if _blur_tween and _blur_tween.is_valid():
 		_blur_tween.kill()
@@ -107,10 +74,7 @@ func _tween_blur(target: float) -> void:
 	await get_tree().create_timer(_BLUR_DURATION).timeout
 
 
-## Fades the whole screen to solid black. Awaitable -- the intended use is
-## `await Transition.fade_to_black()` before change_scene_to_file()/spawning
-## a player/etc., so the swap happens while the screen is actually covered,
-## not mid-fade.
+# fades the whole screen to solid black awaitable the intended use is await transition
 func fade_to_black() -> void:
 	await _tween_fade(1.0)
 
@@ -130,9 +94,7 @@ func _tween_fade(target: float) -> void:
 	await get_tree().create_timer(_FADE_DURATION).timeout
 
 
-## Status text (e.g. "Connecting..."), faded independently of the blur/fade
-## above so a caller can update the message (or clear it) without
-## retriggering the whole overlay.
+# status text e g connecting faded independently of the blur fade above so a
 func show_status(text: String) -> void:
 	_status_label.text = text
 	await _tween_status(1.0)
