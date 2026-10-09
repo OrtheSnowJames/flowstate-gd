@@ -14,6 +14,7 @@ Getting around the pool isn't just holding W. Here's the rundown.
 5. Backstroke flip - Tap forward right after letting go of back and you'll spin 180° on the spot without losing momentum, instead of coasting to a stop first.
 6. Dodge - Double-tap A or D to dodge sideways. Only works in the shallow end or on dry land, since there's nothing to push off of in open water. Costs stamina and has its own cooldown.
 7. Jump - Same shallow-end-or-dry-land rule as the dodge. A jump spends your ENTIRE momentum bar on the way up - the more you had, the higher you go, but you land with none of it left.
+8. Scoreboard - Press F to pan the camera to the scoreboard. The scoreboard measures how many times your team has fainted an enemy. First to the goal wins!
 
 ## Combat
 
@@ -58,3 +59,6 @@ This drone allows you to spectate the lifeguard while you're fainted, until the 
 If the lifeguard dies, you can only see an overhead view of the pool. All hope is lost.
 
 If a game just started, you can still spectate! When you join, press the spectate button.
+
+## TODO:
+- Add matchmaking/lobbies
