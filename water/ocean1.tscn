@@ -24,6 +24,10 @@
 [ext_resource type="Script" uid="uid://2juaclm8gc1n" path="res://addons/simplegrasstextured/grass.gd" id="20_biqxj"]
 [ext_resource type="Script" uid="uid://dh1ieqgns8isx" path="res://water/pool_scene_toggles.gd" id="21_pooltog"]
 [ext_resource type="PackedScene" uid="uid://dyvcl2ci11em" path="res://poolk/scoreboard.tscn" id="24_614yo"]
+[ext_resource type="Script" uid="uid://c1og766dkxqkp" path="res://water/match_synchronizer.gd" id="25_matchsync"]
+[ext_resource type="PackedScene" uid="uid://k8jnug1811ve" path="res://mesh/chairs.fbx" id="26_2qpaf"]
+[ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="27_2euab"]
+[ext_resource type="PackedScene" uid="uid://dyr5uukucdgrp" path="res://mesh/character_gray.tscn" id="28_2euab"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -163,7 +167,7 @@ albedo_texture = ExtResource("16_lta4o")
 [sub_resource type="PlaneMesh" id="PlaneMesh_2qpaf"]
 size = Vector2(20, 80)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_614yo"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_oalkl"]
 render_priority = 0
 shader = ExtResource("17_fywoq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
@@ -533,8 +537,6 @@ wave_damping = 0.95
 edge_damping = 0.6
 amplitude = 1.2
 mesh_resolution = 300
-refraction_strength = 0.07
-detail_strength = 0.18
 min_splash_speed = 1.5
 splash_strength = 1.4
 wake_strength = 4.0
@@ -560,6 +562,8 @@ angular_drag = 0.9
 
 [node name="MultiplayerSynchronizer" type="MultiplayerSynchronizer" parent="PushCube" unique_id=1853879477]
 replication_config = SubResource("SceneReplicationConfig_pushcube")
+public_visibility = false
+script = ExtResource("25_matchsync")
 
 [node name="gui" type="CanvasLayer" parent="." unique_id=2063923803]
 
@@ -698,7 +702,7 @@ mesh = SubResource("PlaneMesh_2qpaf")
 
 [node name="SimpleGrassTextured" type="MultiMeshInstance3D" parent="StaticBody3D2" unique_id=844937069]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
-material_override = SubResource("ShaderMaterial_614yo")
+material_override = SubResource("ShaderMaterial_oalkl")
 multimesh = SubResource("MultiMesh_fywoq")
 script = ExtResource("20_biqxj")
 sgt_radius = 2.0
@@ -745,3 +749,65 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 9, -5)
 
 [node name="Scoreboard" parent="." unique_id=2009443230 instance=ExtResource("24_614yo")]
 transform = Transform3D(6.38, 0, 0, 0, 6.9, 0, 0, 0, 1, -6, 15, -30)
+
+[node name="chair_container" type="Node3D" parent="." unique_id=1506075192]
+transform = Transform3D(10, 0, 0, 0, 10, 0, 0, 0, 10, -21, 9, -28)
+
+[node name="chairs" parent="chair_container" unique_id=1180446452 instance=ExtResource("26_2qpaf")]
+
+[node name="chairs2" parent="chair_container" unique_id=1849584719 instance=ExtResource("26_2qpaf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.8000001, 0, 0)
+
+[node name="chairs3" parent="chair_container" unique_id=673225428 instance=ExtResource("26_2qpaf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.6000003, 0, 0)
+
+[node name="chairs4" parent="chair_container" unique_id=1728514570 instance=ExtResource("26_2qpaf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.4000003, 0, 0)
+
+[node name="chairs5" parent="chair_container" unique_id=1807388554 instance=ExtResource("26_2qpaf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 3.2000005, 0, 0)
+
+[node name="chairs6" parent="chair_container" unique_id=1906356373 instance=ExtResource("26_2qpaf")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 4.1000004, 0, 0)
+
+[node name="blockbench_export" parent="chair_container" unique_id=65244047 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.04829629, 0, -0.012940953, 0, 0.05, 0, 0.012940953, 0, 0.04829629, 0.10000014, 0, 0.39999986)
+
+[node name="blockbench_export2" parent="chair_container" unique_id=652539227 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.0779423, 0, 0.044999998, 0, 0.09, 0, -0.044999998, 0, 0.0779423, -0.09999943, 0, 0.39999962)
+
+[node name="blockbench_export3" parent="chair_container" unique_id=63847756 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.05706339, 0, 0.01854102, 0, 0.068, 0, -0.01792299, 0, 0.05516128, 0.52, -0.017, 0.43)
+
+[node name="blockbench_export4" parent="chair_container" unique_id=1689724828 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.04293664, 0, -0.01911662, 0, 0.051, 0, 0.01952336, 0, 0.04385018, 0.87, -0.01275, 0.4)
+
+[node name="blockbench_export5" parent="chair_container" unique_id=768257514 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.07012587, 0, 0.01110685, 0, 0.081, 0, -0.01048111, 0, 0.06617512, 1.22, -0.02025, 0.44)
+
+[node name="blockbench_export6" parent="chair_container" unique_id=292537494 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.05088289, 0, -0.03179516, 0, 0.062, 0, 0.02914556, 0, 0.04664265, 1.58, -0.0155, 0.41)
+
+[node name="blockbench_export7" parent="chair_container" unique_id=1779906266 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.04044573, 0, 0.0197267, 0, 0.049, 0, -0.02060344, 0, 0.04224332, 1.92, -0.01225, 0.43)
+
+[node name="blockbench_export8" parent="chair_container" unique_id=144180433 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.06553589, 0, -0.01393008, 0, 0.074, 0, 0.01309844, 0, 0.0616233, 2.27, -0.0185, 0.4)
+
+[node name="blockbench_export9" parent="chair_container" unique_id=1679661119 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.05142567, 0, 0.01282186, 0, 0.059, 0, -0.01257994, 0, 0.05045538, 2.62, -0.01475, 0.44)
+
+[node name="blockbench_export10" parent="chair_container" unique_id=284706561 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.0677165, 0, -0.03450328, 0, 0.085, 0, 0.03132534, 0, 0.06147945, 2.96, -0.02125, 0.42)
+
+[node name="blockbench_export11" parent="chair_container" unique_id=76395552 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.04664265, 0, 0.02914556, 0, 0.064, 0, -0.02861564, 0, 0.0457946, 3.31, -0.016, 0.41)
+
+[node name="blockbench_export12" parent="chair_container" unique_id=326495790 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.0636494, 0, -0.00668982, 0, 0.071, 0, 0.00616718, 0, 0.05867679, 3.68, -0.01775, 0.44)
+
+[node name="blockbench_export13" parent="chair_container" unique_id=903707540 instance=ExtResource("27_2euab")]
+transform = Transform3D(0.04604494, 0, 0.01675899, 0, 0.054, 0, -0.01744303, 0, 0.04792432, 4.08, -0.0135, 0.42)
+
+[node name="smooth_(drone)_operator" parent="." unique_id=1215724303 instance=ExtResource("28_2euab")]
+transform = Transform3D(0.7071068, 0, 0.7071068, 0, 1, 0, -0.7071068, 0, 0.7071068, -29.999996, 9, -25)

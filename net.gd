@@ -9,13 +9,15 @@ const PLAYER_SCRIPT := preload("res://water/player.gd")
 # the 3 2 1 go label instantiated into the arenas hud at round start
 const COUNTDOWN_TEXT := preload("res://menu/appear_disappear_text.tscn")
 const DISCONNECT_PROMPT := preload("res://menu/disconnect_prompt.tscn")
+const SPECTATOR_CAMERA := preload("res://water/spectator_camera.gd")
+const SPECTATOR_DRONE := preload("res://water/spectator_drone.gd")
 # where connecting lands you a path rather than a preload menu lobby tscn instances
 const LOBBY_SCENE := "res://menu/lobby.tscn"
 const MENU_SCENE := "res://menu/menu.tscn"
 const DISCONNECT_PENALTY_SECONDS := 5 * 60
 const DISCONNECT_WARNING := "Are you sure you want to disconnect? You will receive a penalty!"
 const GAME_IN_PROGRESS_MESSAGE := "Game in progress..."
-const _CONNECT_REJECT_GRACE := 0.35
+const _CONNECT_IN_PROGRESS_GRACE := 0.35
 
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
@@ -25,8 +27,14 @@ var _input_blocked_by_menu := false
 var _leaving_game := false
 var _penalty_notice_open := false
 var _connect_flow_active := false
-var _connection_rejected_game_in_progress := false
+var _connection_game_in_progress := false
 var _game_in_progress_notice_open := false
+var _spectator_mode := false
+var _spectator_from_faint := false
+var _spectator_camera: Camera3D = null
+var _local_spectator_target := 0
+var _spectator_targets: Dictionary = {}
+var _spectator_drones: Dictionary = {}
 
 # off by default on purpose pressing test_lifeguard_key see project godots input map l as
 @export var enable_lifeguard_test_key: bool = true
@@ -88,6 +96,172 @@ func input_blocked_by_menu() -> bool:
 	return _input_blocked_by_menu
 
 
+func is_spectating() -> bool:
+	return _spectator_mode
+
+
+func enter_spectator_after_faint() -> void:
+	if _spectator_mode:
+		return
+	_spectator_mode = true
+	_spectator_from_faint = true
+	_clear_blackout_view()
+	_ensure_spectator_camera()
+
+
+func exit_spectator_mode() -> void:
+	set_spectator_target(0)
+	_spectator_mode = false
+	_spectator_from_faint = false
+	if is_instance_valid(_spectator_camera):
+		_spectator_camera.queue_free()
+	_spectator_camera = null
+
+
+func _ensure_spectator_camera() -> void:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return
+	if is_instance_valid(_spectator_camera) and _spectator_camera.is_inside_tree():
+		_spectator_camera.current = true
+		return
+	var existing := scene.get_node_or_null("SpectatorCamera")
+	if existing is Camera3D:
+		_spectator_camera = existing
+	else:
+		_spectator_camera = SPECTATOR_CAMERA.new()
+		_spectator_camera.name = "SpectatorCamera"
+		scene.add_child(_spectator_camera)
+	_spectator_camera.current = true
+
+
+func set_spectator_target(target_peer: int) -> void:
+	if not _spectator_mode or round_state != RoundState.PLAYING or _round_over:
+		target_peer = 0
+	if target_peer == _local_spectator_target:
+		return
+	_local_spectator_target = target_peer
+	if is_online():
+		rpc_id(1, "net_watch_lifeguard", target_peer)
+	else:
+		net_watch_lifeguard(target_peer)
+
+
+func living_lifeguard() -> Node3D:
+	var players := _players_root()
+	if players == null:
+		return null
+	var best: Node3D = null
+	for player in players.get_children():
+		var id := str(player.name).to_int()
+		if id <= 0 or player.is_queued_for_deletion() \
+				or not player.is_lifeguard or player._unconscious:
+			continue
+		if best == null or id < str(best.name).to_int():
+			best = player
+	return best
+
+
+@rpc("any_peer", "call_local", "reliable")
+func net_watch_lifeguard(target_peer: int) -> void:
+	if is_online() and not multiplayer.is_server():
+		return
+	var sender := multiplayer.get_remote_sender_id()
+	var watcher := sender if sender != 0 else multiplayer.get_unique_id()
+	if target_peer != 0 and not _can_watch_lifeguard(watcher, target_peer):
+		return
+	if _spectator_targets.get(watcher, 0) == target_peer:
+		return
+	if target_peer == 0:
+		_spectator_targets.erase(watcher)
+	else:
+		_spectator_targets[watcher] = target_peer
+	_broadcast_spectator_targets()
+
+
+func _can_watch_lifeguard(watcher: int, target_peer: int) -> bool:
+	if round_state != RoundState.PLAYING or _round_over:
+		return false
+	if is_online() and not peer_has_arena(watcher):
+		return false
+	var players := _players_root()
+	if players == null:
+		return false
+	var body := players.get_node_or_null(str(watcher))
+	if _teams.has(watcher) and (body == null or not body._unconscious):
+		return false
+	var target := players.get_node_or_null(str(target_peer))
+	return target != null and not target.is_queued_for_deletion() \
+		and target.is_lifeguard and not target._unconscious
+
+
+func _broadcast_spectator_targets() -> void:
+	if is_online():
+		rpc("net_sync_spectator_targets", _spectator_targets)
+	else:
+		net_sync_spectator_targets(_spectator_targets)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_sync_spectator_targets(targets: Dictionary) -> void:
+	_spectator_targets = targets.duplicate()
+	_sync_spectator_drones()
+
+
+func _process(_delta: float) -> void:
+	if not is_online() or multiplayer.is_server():
+		var changed := false
+		for watcher in _spectator_targets.keys():
+			if not _can_watch_lifeguard(watcher, _spectator_targets[watcher]):
+				_spectator_targets.erase(watcher)
+				changed = true
+		if changed:
+			_broadcast_spectator_targets()
+	if not _spectator_targets.is_empty() or not _spectator_drones.is_empty():
+		_sync_spectator_drones()
+
+
+func _sync_spectator_drones() -> void:
+	var players := _players_root()
+	if players == null:
+		return
+	var watched := _spectator_targets.values()
+	for id in _spectator_drones.keys():
+		if not is_instance_valid(_spectator_drones[id]):
+			_spectator_drones.erase(id)
+		else:
+			_spectator_drones[id].set_watched(watched.has(id))
+	for id in watched:
+		if _spectator_drones.has(id):
+			continue
+		var target := players.get_node_or_null(str(id))
+		if target == null or not target.is_lifeguard or target._unconscious:
+			continue
+		var drone := SPECTATOR_DRONE.new()
+		drone.name = "SpectatorDrone_%d" % id
+		drone.target_peer = id
+		get_tree().current_scene.add_child(drone)
+		_spectator_drones[id] = drone
+
+
+func _clear_spectator_drones() -> void:
+	_local_spectator_target = 0
+	_spectator_targets.clear()
+	for drone in _spectator_drones.values():
+		if is_instance_valid(drone):
+			drone.queue_free()
+	_spectator_drones.clear()
+
+
+func _clear_blackout_view() -> void:
+	var muffled := get_node_or_null("/root/Main/muffled_player")
+	if muffled and muffled.has_method("stop"):
+		muffled.stop()
+	var eyelid := get_node_or_null("/root/Main/gui/eyelid")
+	if eyelid and eyelid.material:
+		eyelid.material.set_shader_parameter("progress", 0.0)
+
+
 func online_penalty_remaining() -> int:
 	return Settings.online_penalty_remaining()
 
@@ -122,7 +296,7 @@ func _format_penalty_time(seconds: int) -> String:
 	return "%d:%02d" % [int(clamped / 60), clamped % 60]
 
 
-func host_game() -> Error:
+func host_game(port := PORT) -> Error:
 	if _block_online_if_penalized(false):
 		push_warning("net: online penalty still has %s left" % online_penalty_text())
 		return FAILED
@@ -130,9 +304,9 @@ func host_game() -> Error:
 		push_warning("net: already online, ignoring host_game()")
 		return ERR_ALREADY_IN_USE
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(PORT, MAX_PLAYERS)
+	var err := peer.create_server(port, MAX_PLAYERS)
 	if err != OK:
-		push_error("net: couldn't host on port %d (error %d)" % [PORT, err])
+		push_error("net: couldn't host on port %d (error %d)" % [port, err])
 		return err
 	multiplayer.multiplayer_peer = peer
 	# the host plays too so it takes a lobby slot and a side right
@@ -141,11 +315,11 @@ func host_game() -> Error:
 	# direct call not update_my_name we only just became the host inside this very function
 	net_report_name(Settings.player_name)
 	lobby_changed.emit()
-	print("net: hosting on port %d as peer %d" % [PORT, multiplayer.get_unique_id()])
+	print("net: hosting on port %d as peer %d" % [port, multiplayer.get_unique_id()])
 	return OK
 
 
-func join_game(ip := "") -> Error:
+func join_game(ip := "", port := PORT) -> Error:
 	if _block_online_if_penalized(false):
 		push_warning("net: online penalty still has %s left" % online_penalty_text())
 		return FAILED
@@ -154,18 +328,20 @@ func join_game(ip := "") -> Error:
 		return ERR_ALREADY_IN_USE
 	var address := ip if ip != "" else join_ip
 	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_client(address, PORT)
+	var err := peer.create_client(address, port)
 	if err != OK:
-		push_error("net: couldn't reach %s:%d (error %d)" % [address, PORT, err])
+		push_error("net: couldn't reach %s:%d (error %d)" % [address, port, err])
 		return err
 	# drop the solo body _ready spawned as a client our peer id wont be
 	_clear_players()
 	multiplayer.multiplayer_peer = peer
-	print("net: connecting to %s:%d ..." % [address, PORT])
+	print("net: connecting to %s:%d ..." % [address, port])
 	return OK
 
 
 func leave_game() -> void:
+	exit_spectator_mode()
+	_clear_spectator_drones()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
 	multiplayer.multiplayer_peer = null
@@ -234,8 +410,19 @@ signal lobby_changed
 # the host has started everyone is loading the arena lets the lobby screen stop
 signal round_loading
 
-# host only which peers have told us theyve finished loading the arena see net_arena_ready
+# peers with a loaded arena shared by the host
 var _arena_ready: Dictionary = {}
+signal arena_peers_changed
+
+
+func peer_has_arena(id: int) -> bool:
+	return _arena_ready.has(id)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_sync_arena_peers(peers: Dictionary) -> void:
+	_arena_ready = peers.duplicate()
+	arena_peers_changed.emit()
 
 
 # open a lobby and wait in it the hosts half of start_connect_localhost reached directly
@@ -306,6 +493,8 @@ func start_round() -> void:
 # everyone switch to the arena then report back the host doesnt spawn anybody until
 @rpc("authority", "call_local", "reliable")
 func net_load_arena() -> void:
+	_clear_spectator_drones()
+	_arena_ready.clear()
 	round_state = RoundState.LOADING
 	round_loading.emit()
 	_load_arena()
@@ -325,7 +514,11 @@ func _load_arena() -> void:
 		return
 	_apply_round_scoreboard_to_scene()
 	# the arena and with it players multiplayerspawner exists now so its safe for the
-	if is_online():
+	if _spectator_mode:
+		_ensure_spectator_camera()
+		if is_online():
+			rpc_id(1, "net_spectator_ready")
+	elif is_online():
 		rpc_id(1, "net_arena_ready")
 	else:
 		net_arena_ready()
@@ -339,6 +532,8 @@ func net_arena_ready() -> void:
 	var who := multiplayer.get_remote_sender_id() if is_online() else 1
 	if who == 0:
 		who = multiplayer.get_unique_id() if is_online() else 1
+	if round_state != RoundState.LOADING or not _teams.has(who):
+		return
 	_arena_ready[who] = true
 	if _everyone_ready():
 		_begin_round()
@@ -347,9 +542,7 @@ func net_arena_ready() -> void:
 func _everyone_ready() -> bool:
 	if not is_online():
 		return _arena_ready.has(1)
-	if not _arena_ready.has(multiplayer.get_unique_id()):
-		return false
-	for id in multiplayer.get_peers():
+	for id in _teams.keys():
 		if not _arena_ready.has(id):
 			return false
 	return true
@@ -358,7 +551,8 @@ func _everyone_ready() -> bool:
 # host only spawn the whole roster then set everyone counting down
 func _begin_round() -> void:
 	round_state = RoundState.PLAYING
-	_arena_ready.clear()
+	if is_online():
+		rpc("net_sync_arena_peers", _arena_ready)
 	_reset_round_scoreboard()
 	# before any body is built so _add_player can set is_lifeguard from the roster as
 	_pick_lifeguards()
@@ -452,22 +646,38 @@ func net_round_over(winners: Array) -> void:
 		_revive_everyone()
 
 	var won := winners.has(team_of(multiplayer.get_unique_id()))
+	var verdict := "YOU WIN" if won else "GET BETTER"
+	if _spectator_mode and not _spectator_from_faint:
+		verdict = "ROUND OVER"
 	var prompt := _ensure_message_text()
 	if prompt and is_instance_valid(prompt):
-		await prompt.play("YOU WIN" if won else "GET BETTER")
+		await prompt.play(verdict)
 	else:
 		await get_tree().create_timer(1.0).timeout
 
-	# everyone not just the host each peer walks itself back out
+	# despawns arrive before clients unload the arena
+	if not is_online() or multiplayer.is_server():
+		_clear_players()
+		if is_online():
+			rpc("net_return_to_lobby")
+		else:
+			net_return_to_lobby()
+
+
+@rpc("authority", "call_local", "reliable")
+func net_return_to_lobby() -> void:
 	await _return_to_lobby()
 
 
 # back to the waiting room after a round with the roster intact so the
 func _return_to_lobby() -> void:
+	_clear_spectator_drones()
 	round_state = RoundState.LOBBY
 	_round_over = false
 	_arena_ready.clear()
 	_lifeguards.clear()
+	if _spectator_from_faint:
+		exit_spectator_mode()
 	await Transition.fade_to_black()
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
@@ -482,7 +692,8 @@ func _silence_synchronizers() -> void:
 		return
 	# the whole scene not just the player bodies the players were the obvious suspects
 	for sync in _synchronizers_in(scene):
-		sync.public_visibility = false
+		# stop updates without despawning the players during the result banner
+		sync.root_path = NodePath("")
 
 
 func _synchronizers_in(node: Node) -> Array[MultiplayerSynchronizer]:
@@ -784,25 +995,26 @@ func _on_peer_connected(id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	if round_state != RoundState.LOBBY:
-		_reject_late_join(id)
+		_offer_late_join_spectate(id)
 		return
 	_assign_team(id)
 	_broadcast_roster()
 	lobby_changed.emit()
 
 
-func _reject_late_join(id: int) -> void:
-	rpc_id(id, "net_game_in_progress")
-	await get_tree().create_timer(0.5).timeout
-	var peer := multiplayer.multiplayer_peer
-	if peer:
-		peer.disconnect_peer(id)
+func _offer_late_join_spectate(id: int) -> void:
+	rpc_id(id, "net_game_in_progress",
+		_teams, _lifeguards, _names,
+		_round_red_score, _round_blue_score, _round_red_goal, _round_blue_goal)
 
 
 func _on_peer_disconnected(id: int) -> void:
 	print("net: peer %d disconnected" % id)
+	_arena_ready.erase(id)
 	if not multiplayer.is_server():
 		return
+	if _spectator_targets.erase(id):
+		_broadcast_spectator_targets()
 	var players := _players_root()
 	if players and players.has_node(str(id)):
 		players.get_node(str(id)).queue_free()
@@ -846,8 +1058,16 @@ func _on_server_disconnected() -> void:
 
 
 @rpc("authority", "reliable")
-func net_game_in_progress() -> void:
-	_connection_rejected_game_in_progress = true
+func net_game_in_progress(teams: Dictionary, lifeguards: Dictionary, names: Dictionary,
+		red_score: int, blue_score: int, red_goal: int, blue_goal: int) -> void:
+	_teams = teams.duplicate()
+	_lifeguards = lifeguards.duplicate()
+	_names = names.duplicate()
+	_round_red_score = red_score
+	_round_blue_score = blue_score
+	_round_red_goal = red_goal
+	_round_blue_goal = blue_goal
+	_connection_game_in_progress = true
 	_awaiting_connection = false
 	if _connect_flow_active:
 		return
@@ -862,7 +1082,34 @@ func _show_game_in_progress_prompt() -> void:
 	await Transition.blur_in()
 	var prompt := DISCONNECT_PROMPT.instantiate()
 	Transition.add_child(prompt)
-	await prompt.open(GAME_IN_PROGRESS_MESSAGE, "OK", "")
+	var spectate: bool = await prompt.open(GAME_IN_PROGRESS_MESSAGE, "Spectate", "OK")
+	if spectate:
+		await _start_spectating_current_round()
+	else:
+		await _leave_game_in_progress_to_menu()
+	_connection_game_in_progress = false
+	_game_in_progress_notice_open = false
+
+
+func _start_spectating_current_round() -> void:
+	_spectator_mode = true
+	_spectator_from_faint = false
+	round_state = RoundState.PLAYING
+	get_tree().change_scene_to_file("res://water/ocean1.tscn")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var waited := 0.0
+	while _players_root() == null and waited < 10.0:
+		await get_tree().process_frame
+		waited += get_process_delta_time()
+	_apply_round_scoreboard_to_scene()
+	_ensure_spectator_camera()
+	if is_online():
+		rpc_id(1, "net_spectator_ready")
+	await Transition.blur_out()
+
+
+func _leave_game_in_progress_to_menu() -> void:
 	leave_game()
 	_teams.clear()
 	_lifeguards.clear()
@@ -872,7 +1119,47 @@ func _show_game_in_progress_prompt() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await Transition.blur_out()
-	_game_in_progress_notice_open = false
+
+
+@rpc("any_peer", "reliable")
+func net_spectator_ready() -> void:
+	if not is_online() or not multiplayer.is_server():
+		return
+	var id := multiplayer.get_remote_sender_id()
+	if id <= 0 or _teams.has(id) or _round_over:
+		return
+	if round_state == RoundState.LOBBY:
+		rpc_id(id, "net_spectator_lobby")
+		return
+	rpc_id(id, "net_sync_roster", _teams, _lifeguards, _names)
+	rpc_id(id, "net_sync_round_scoreboard",
+		_round_red_score, _round_blue_score, _round_red_goal, _round_blue_goal)
+	_arena_ready[id] = true
+	rpc("net_sync_arena_peers", _arena_ready)
+	# launch the drone when the spectator joins the loaded match
+	var target := living_lifeguard()
+	if target and _can_watch_lifeguard(id, str(target.name).to_int()):
+		_spectator_targets[id] = str(target.name).to_int()
+		_broadcast_spectator_targets()
+	else:
+		rpc_id(id, "net_sync_spectator_targets", _spectator_targets)
+	var scene := get_tree().current_scene
+	var ocean := scene.get_node_or_null("water base") if scene else null
+	if ocean and ocean.has_method("get_active_waves"):
+		rpc_id(id, "net_sync_water_effects", ocean.get_active_waves())
+
+
+@rpc("authority", "reliable")
+func net_sync_water_effects(waves: Array) -> void:
+	var scene := get_tree().current_scene
+	var ocean := scene.get_node_or_null("water base") if scene else null
+	if ocean and ocean.has_method("restore_active_waves"):
+		ocean.restore_active_waves(waves)
+
+
+@rpc("authority", "reliable")
+func net_spectator_lobby() -> void:
+	await _return_to_lobby()
 
 
 # menu flow orchestration these two exist here not in menu gd for a real
@@ -904,7 +1191,7 @@ func start_connect_localhost() -> void:
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result()
-	if _connection_rejected_game_in_progress:
+	if _connection_game_in_progress:
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()
 		return
@@ -940,7 +1227,7 @@ func start_connect(ip: String) -> void:
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result()
-	if _connection_rejected_game_in_progress:
+	if _connection_game_in_progress:
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()
 		return
@@ -966,7 +1253,7 @@ var _connection_succeeded := false
 
 func _begin_connect_flow() -> void:
 	_connect_flow_active = true
-	_connection_rejected_game_in_progress = false
+	_connection_game_in_progress = false
 
 
 func _end_connect_flow() -> void:
@@ -985,14 +1272,14 @@ func _await_connection_result(timeout := 8.0) -> bool:
 		elapsed += get_process_delta_time()
 	if _connection_succeeded:
 		var grace := 0.0
-		while not _connection_rejected_game_in_progress and grace < _CONNECT_REJECT_GRACE:
+		while not _connection_game_in_progress and grace < _CONNECT_IN_PROGRESS_GRACE:
 			await get_tree().process_frame
 			grace += get_process_delta_time()
 	if multiplayer.connected_to_server.is_connected(_on_connect_attempt_ok):
 		multiplayer.connected_to_server.disconnect(_on_connect_attempt_ok)
 	if multiplayer.connection_failed.is_connected(_on_connect_attempt_failed):
 		multiplayer.connection_failed.disconnect(_on_connect_attempt_failed)
-	return _connection_succeeded and not _connection_rejected_game_in_progress
+	return _connection_succeeded and not _connection_game_in_progress
 
 
 func _on_connect_attempt_ok() -> void:

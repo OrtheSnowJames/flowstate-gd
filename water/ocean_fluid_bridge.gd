@@ -5,6 +5,23 @@ extends "res://poolk/fluid_box.gd"
 const _SplashCrown := preload("res://water/splash.tscn")
 const _WaveShader := preload("res://water/wave.gdshader")
 const _DropletShader := preload("res://water/droplet.gdshader")
+var _active_waves: Array[Dictionary] = []
+
+
+func get_active_waves() -> Array:
+	var waves := []
+	var now := Time.get_ticks_msec() / 1000.0
+	for wave in _active_waves:
+		var age: float = now - wave.started
+		if age < wave.distance / 14.0 + 0.36:
+			waves.append([wave.origin, wave.direction, wave.strength, wave.distance,
+				wave.size, wave.particles, age])
+	return waves
+
+
+func restore_active_waves(waves: Array) -> void:
+	for wave in waves:
+		_spawn_wave_crest(wave[0], wave[1], wave[2], wave[3], wave[4], wave[5], wave[6])
 
 
 func get_height_at(world_pos: Vector3) -> float:
@@ -221,9 +238,16 @@ func _send_to_owner(body: Node3D, method: String, args: Array, local: Callable) 
 
 # spawns the actual crest geometry for send_wave send_attack_wave rises fast leaping out of the
 func _spawn_wave_crest(origin: Vector3, travel_dir: Vector3, strength: float,
-		distance: float, size_mult: float = 1.0, particle_mult: float = 1.0) -> void:
+		distance: float, size_mult: float = 1.0, particle_mult: float = 1.0,
+		age: float = 0.0) -> void:
 	var speed := 14.0
 	var travel_time := distance / speed
+	if age >= travel_time + 0.36:
+		return
+	var state := {"origin": origin, "direction": travel_dir, "strength": strength,
+		"distance": distance, "size": size_mult, "particles": particle_mult,
+		"started": Time.get_ticks_msec() / 1000.0 - age}
+	_active_waves.append(state)
 
 	var mi := MeshInstance3D.new()
 	# height curl kept modest so the crest rides level with the player instead of
@@ -255,9 +279,12 @@ func _spawn_wave_crest(origin: Vector3, travel_dir: Vector3, strength: float,
 	tw.set_parallel(false)
 	tw.tween_method(set_alpha, 1.0, 0.0, 0.3) # fall back and fade
 	tw.tween_callback(mi.queue_free)
+	tw.tween_callback(func() -> void: _active_waves.erase(state))
 	tw.tween_callback(func() -> void: spray.emitting = false)
 	tw.tween_interval(spray.lifetime) # let the tail fade
 	tw.tween_callback(spray.queue_free)
+	if age > 0.0:
+		tw.custom_step(age)
 
 
 # a dense vivid cyan droplet spray for _spawn_wave_crest continuous not one_shot so it keeps

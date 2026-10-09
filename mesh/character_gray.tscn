@@ -1,0 +1,124 @@
+[gd_scene format=3 uid="uid://dyr5uukucdgrp"]
+
+[ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="1_o1gqv"]
+[ext_resource type="Texture2D" uid="uid://bj783m50hc7up" path="res://mesh/character_0_black.png" id="2_e2o6q"]
+[ext_resource type="PackedScene" uid="uid://dr625ab6cu5qv" path="res://mesh/Gamegear.FBX" id="3_e2o6q"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ellqp"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cdclu"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rq5ky"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coy7m"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3pyf0"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v7kl5"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_iwoxo"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yemd2"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v7160"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3ki31"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xpc8r"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0ik72"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_f05vr"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yb0nv"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hdwrn"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_g0xyf"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lc4wb"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7vuh3"]
+albedo_texture = ExtResource("2_e2o6q")
+
+[node name="blockbench_export" unique_id=65244047 instance=ExtResource("1_o1gqv")]
+
+[node name="sphere" parent="head" parent_id_path=PackedInt32Array(362891594) index="0" unique_id=274971427]
+material_override = SubResource("StandardMaterial3D_ellqp")
+
+[node name="cube" parent="body" parent_id_path=PackedInt32Array(463926333) index="0" unique_id=1509550934]
+material_override = SubResource("StandardMaterial3D_cdclu")
+
+[node name="larm" parent="." index="2" unique_id=345164334]
+transform = Transform3D(0.9280184, -0.35639673, 0.10845828, -0.035446938, 0.2053388, 0.97804874, -0.3708441, -0.9114918, 0.17792502, 0.6875, 3.5625, 0)
+
+[node name="cube3" parent="larm" index="1" unique_id=1734707755]
+material_override = SubResource("StandardMaterial3D_rq5ky")
+
+[node name="cube4" parent="larm" index="2" unique_id=754736277]
+material_override = SubResource("StandardMaterial3D_coy7m")
+
+[node name="cube5" parent="larm" index="3" unique_id=588188086]
+material_override = SubResource("StandardMaterial3D_3pyf0")
+
+[node name="cube6" parent="larm" index="4" unique_id=837587227]
+material_override = SubResource("StandardMaterial3D_v7kl5")
+
+[node name="rarm" parent="." index="3" unique_id=517865535]
+transform = Transform3D(0.96254534, -0.17978501, 0.20293865, -0.15412974, 0.25294113, 0.9551257, -0.22304876, -0.9506304, 0.21575701, -0.9375, 3.5625, 0)
+
+[node name="cube8" parent="rarm" index="1" unique_id=620934391]
+material_override = SubResource("StandardMaterial3D_iwoxo")
+
+[node name="cube9" parent="rarm" index="2" unique_id=483108255]
+material_override = SubResource("StandardMaterial3D_yemd2")
+
+[node name="cube10" parent="rarm" index="3" unique_id=812046339]
+material_override = SubResource("StandardMaterial3D_v7160")
+
+[node name="cube11" parent="rarm" index="4" unique_id=1461331368]
+material_override = SubResource("StandardMaterial3D_3ki31")
+
+[node name="cube13" parent="rleg" parent_id_path=PackedInt32Array(317318006) index="1" unique_id=33282191]
+material_override = SubResource("StandardMaterial3D_xpc8r")
+
+[node name="cube14" parent="rleg" parent_id_path=PackedInt32Array(317318006) index="2" unique_id=779833343]
+material_override = SubResource("StandardMaterial3D_0ik72")
+
+[node name="cube15" parent="rleg" parent_id_path=PackedInt32Array(317318006) index="3" unique_id=106240383]
+material_override = SubResource("StandardMaterial3D_f05vr")
+
+[node name="cube16" parent="rleg" parent_id_path=PackedInt32Array(317318006) index="4" unique_id=1858478194]
+material_override = SubResource("StandardMaterial3D_yb0nv")
+
+[node name="cube18" parent="rleg2" parent_id_path=PackedInt32Array(957722955) index="1" unique_id=1943205017]
+material_override = SubResource("StandardMaterial3D_hdwrn")
+
+[node name="cube19" parent="rleg2" parent_id_path=PackedInt32Array(957722955) index="2" unique_id=810556305]
+material_override = SubResource("StandardMaterial3D_g0xyf")
+
+[node name="cube20" parent="rleg2" parent_id_path=PackedInt32Array(957722955) index="3" unique_id=938176002]
+material_override = SubResource("StandardMaterial3D_lc4wb")
+
+[node name="cube21" parent="rleg2" parent_id_path=PackedInt32Array(957722955) index="4" unique_id=1060582009]
+material_override = SubResource("StandardMaterial3D_7vuh3")
+
+[node name="Gamegear" parent="." index="7" unique_id=1774683121 instance=ExtResource("3_e2o6q")]
+transform = Transform3D(-0.49949986, -0.019235706, -0.011396535, 0.00830327, 0.077041365, -0.49395925, 0.02075932, -0.4936544, -0.07664486, 0.67298234, 3.142745, 2.0688066)

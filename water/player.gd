@@ -198,18 +198,21 @@ var last_d_press := -1000.0
 # which side this body plays for drives the bodys colour see _apply_team_colors every white
 @export var team: Team = Team.RED:
 	set(value):
+		if team == value:
+			return
 		team = value
-		# same deferred until in tree reasoning as is_lifeguard below the mesh this recolours may
-		if is_inside_tree():
+		# spawn properties arrive before the mesh is ready
+		if is_node_ready():
 			_apply_team_colors()
 
 @export_group("Lifeguard")
 # off duty by default on swaps blockbench_export for mesh lifeguard glb same rig animations
 @export var is_lifeguard: bool = false:
 	set(value):
+		if is_lifeguard == value:
+			return
 		is_lifeguard = value
-		# deferred to _ready at load time see there applied immediately here only for a
-		if is_inside_tree():
+		if is_node_ready():
 			_apply_lifeguard_loadout()
 
 # damage range at strength 1 for a hit that lands see ocean_fluid_bridge gds _apply_hit_damage
@@ -279,6 +282,41 @@ var _gravity: float = 9.8
 var _last_backstroke_time: float = -1000.0
 # latched by _death once stamina runs out see there gates input and the whole
 var _unconscious: bool = false
+var replicated_unconscious: bool:
+	get:
+		return _unconscious
+	set(value):
+		if not is_node_ready():
+			_unconscious = value
+		elif value != _unconscious:
+			if value:
+				net_death()
+			else:
+				net_revive()
+
+var _received_animation: Array = []
+var replicated_animation: Array:
+	get:
+		if not is_node_ready() or not _anim_player or _anim_player.assigned_animation.is_empty():
+			return _received_animation
+		return [_anim_player.assigned_animation, _anim_player.current_animation_position,
+			_anim_player.speed_scale, _anim_player.is_playing()]
+	set(value):
+		_received_animation = value
+		if is_node_ready() and not _is_local():
+			_apply_replicated_animation()
+
+var _wall_state: Array = []
+var replicated_wall: Array:
+	get:
+		return _wall_state
+	set(value):
+		_wall_state = value
+		if is_node_ready() and not _is_local():
+			if value.is_empty():
+				net_water_wall_stop()
+			else:
+				net_water_wall(value[0], value[1], value[2])
 # the eyelid tween kept so revive can kill a close thats still in flight
 var _eyelid_tween: Tween = null
 # camera shake state see _shake_change
@@ -289,14 +327,20 @@ var _shake_strength: float = 0.0
 # the nodes name is the peer id that owns this body net gd names
 func _enter_tree() -> void:
 	_owner_peer = str(name).to_int()
+	var spawn_sync := get_node_or_null("SpawnSynchronizer")
 	# 0 means the name isnt a peer id at all the scene opened on
 	if _owner_peer > 0:
 		set_multiplayer_authority(_owner_peer)
+		# the host controls spawning and roles while each player controls their movement
+		if spawn_sync:
+			spawn_sync.set_multiplayer_authority(1)
 	else:
 		# a body outside the real networked spawn system entirely e g menu tscns menuplayer
 		var sync := get_node_or_null("MultiplayerSynchronizer")
 		if sync:
 			sync.queue_free()
+		if spawn_sync:
+			spawn_sync.queue_free()
 	# lets net gd find the local player without assuming where in the tree it
 	add_to_group("player")
 
@@ -350,10 +394,6 @@ func _ready() -> void:
 	# place ourselves rather than waiting to be told where we are the host sets
 	if _owner_peer > 0:
 		position = Net.spawn_position(_owner_peer)
-
-	# tell anyone who joins later where we actually are the synchronizer only gets a
-	if _owner_peer > 0 and not multiplayer.peer_connected.is_connected(_on_peer_joined):
-		multiplayer.peer_connected.connect(_on_peer_joined)
 
 	# drive the bars ranges from the real stat maxima theyre authored in the scene
 	if gui:
@@ -488,6 +528,29 @@ func _setup_remote_body() -> void:
 	freeze = true
 	if is_instance_valid(_cam_pivot):
 		_cam_pivot.queue_free()
+	if not _wall_state.is_empty():
+		net_water_wall(_wall_state[0], _wall_state[1], _wall_state[2])
+	if not _received_animation.is_empty():
+		_apply_replicated_animation()
+	elif _unconscious and _anim_player.has_animation("death"):
+		_anim_player.play("death")
+		_anim_player.seek(_anim_player.get_animation("death").length, true)
+
+
+func _apply_replicated_animation() -> void:
+	if not _anim_player or _received_animation.size() != 4:
+		return
+	var clip: String = _received_animation[0]
+	if clip.is_empty() or not _anim_player.has_animation(clip):
+		return
+	var changed := _anim_player.assigned_animation != clip
+	if changed or (_received_animation[3] and not _anim_player.is_playing()):
+		_anim_player.play(clip)
+	_anim_player.speed_scale = _received_animation[2]
+	if changed or absf(_anim_player.current_animation_position - _received_animation[1]) > 0.15:
+		_anim_player.seek(_received_animation[1], true)
+	if not _received_animation[3]:
+		_anim_player.pause()
 
 func anim_name_to_string(anim_name: AnimationState) -> String:
 	# looks up the string by enum key falls back to empty string if missing
@@ -546,8 +609,8 @@ func _detach_camera_rig() -> void:
 		_cam_pivot.reparent(root, true)
 
 func _process(delta: float) -> void:
-	# animation runs for every body local or not movement_state is replicated see player tscns
-	if ANIMATE_PLAYER:
+	# remote animations follow the owners clip and playback time
+	if ANIMATE_PLAYER and (_is_local() or not Net.is_online()):
 		_anim_change()
 
 	# the camera the cursor and the shake are per window so they only make
@@ -658,6 +721,8 @@ func _cast_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
 
 @rpc("any_peer", "call_local", "unreliable")
 func net_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
+	_wall_state = [origin, aim, strength]
+	_water_wall_up = true
 	if _ocean and _ocean.has_method("start_water_wall"):
 		# self keys the wall to this player so two people holding walls at once
 		_ocean.start_water_wall(origin, aim, strength, self)
@@ -672,27 +737,11 @@ func _cast_water_wall_stop() -> void:
 
 @rpc("any_peer", "call_local", "reliable")
 func net_water_wall_stop() -> void:
+	_wall_state = []
+	_water_wall_up = false
 	if _ocean and _ocean.has_method("stop_water_wall"):
 		_ocean.stop_water_wall(self)
 	_stop_water_wall_anim()
-
-# someone new turned up send them our current state directly so they dont have
-func _on_peer_joined(id: int) -> void:
-	if not _is_local():
-		return
-	rpc_id(id, "net_sync_state", position, rotation, movement_state, _unconscious)
-
-# current state of a body pushed to a peer that just joined everything here
-@rpc("any_peer", "reliable")
-func net_sync_state(pos: Vector3, rot: Vector3, state: MovementState, out_cold: bool) -> void:
-	# never let a late packet stomp the body were actually driving
-	if _is_local():
-		return
-	position = pos
-	rotation = rot
-	movement_state = state
-	if out_cold and not _unconscious:
-		net_death()
 
 # knockback applied where this bodys physics actually run called by ocean_fluid_bridges _knockback via _send_to_owner
 @rpc("any_peer", "reliable")
@@ -792,6 +841,8 @@ func _input(event: InputEvent) -> void:
 	if not _is_local():
 		return
 	if Net.input_blocked_by_menu():
+		return
+	if Net.is_spectating():
 		return
 	if _unconscious:
 		return
@@ -907,9 +958,7 @@ func net_death() -> void:
 
 	# a wall left standing when its owner blacks out would hang in the pool
 	if _water_wall_up:
-		_water_wall_up = false
-		if _ocean and _ocean.has_method("stop_water_wall"):
-			_ocean.stop_water_wall(self)
+		net_water_wall_stop()
 	# clear the walls animation hold too whether or not a wall was up it
 	_stop_water_wall_anim()
 
@@ -942,6 +991,13 @@ func net_death() -> void:
 			0.0,
 			1.0,
 			_duration)
+		await get_tree().create_timer(_duration).timeout
+		if _unconscious and is_inside_tree():
+			Net.enter_spectator_after_faint()
+	else:
+		await get_tree().create_timer(blackout_time).timeout
+		if _unconscious and is_inside_tree():
+			Net.enter_spectator_after_faint()
 
 # coming to the mirror of _death eyes snap back open with a jolt through
 func revive() -> void:
@@ -974,6 +1030,10 @@ func net_revive() -> void:
 
 	if _muffled_player:
 		_muffled_player.stop()
+
+	Net.exit_spectator_mode()
+	if take_over_camera:
+		_camera.current = true
 
 	shake_camera(revive_shake_strength, revive_shake_time)
 
@@ -1117,6 +1177,10 @@ func _physics_process(delta: float) -> void:
 		return
 
 	if Net.input_blocked_by_menu():
+		_drift_to_a_stop()
+		return
+
+	if Net.is_spectating():
 		_drift_to_a_stop()
 		return
 
