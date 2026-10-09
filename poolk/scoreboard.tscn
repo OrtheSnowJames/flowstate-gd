@@ -119,5 +119,5 @@ transform = Transform3D(-4.371139e-08, 1.4, 0, -1, -6.119594e-08, 0, 0, 0, 1, 0.
 mesh = SubResource("BoxMesh_acdtm")
 
 [node name="MeshInstance3D5" type="MeshInstance3D" parent="." unique_id=1778309539]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.5649654, 2.0175529, 0.14476746)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.4678603, 2.0175529, 0.14476746)
 mesh = SubResource("BoxMesh_acdtm")

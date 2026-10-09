@@ -214,7 +214,7 @@ size = Vector2(6, 85)
 size = Vector3(80, 0.5, 6)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oalkl"]
-size = Vector3(60, 6, 1)
+size = Vector3(60, 24, 1)
 
 [node name="Main" type="Node3D" unique_id=1189769047]
 physics_interpolation_mode = 2
@@ -816,20 +816,20 @@ transform = Transform3D(0.04604494, 0, 0.01675899, 0, 0.054, 0, -0.01744303, 0, 
 [node name="smooth_(drone)_operator" parent="." unique_id=1215724303 instance=ExtResource("28_2euab")]
 transform = Transform3D(0.7071068, 0, 0.7071068, 0, 1, 0, -0.7071068, 0, 0.7071068, -29.999996, 9, -25)
 
-[node name="walls" type="Node3D" parent="." unique_id=1906444513]
+[node name="walls" type="StaticBody3D" parent="." unique_id=1906444513]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="walls" unique_id=374045487]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 11.5, 21.547321)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 20.5, 21.547321)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="walls" unique_id=754616332]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 11.5, -21.608849)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 20.5, -21.608849)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="walls" unique_id=326566403]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 26.5, 11.5, 8.391151)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 26.5, 20.5, 8.391151)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D4" type="CollisionShape3D" parent="walls" unique_id=942971688]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 11.5, 8.391151)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 20.5, 8.391151)
 shape = SubResource("BoxShape3D_oalkl")
