@@ -527,16 +527,18 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 7.655, 0)
 script = ExtResource("7_poolk")
 size = Vector3(57, 12, 46)
 sim_resolution = 384
+sim_steps_per_second = 120.0
 wave_transfer = 0.18
 wave_damping = 0.95
 edge_damping = 0.6
 amplitude = 1.2
 mesh_resolution = 300
+refraction_strength = 0.07
+detail_strength = 0.18
 min_splash_speed = 1.5
 splash_strength = 1.4
 wake_strength = 4.0
 wake_min_speed = 0.12
-enable_height_queries = true
 
 [node name="PushCube" type="RigidBody3D" parent="." unique_id=1648123897]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 10, 0)

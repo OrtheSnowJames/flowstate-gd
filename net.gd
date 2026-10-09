@@ -8,11 +8,25 @@ const PLAYER_SCENE := preload("res://water/player.tscn")
 const PLAYER_SCRIPT := preload("res://water/player.gd")
 # the 3 2 1 go label instantiated into the arenas hud at round start
 const COUNTDOWN_TEXT := preload("res://menu/appear_disappear_text.tscn")
+const DISCONNECT_PROMPT := preload("res://menu/disconnect_prompt.tscn")
 # where connecting lands you a path rather than a preload menu lobby tscn instances
 const LOBBY_SCENE := "res://menu/lobby.tscn"
+const MENU_SCENE := "res://menu/menu.tscn"
+const DISCONNECT_PENALTY_SECONDS := 5 * 60
+const DISCONNECT_WARNING := "Are you sure you want to disconnect? You will receive a penalty!"
+const GAME_IN_PROGRESS_MESSAGE := "Game in progress..."
+const _CONNECT_REJECT_GRACE := 0.35
 
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
+
+var _escape_menu_open := false
+var _input_blocked_by_menu := false
+var _leaving_game := false
+var _penalty_notice_open := false
+var _connect_flow_active := false
+var _connection_rejected_game_in_progress := false
+var _game_in_progress_notice_open := false
 
 # off by default on purpose pressing test_lifeguard_key see project godots input map l as
 @export var enable_lifeguard_test_key: bool = true
@@ -70,7 +84,48 @@ func is_online() -> bool:
 			and peer.get_connection_status() != MultiplayerPeer.CONNECTION_DISCONNECTED
 
 
+func input_blocked_by_menu() -> bool:
+	return _input_blocked_by_menu
+
+
+func online_penalty_remaining() -> int:
+	return Settings.online_penalty_remaining()
+
+
+func online_penalty_text() -> String:
+	return _format_penalty_time(online_penalty_remaining())
+
+
+func _block_online_if_penalized(show_status := true) -> bool:
+	var remaining := online_penalty_remaining()
+	if remaining <= 0:
+		return false
+	if show_status:
+		_show_online_penalty_status(remaining)
+	return true
+
+
+func _show_online_penalty_status(remaining: int) -> void:
+	if _penalty_notice_open:
+		return
+	_penalty_notice_open = true
+	await Transition.blur_in()
+	await Transition.show_status("Online penalty: %s left" % _format_penalty_time(remaining))
+	await get_tree().create_timer(1.5).timeout
+	await Transition.hide_status()
+	await Transition.blur_out()
+	_penalty_notice_open = false
+
+
+func _format_penalty_time(seconds: int) -> String:
+	var clamped := maxi(seconds, 0)
+	return "%d:%02d" % [int(clamped / 60), clamped % 60]
+
+
 func host_game() -> Error:
+	if _block_online_if_penalized(false):
+		push_warning("net: online penalty still has %s left" % online_penalty_text())
+		return FAILED
 	if is_online():
 		push_warning("net: already online, ignoring host_game()")
 		return ERR_ALREADY_IN_USE
@@ -91,6 +146,9 @@ func host_game() -> Error:
 
 
 func join_game(ip := "") -> Error:
+	if _block_online_if_penalized(false):
+		push_warning("net: online penalty still has %s left" % online_penalty_text())
+		return FAILED
 	if is_online():
 		push_warning("net: already online, ignoring join_game()")
 		return ERR_ALREADY_IN_USE
@@ -182,6 +240,8 @@ var _arena_ready: Dictionary = {}
 
 # open a lobby and wait in it the hosts half of start_connect_localhost reached directly
 func start_host_lobby() -> void:
+	if _block_online_if_penalized():
+		return
 	if is_online():
 		push_warning("net: already online, ignoring start_host_lobby()")
 		return
@@ -201,10 +261,28 @@ func leave_lobby() -> void:
 	_arena_ready.clear()
 	round_state = RoundState.LOBBY
 	await Transition.fade_to_black()
-	get_tree().change_scene_to_file("res://menu/menu.tscn")
+	get_tree().change_scene_to_file(MENU_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await Transition.fade_from_black()
+
+
+func _leave_current_game_to_menu() -> void:
+	if _leaving_game:
+		return
+	_leaving_game = true
+	leave_game()
+	_teams.clear()
+	_lifeguards.clear()
+	_arena_ready.clear()
+	_round_over = false
+	round_state = RoundState.LOBBY
+	await Transition.fade_to_black()
+	get_tree().change_scene_to_file(MENU_SCENE)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await Transition.fade_from_black()
+	_leaving_game = false
 
 
 # how many peers are in the session host included the team table doubles as
@@ -594,6 +672,8 @@ func net_report_name(display_name: String) -> void:
 	# get_remote_sender_id is 0 when this wasnt reached via an actual incoming rpc i e
 	var sender := multiplayer.get_remote_sender_id()
 	var id := sender if sender != 0 else multiplayer.get_unique_id()
+	if is_online() and multiplayer.is_server() and round_state != RoundState.LOBBY and not _teams.has(id):
+		return
 	_names[id] = _sanitize_name(display_name)
 	_broadcast_roster()
 	lobby_changed.emit()
@@ -703,14 +783,20 @@ func _on_peer_connected(id: int) -> void:
 	# a client hears about the server connecting and nothing else enet is client server
 	if not multiplayer.is_server():
 		return
-	# a lobby slot first and only then if theres already a round running a
+	if round_state != RoundState.LOBBY:
+		_reject_late_join(id)
+		return
 	_assign_team(id)
 	_broadcast_roster()
-	if round_state == RoundState.PLAYING:
-		# joining mid round straight into the pool rather than being stuck watching from a
-		_add_player(id)
-		_sync_round_scoreboard()
 	lobby_changed.emit()
+
+
+func _reject_late_join(id: int) -> void:
+	rpc_id(id, "net_game_in_progress")
+	await get_tree().create_timer(0.5).timeout
+	var peer := multiplayer.multiplayer_peer
+	if peer:
+		peer.disconnect_peer(id)
 
 
 func _on_peer_disconnected(id: int) -> void:
@@ -759,6 +845,36 @@ func _on_server_disconnected() -> void:
 	leave_game()
 
 
+@rpc("authority", "reliable")
+func net_game_in_progress() -> void:
+	_connection_rejected_game_in_progress = true
+	_awaiting_connection = false
+	if _connect_flow_active:
+		return
+	_show_game_in_progress_prompt()
+
+
+func _show_game_in_progress_prompt() -> void:
+	if _game_in_progress_notice_open:
+		return
+	_game_in_progress_notice_open = true
+	await Transition.hide_status()
+	await Transition.blur_in()
+	var prompt := DISCONNECT_PROMPT.instantiate()
+	Transition.add_child(prompt)
+	await prompt.open(GAME_IN_PROGRESS_MESSAGE, "OK", "")
+	leave_game()
+	_teams.clear()
+	_lifeguards.clear()
+	_arena_ready.clear()
+	round_state = RoundState.LOBBY
+	get_tree().change_scene_to_file(MENU_SCENE)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await Transition.blur_out()
+	_game_in_progress_notice_open = false
+
+
 # menu flow orchestration these two exist here not in menu gd for a real
 
 # solo play a one player round runs the exact same load everyone ready spawn
@@ -775,6 +891,9 @@ func start_solo_play() -> void:
 
 # connect to localhost lands in the lobby either way joining an existing one if
 func start_connect_localhost() -> void:
+	if _block_online_if_penalized():
+		return
+	_begin_connect_flow()
 	await Transition.blur_in()
 	Transition.show_status("Connecting...")
 	get_tree().change_scene_to_file(LOBBY_SCENE)
@@ -785,6 +904,11 @@ func start_connect_localhost() -> void:
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result()
+	if _connection_rejected_game_in_progress:
+		_end_connect_flow()
+		await _show_game_in_progress_prompt()
+		return
+	_end_connect_flow()
 	if ok:
 		await Transition.hide_status()
 		await Transition.blur_out()
@@ -802,6 +926,9 @@ func start_connect_localhost() -> void:
 
 # the whole join somebodys game flow address and all split out of start_connect_localhost so
 func start_connect(ip: String) -> void:
+	if _block_online_if_penalized():
+		return
+	_begin_connect_flow()
 	await Transition.blur_in()
 	Transition.show_status("Connecting...")
 	get_tree().change_scene_to_file(LOBBY_SCENE)
@@ -813,6 +940,11 @@ func start_connect(ip: String) -> void:
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result()
+	if _connection_rejected_game_in_progress:
+		_end_connect_flow()
+		await _show_game_in_progress_prompt()
+		return
+	_end_connect_flow()
 	if ok:
 		await Transition.hide_status()
 		await Transition.blur_out()
@@ -820,7 +952,7 @@ func start_connect(ip: String) -> void:
 
 	await Transition.show_status("Couldn't connect")
 	await get_tree().create_timer(1.5).timeout
-	get_tree().change_scene_to_file("res://menu/menu.tscn")
+	get_tree().change_scene_to_file(MENU_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
 	await Transition.hide_status()
@@ -830,6 +962,16 @@ func start_connect(ip: String) -> void:
 # set while _await_connection_result is waiting see there
 var _awaiting_connection := false
 var _connection_succeeded := false
+
+
+func _begin_connect_flow() -> void:
+	_connect_flow_active = true
+	_connection_rejected_game_in_progress = false
+
+
+func _end_connect_flow() -> void:
+	_connect_flow_active = false
+
 
 # races multiplayers own connected_to_server connection_failed signals join_game already wires the general purpose _on_connected_to_server _on_connection_failed
 func _await_connection_result(timeout := 8.0) -> bool:
@@ -841,11 +983,16 @@ func _await_connection_result(timeout := 8.0) -> bool:
 	while _awaiting_connection and elapsed < timeout:
 		await get_tree().process_frame
 		elapsed += get_process_delta_time()
+	if _connection_succeeded:
+		var grace := 0.0
+		while not _connection_rejected_game_in_progress and grace < _CONNECT_REJECT_GRACE:
+			await get_tree().process_frame
+			grace += get_process_delta_time()
 	if multiplayer.connected_to_server.is_connected(_on_connect_attempt_ok):
 		multiplayer.connected_to_server.disconnect(_on_connect_attempt_ok)
 	if multiplayer.connection_failed.is_connected(_on_connect_attempt_failed):
 		multiplayer.connection_failed.disconnect(_on_connect_attempt_failed)
-	return _connection_succeeded
+	return _connection_succeeded and not _connection_rejected_game_in_progress
 
 
 func _on_connect_attempt_ok() -> void:
@@ -858,8 +1005,57 @@ func _on_connect_attempt_failed() -> void:
 	_awaiting_connection = false
 
 
+func _handle_session_escape() -> void:
+	if _escape_menu_open or _leaving_game:
+		return
+	if not is_online() or _is_online_session_alone():
+		_leave_current_game_to_menu()
+	else:
+		_confirm_online_disconnect()
+
+
+func _is_online_session_alone() -> bool:
+	return lobby_count() <= 1
+
+
+func _escape_scene_active() -> bool:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return false
+	return _players_root() != null or scene.scene_file_path == LOBBY_SCENE
+
+
+func _confirm_online_disconnect() -> void:
+	_escape_menu_open = true
+	_input_blocked_by_menu = true
+	await Transition.blur_in()
+	var prompt := DISCONNECT_PROMPT.instantiate()
+	Transition.add_child(prompt)
+	var confirmed: bool = await prompt.open(DISCONNECT_WARNING)
+	if confirmed:
+		Settings.start_online_penalty(DISCONNECT_PENALTY_SECONDS)
+		await _leave_current_game_to_menu()
+		await Transition.blur_out()
+	else:
+		await Transition.blur_out()
+	_input_blocked_by_menu = false
+	_escape_menu_open = false
+
+
+func _is_escape_pressed(event: InputEvent) -> bool:
+	if event.is_action_pressed("ui_cancel"):
+		return true
+	return event is InputEventKey and event.pressed and not event.echo and event.keycode == KEY_ESCAPE
+
+
 # debug keys placeholder until the real menu ui exists raw keycodes rather than input
 func _unhandled_input(event: InputEvent) -> void:
+	if _is_escape_pressed(event) and _escape_scene_active():
+		if _escape_menu_open:
+			return
+		get_viewport().set_input_as_handled()
+		_handle_session_escape()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F1:

@@ -11,6 +11,8 @@ signal body_splashed(body: Node3D, power: float)
 @export_group("Simulation")
 # sim cells along the longest surface axis 192 320 is a good range
 @export_range(64, 512) var sim_resolution := 256
+# caps the water sim work so render fps can climb above the sim rate
+@export_range(15, 120) var sim_steps_per_second := 30.0
 # wave propagation speed factor 0 0 5 higher faster waves 0 5 unstable
 @export_range(0.05, 0.5) var wave_transfer := 0.30
 # energy retained per sim step 1 0 waves never die
@@ -22,6 +24,9 @@ signal body_splashed(body: Node3D, power: float)
 # height in metres of a full strength sim value bigger taller waves
 @export_range(0.0, 2.0) var amplitude := 0.35
 @export_range(60, 300) var mesh_resolution := 160
+@export var simple_surface := false
+@export_range(0.0, 0.3) var refraction_strength := 0.07
+@export_range(0.0, 1.0) var detail_strength := 0.18
 @export var surface_material_override: ShaderMaterial
 
 @export_group("Body Interaction")
@@ -62,6 +67,7 @@ var _splash_pool: Array[GPUParticles3D] = []
 var _splash_idx := 0
 var _readback_img: Image
 var _readback_countdown := 0
+var _sim_accum := 0.0
 
 
 func _ready() -> void:
@@ -140,6 +146,9 @@ func _build_surface() -> void:
 	_surf_mat.set_shader_parameter("texel", Vector2(1.0 / _sim_size.x, 1.0 / _sim_size.y))
 	_surf_mat.set_shader_parameter("world_size", Vector2(size.x, size.z))
 	_surf_mat.set_shader_parameter("amplitude", amplitude)
+	_surf_mat.set_shader_parameter("simple_surface", simple_surface)
+	_surf_mat.set_shader_parameter("refraction_strength", refraction_strength)
+	_surf_mat.set_shader_parameter("detail_strength", detail_strength)
 	_surf_mat.set_shader_parameter("height_tex", _vp_a.get_texture())
 	_mesh.material_override = _surf_mat
 	# displaced verts can leave the flat aabb pad it so waves never get culled
@@ -187,8 +196,15 @@ func _build_splash_pool() -> void:
 		_splash_pool.append(p)
 
 
-# per frame run the sim render cadence interact with bodies physics
-func _process(_delta: float) -> void:
+# run the sim at a fixed visual rate instead of once per rendered frame
+func _process(delta: float) -> void:
+	_sim_accum += delta
+	var step_interval := 1.0 / maxf(sim_steps_per_second, 1.0)
+	if _reset_frames <= 0 and _sim_accum < step_interval:
+		return
+	if _sim_accum >= step_interval:
+		_sim_accum = fmod(_sim_accum, step_interval)
+
 	_flip = not _flip
 	var dst_mat := _mat_a if _flip else _mat_b
 	var dst_vp := _vp_a if _flip else _vp_b

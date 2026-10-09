@@ -10,6 +10,7 @@ uniform vec2  texel       = vec2(0.00390625);
 uniform vec2  world_size  = vec2(10.0, 10.0);
 uniform float amplitude   : hint_range(0.0, 2.0)  = 0.35; // metres at full sim value
 uniform float chop        : hint_range(0.0, 2.0)  = 0.7; // horizontal crest pinch
+uniform bool  simple_surface = false;
 
 uniform vec4  shallow_color : source_color = vec4(0.10, 0.42, 0.45, 1.0);
 uniform vec4  deep_color    : source_color = vec4(0.035, 0.14, 0.21, 1.0);
@@ -67,49 +68,65 @@ void fragment() {
 	float hd = texture(height_tex, v_uv + vec2(0.0, texel.y)).r - 0.5;
 	vec2 dx = 2.0 * texel * world_size;
 	vec2 slope = vec2((hr - hl) * amplitude / dx.x, (hd - hu) * amplitude / dx.y);
-
-	// procedural micro ripples two drifting noise layers
 	vec2 wp = v_uv * world_size * detail_scale;
-	float e = 0.35;
-	vec2 d1 = wp + TIME * vec2(0.55, 0.20);
-	vec2 d2 = wp * 1.7 - TIME * vec2(0.23, 0.61);
-	vec2 dgrad =
-		vec2(vnoise(d1 + vec2(e, 0.0)) - vnoise(d1 - vec2(e, 0.0)),
-		     vnoise(d1 + vec2(0.0, e)) - vnoise(d1 - vec2(0.0, e))) +
-		0.6 * vec2(vnoise(d2 + vec2(e, 0.0)) - vnoise(d2 - vec2(e, 0.0)),
-		           vnoise(d2 + vec2(0.0, e)) - vnoise(d2 - vec2(0.0, e)));
-	slope += dgrad * detail_strength;
+
+	if (!simple_surface) {
+		// procedural micro ripples two drifting noise layers
+		float e = 0.35;
+		vec2 d1 = wp + TIME * vec2(0.55, 0.20);
+		vec2 d2 = wp * 1.7 - TIME * vec2(0.23, 0.61);
+		vec2 dgrad =
+			vec2(vnoise(d1 + vec2(e, 0.0)) - vnoise(d1 - vec2(e, 0.0)),
+			     vnoise(d1 + vec2(0.0, e)) - vnoise(d1 - vec2(0.0, e))) +
+			0.6 * vec2(vnoise(d2 + vec2(e, 0.0)) - vnoise(d2 - vec2(e, 0.0)),
+			           vnoise(d2 + vec2(0.0, e)) - vnoise(d2 - vec2(0.0, e)));
+		slope += dgrad * detail_strength;
+	}
 
 	vec3 n_model = normalize(vec3(-slope.x, 1.0, -slope.y));
 	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mat3(MODEL_MATRIX) * n_model), 0.0)).xyz);
 
-	// water depth from the scene depth buffer
-	float draw = texture(depth_tex, SCREEN_UV).r;
-	vec4 vpos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, draw, 1.0);
-	vpos.xyz /= vpos.w;
-	float depth_m = clamp(-vpos.z - (-VERTEX.z), 0.0, 200.0);
+	vec3 final_col;
+	float final_roughness;
+	if (simple_surface) {
+		float energy = abs(texture(height_tex, v_uv).g - 0.5);
+		float crest = smoothstep(foam_crest_start, foam_crest_start * 2.2 + 0.02, v_h * amplitude);
+		float foam = smoothstep(0.25, 0.9, crest + energy * foam_energy * 0.35);
+		vec3 water_col = mix(deep_color.rgb, shallow_color.rgb, 0.68 + max(v_h, 0.0) * 0.2);
+		final_col = mix(water_col, foam_color.rgb, foam * 0.65);
+		final_roughness = mix(0.08, 0.42, foam);
+	} else {
+		// water depth from the scene depth buffer
+		float draw = texture(depth_tex, SCREEN_UV).r;
+		vec4 vpos = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, draw, 1.0);
+		vpos.xyz /= vpos.w;
+		float depth_m = clamp(-vpos.z - (-VERTEX.z), 0.0, 200.0);
 
-	// refraction offset shrinks in shallow water so edges dont smear
-	vec2 ruv = SCREEN_UV + NORMAL.xy * refraction_strength * clamp(depth_m, 0.0, 1.0);
-	vec3 refr = texture(screen_tex, ruv).rgb;
+		// refraction offset shrinks in shallow water so edges dont smear
+		vec2 ruv = SCREEN_UV + NORMAL.xy * refraction_strength * clamp(depth_m, 0.0, 1.0);
+		vec3 refr = texture(screen_tex, ruv).rgb;
 
-	// beer lambert absorption
-	float transmit = exp(-absorption * depth_m);
-	vec3 col = mix(deep_color.rgb, refr * mix(vec3(1.0), shallow_color.rgb, 0.55), transmit);
-	// subtle crest brightening cheap subsurface scattering read was unconditionally added on top of the
-	col += shallow_color.rgb * max(v_h, 0.0) * amplitude * 0.18;
+		// beer lambert absorption
+		float transmit = exp(-absorption * depth_m);
+		vec3 col = mix(deep_color.rgb, refr * mix(vec3(1.0), shallow_color.rgb, 0.55), transmit);
+		// subtle crest brightening cheap subsurface scattering read was unconditionally added on top of the
+		col += shallow_color.rgb * max(v_h, 0.0) * amplitude * 0.18;
 
-	// foam
-	float energy = abs(texture(height_tex, v_uv).g - 0.5); // sim velocity channel
-	float crest  = smoothstep(foam_crest_start, foam_crest_start * 2.2 + 0.02, v_h * amplitude);
-	float churn  = smoothstep(0.35, 1.0, energy * foam_energy);
-	float shore  = 1.0 - smoothstep(0.0, shore_foam_depth, depth_m);
-	float fnoise = vnoise(wp * 2.3 + TIME * 0.35) * 0.6 + vnoise(wp * 5.1 - TIME * 0.2) * 0.4;
-	float foam = clamp(crest + churn * 0.9 + shore * 0.8, 0.0, 1.0);
-	foam = smoothstep(0.25, 0.8, foam * (0.55 + fnoise * 0.7));
+		// foam
+		float energy = abs(texture(height_tex, v_uv).g - 0.5); // sim velocity channel
+		float crest  = smoothstep(foam_crest_start, foam_crest_start * 2.2 + 0.02, v_h * amplitude);
+		float churn  = smoothstep(0.35, 1.0, energy * foam_energy);
+		float shore  = 1.0 - smoothstep(0.0, shore_foam_depth, depth_m);
+		float fnoise = vnoise(wp * 2.3 + TIME * 0.35) * 0.6 + vnoise(wp * 5.1 - TIME * 0.2) * 0.4;
+		float foam = clamp(crest + churn * 0.9 + shore * 0.8, 0.0, 1.0);
+		foam = smoothstep(0.25, 0.8, foam * (0.55 + fnoise * 0.7));
 
-	ALBEDO    = mix(col, foam_color.rgb, foam);
-	ROUGHNESS = mix(0.03, 0.45, foam);
+		final_col = mix(col, foam_color.rgb, foam);
+		final_roughness = mix(0.03, 0.45, foam);
+	}
+
+	ALBEDO    = final_col;
+	ROUGHNESS = final_roughness;
 	METALLIC  = 0.0;
 	SPECULAR  = 0.6;
 	// forces the transparent pipeline so screen depth textures are valid depth_draw_always keeps correct sorting

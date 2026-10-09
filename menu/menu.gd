@@ -19,9 +19,12 @@ func _show_root() -> void:
 
 
 func _show_play() -> void:
+	var connect_label := "Connect to Localhost"
+	if Net.online_penalty_remaining() > 0:
+		connect_label = "Online Penalty: %s" % Net.online_penalty_text()
 	_menu_screen.show_buttons([
 		{"label": "Solo Play", "on_press": _on_solo_play},
-		{"label": "Connect to Localhost", "on_press": _on_connect_localhost},
+		{"label": connect_label, "on_press": _on_connect_localhost},
 		{"label": "Back", "on_press": _show_root},
 	])
 
@@ -38,6 +41,8 @@ func _show_settings() -> void:
 		{"label": "Exponential Sensitivity: %s" % (
 			"On" if Settings.exponential_turn_sensitivity else "Off"),
 			"on_press": _toggle_exponential_sensitivity},
+		{"label": "Performance Mode: %s" % ("On" if Settings.performance_mode else "Off"),
+			"on_press": _toggle_performance_mode},
 		{"label": "Back", "on_press": _show_root},
 	])
 
@@ -119,6 +124,12 @@ func _inc_turn_speed() -> String:
 
 func _toggle_exponential_sensitivity() -> void:
 	Settings.exponential_turn_sensitivity = not Settings.exponential_turn_sensitivity
+	Settings.save_settings()
+	_show_settings()
+
+
+func _toggle_performance_mode() -> void:
+	Settings.performance_mode = not Settings.performance_mode
 	Settings.save_settings()
 	_show_settings()
 

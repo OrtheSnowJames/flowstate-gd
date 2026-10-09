@@ -705,21 +705,52 @@ func _camera_pivot_change(delta: float) -> void:
 	if not is_instance_valid(_cam_pivot) or not _cam_pivot.is_inside_tree():
 		return
 
-	# position drift the rig toward hovering above the body
 	var target_pos := global_position + Vector3.UP * _cam_pivot_height
 	_cam_pivot.global_position = _cam_pivot.global_position.lerp(
 		target_pos, 1.0 - exp(-camera_follow_speed * delta))
-	# yaw catch up to which way the body is facing same damped feel
 	var target_yaw := global_transform.basis.get_euler().y
+	var target_pitch := deg_to_rad(default_camera_pitch_deg)
+	var target_angles := Vector2(target_yaw, target_pitch)
+	if Input.is_action_pressed("look_scoreboard"):
+		target_angles = _camera_look_angles(_scoreboard_look_node(), target_angles)
 	var current_yaw := _cam_pivot.global_transform.basis.get_euler().y
-	var new_yaw := lerp_angle(current_yaw, target_yaw, 1.0 - exp(-camera_turn_speed * delta))
+	var new_yaw := lerp_angle(current_yaw, target_angles.x, 1.0 - exp(-camera_turn_speed * delta))
 	_cam_pivot.global_rotation.y = new_yaw
-	# pitch settle toward the baked overhead tilt instead of snapping to it fixed not
 	_camera.rotation.x = lerp_angle(
-		_camera.rotation.x, deg_to_rad(default_camera_pitch_deg),
+		_camera.rotation.x, target_angles.y,
 		1.0 - exp(-camera_pitch_speed * delta))
 
 	_gui_change()
+
+
+func _camera_look_angles(target: Node3D, fallback: Vector2) -> Vector2:
+	if target == null:
+		return fallback
+	var look := target.global_position - _cam_pivot.global_position
+	var flat := Vector3(look.x, 0.0, look.z)
+	if flat.length_squared() <= 0.001:
+		return fallback
+	var flat_dir := flat.normalized()
+	var yaw := atan2(-flat_dir.x, -flat_dir.z)
+	var local_look := Basis(Vector3.UP, yaw).inverse() * look.normalized()
+	var pitch := clampf(
+		atan2(local_look.y, -local_look.z),
+		deg_to_rad(-75.0),
+		deg_to_rad(45.0))
+	return Vector2(yaw, pitch)
+
+
+func _scoreboard_look_node() -> Node3D:
+	var scene := get_tree().current_scene
+	if scene == null:
+		return null
+	var scoreboard := scene.get_node_or_null("Scoreboard")
+	if not (scoreboard is Node3D):
+		return null
+	var title := scoreboard.get_node_or_null("SCORE")
+	if title is Node3D:
+		return title
+	return scoreboard
 
 func _gui_change() -> void:
 	if not gui:
@@ -759,6 +790,8 @@ func take_stamina_damage(amount: float) -> void:
 func _input(event: InputEvent) -> void:
 	# keystrokes in this window drive this windows player and nobody elses without this one
 	if not _is_local():
+		return
+	if Net.input_blocked_by_menu():
 		return
 	if _unconscious:
 		return
@@ -1080,6 +1113,10 @@ func _physics_process(delta: float) -> void:
 
 	if _unconscious:
 		# limp body input is ignored no turning no strokes no momentum but the water
+		_drift_to_a_stop()
+		return
+
+	if Net.input_blocked_by_menu():
 		_drift_to_a_stop()
 		return
 

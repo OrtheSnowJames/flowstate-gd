@@ -3,6 +3,8 @@ extends Node
 
 const _SAVE_PATH := "user://settings.cfg"
 const _SECTION := "camera"
+const _GRAPHICS_SECTION := "graphics"
+const _ONLINE_SECTION := "online"
 const _PROFILE_SECTION := "profile"
 
 # display name shown to other players the lobbys player list everyone and a floating
@@ -16,6 +18,10 @@ var camera_pitch_deg: float = -36.0
 var turn_speed: float = 2.5
 # whether a d turning ramps up the longer the key is held on or
 var exponential_turn_sensitivity: bool = false
+# lowers water cost for weaker machines
+var performance_mode: bool = false
+# unix time until online connect is allowed again
+var online_penalty_until_unix: int = 0
 
 
 func _ready() -> void:
@@ -32,6 +38,9 @@ func load_settings() -> void:
 	turn_speed = cfg.get_value(_SECTION, "turn_speed", turn_speed)
 	exponential_turn_sensitivity = cfg.get_value(
 		_SECTION, "exponential_turn_sensitivity", exponential_turn_sensitivity)
+	performance_mode = cfg.get_value(_GRAPHICS_SECTION, "performance_mode", performance_mode)
+	online_penalty_until_unix = cfg.get_value(
+		_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	player_name = cfg.get_value(_PROFILE_SECTION, "player_name", player_name)
 
 
@@ -41,6 +50,8 @@ func save_settings() -> void:
 	cfg.set_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	cfg.set_value(_SECTION, "turn_speed", turn_speed)
 	cfg.set_value(_SECTION, "exponential_turn_sensitivity", exponential_turn_sensitivity)
+	cfg.set_value(_GRAPHICS_SECTION, "performance_mode", performance_mode)
+	cfg.set_value(_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	cfg.set_value(_PROFILE_SECTION, "player_name", player_name)
 	var err := cfg.save(_SAVE_PATH)
 	if err != OK:
@@ -53,3 +64,12 @@ func apply_to(player: Node) -> void:
 	player.default_camera_pitch_deg = camera_pitch_deg
 	player.turn_speed = turn_speed
 	player.exponential_turn_sensitivity = exponential_turn_sensitivity
+
+
+func start_online_penalty(seconds: int) -> void:
+	online_penalty_until_unix = int(Time.get_unix_time_from_system()) + seconds
+	save_settings()
+
+
+func online_penalty_remaining() -> int:
+	return maxi(0, online_penalty_until_unix - int(Time.get_unix_time_from_system()))
