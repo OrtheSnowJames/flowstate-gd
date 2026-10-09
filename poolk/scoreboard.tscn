@@ -70,9 +70,8 @@ modulate = Color(0.78431374, 0, 0, 1)
 text = "0"
 font = ExtResource("3_acdtm")
 
-[node name="red_goal" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.91878694, 1.402, 0.42548418)
-pixel_size = 0.0075
+[node name="red_goal" type="Label3D" parent="." unique_id=159511570]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.63620985, 1.402, 0.42548418)
 modulate = Color(0.78431374, 0, 0, 1)
 text = "Goal: 0 points"
 font = ExtResource("3_acdtm")
@@ -91,9 +90,8 @@ modulate = Color(0, 0.4060988, 0.78719324, 1)
 text = "0"
 font = ExtResource("3_acdtm")
 
-[node name="blue_goal" type="Label3D" parent="."]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.85866135, 1.402, 0.42548418)
-pixel_size = 0.0075
+[node name="blue_goal" type="Label3D" parent="." unique_id=1356927381]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.77718514, 1.402, 0.42548418)
 modulate = Color(0, 0.4060988, 0.78719324, 1)
 text = "Goal: 0 points"
 font = ExtResource("3_acdtm")

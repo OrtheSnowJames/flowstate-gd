@@ -167,7 +167,7 @@ albedo_texture = ExtResource("16_lta4o")
 [sub_resource type="PlaneMesh" id="PlaneMesh_2qpaf"]
 size = Vector2(20, 80)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_oalkl"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2euab"]
 render_priority = 0
 shader = ExtResource("17_fywoq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
@@ -213,7 +213,11 @@ size = Vector2(6, 85)
 [sub_resource type="BoxShape3D" id="BoxShape3D_concrete_floor_3"]
 size = Vector3(80, 0.5, 6)
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_oalkl"]
+size = Vector3(60, 6, 1)
+
 [node name="Main" type="Node3D" unique_id=1189769047]
+physics_interpolation_mode = 2
 script = ExtResource("21_pooltog")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1995031414]
@@ -702,7 +706,7 @@ mesh = SubResource("PlaneMesh_2qpaf")
 
 [node name="SimpleGrassTextured" type="MultiMeshInstance3D" parent="StaticBody3D2" unique_id=844937069]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
-material_override = SubResource("ShaderMaterial_oalkl")
+material_override = SubResource("ShaderMaterial_2euab")
 multimesh = SubResource("MultiMesh_fywoq")
 script = ExtResource("20_biqxj")
 sgt_radius = 2.0
@@ -811,3 +815,21 @@ transform = Transform3D(0.04604494, 0, 0.01675899, 0, 0.054, 0, -0.01744303, 0, 
 
 [node name="smooth_(drone)_operator" parent="." unique_id=1215724303 instance=ExtResource("28_2euab")]
 transform = Transform3D(0.7071068, 0, 0.7071068, 0, 1, 0, -0.7071068, 0, 0.7071068, -29.999996, 9, -25)
+
+[node name="walls" type="Node3D" parent="." unique_id=1906444513]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="walls" unique_id=374045487]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 11.5, 21.547321)
+shape = SubResource("BoxShape3D_oalkl")
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="walls" unique_id=754616332]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 11.5, -21.608849)
+shape = SubResource("BoxShape3D_oalkl")
+
+[node name="CollisionShape3D3" type="CollisionShape3D" parent="walls" unique_id=326566403]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 26.5, 11.5, 8.391151)
+shape = SubResource("BoxShape3D_oalkl")
+
+[node name="CollisionShape3D4" type="CollisionShape3D" parent="walls" unique_id=942971688]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 11.5, 8.391151)
+shape = SubResource("BoxShape3D_oalkl")

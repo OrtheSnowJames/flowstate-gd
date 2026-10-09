@@ -150,6 +150,8 @@ var last_d_press := -1000.0
 @export_group("Jump")
 # only works standing in the shallow end a push off the pool floor same
 @export var jump_speed: float = 8.0
+@export var cube_jump_speed: float = 14.0
+@export var cube_jump_range: float = 3.0
 # how sharply momentum stops paying off the launch scales with momentum max_momentum jump_momentum_exponent so
 @export_range(0.1, 1.0, 0.01) var jump_momentum_exponent: float = 0.5
 # seconds after a jump before another one can trigger
@@ -948,16 +950,36 @@ func _dodge(local_dir: Vector3) -> void:
 		right = -right
 	apply_central_impulse(right * dodge_impulse)
 
-# a jump off solid ground triggered by the jump action only works standing in
+# jump higher beside the cube otherwise use normal momentum
 func _jump(on_ground: bool) -> void:
-	if not on_ground or momentum <= 0.0 or _jump_cooldown_timer > 0.0:
+	if _jump_cooldown_timer > 0.0:
+		return
+	var cube_boost := _can_cube_jump()
+	if not cube_boost and (not on_ground or momentum <= 0.0):
 		return
 	_jump_cooldown_timer = jump_cooldown
 	# diminishing returns on momentum the exponent 1 flattens the curve so arriving at full
 	var t := clampf(momentum / max_momentum, 0.0, 1.0)
-	linear_velocity.y = jump_speed * pow(t, jump_momentum_exponent)
+	linear_velocity.y = cube_jump_speed if cube_boost else jump_speed * pow(t, jump_momentum_exponent)
 	momentum = 0.0
 	movement_state = MovementState.JUMP
+
+
+func _can_cube_jump() -> bool:
+	var scene := get_tree().current_scene
+	var cube := scene.get_node_or_null("PushCube") as Node3D if scene else null
+	if cube == null or cube.is_queued_for_deletion():
+		return false
+	var offset := global_position - cube.global_position
+	if Vector2(offset.x, offset.z).length() > cube_jump_range or absf(offset.y) > cube_jump_range:
+		return false
+	if _submersion() > 0.0:
+		return true
+	# dry jumps need support so hovering near the cube cannot grant another boost
+	var query := PhysicsRayQueryParameters3D.create(
+		global_position, global_position + Vector3.DOWN * (body_half_height + 0.2))
+	query.exclude = [get_rid()]
+	return not get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 # the strength a water_power cast fires at right now 1 0 baseline a cast
 func _water_power_strength() -> float:
@@ -1235,7 +1257,7 @@ func _physics_process(delta: float) -> void:
 	var shallow := in_shallow_end()
 
 	if Input.is_action_just_pressed("jump"):
-		# solid ground to push off the shallow ends floor or bone dry on the
+		# cube boosts can also launch from the water
 		_jump(shallow or submersion <= 0.0)
 
 	# entry exit splashes are handled by the water sim itself it detects the body
