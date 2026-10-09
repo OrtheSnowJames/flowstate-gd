@@ -2,6 +2,7 @@
 extends Node3D
 
 const NAME_PROMPT := preload("res://menu/name_prompt.tscn")
+const SERVER_PROMPT := preload("res://menu/server_prompt.tscn")
 
 @onready var _menu_screen: Control = $UI/MenuScroll/MenuScreen
 
@@ -25,8 +26,30 @@ func _show_play() -> void:
 	_menu_screen.show_buttons([
 		{"label": "Solo Play", "on_press": _on_solo_play},
 		{"label": connect_label, "on_press": _on_connect_localhost},
+		{"label": "Custom Server", "on_press": _show_custom_server},
 		{"label": "Back", "on_press": _show_root},
 	])
+
+
+func _show_custom_server() -> void:
+	_menu_screen.show_buttons([
+		{"label": "Join", "on_press": _open_server_prompt.bind(false)},
+		{"label": "Host", "on_press": _open_server_prompt.bind(true)},
+		{"label": "Back", "on_press": _show_play},
+	])
+
+
+func _open_server_prompt(hosting: bool) -> void:
+	if $UI.has_node("ServerPrompt"):
+		return
+	var prompt := SERVER_PROMPT.instantiate()
+	$UI.add_child(prompt)
+	prompt.open(hosting)
+	prompt.submitted.connect(func(ip: String, port: int) -> void:
+		if hosting:
+			Net.start_host_lobby(port)
+		else:
+			Net.start_connect(ip, port))
 
 
 func _show_settings() -> void:

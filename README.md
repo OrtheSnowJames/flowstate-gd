@@ -62,3 +62,4 @@ If a game just started, you can still spectate! When you join, press the spectat
 
 ## TODO:
 - Add matchmaking/lobbies
+- King of the Hill/Cube

@@ -435,13 +435,20 @@ func net_sync_arena_peers(peers: Dictionary) -> void:
 
 
 # open a lobby and wait in it the hosts half of start_connect_localhost reached directly
-func start_host_lobby() -> void:
+func start_host_lobby(port := PORT) -> void:
 	if _block_online_if_penalized():
 		return
 	if is_online():
 		push_warning("net: already online, ignoring start_host_lobby()")
 		return
-	host_game()
+	var err := host_game(port)
+	if err != OK:
+		await Transition.blur_in()
+		await Transition.show_status("Couldn't host on port %d" % port)
+		await get_tree().create_timer(1.5).timeout
+		await Transition.hide_status()
+		await Transition.blur_out()
+		return
 	await Transition.fade_to_black()
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
@@ -1221,7 +1228,7 @@ func start_connect_localhost() -> void:
 
 
 # the whole join somebodys game flow address and all split out of start_connect_localhost so
-func start_connect(ip: String) -> void:
+func start_connect(ip: String, port := PORT) -> void:
 	if _block_online_if_penalized():
 		return
 	_begin_connect_flow()
@@ -1231,7 +1238,7 @@ func start_connect(ip: String) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var err := join_game(ip)
+	var err := join_game(ip, port)
 	# not err ok and await an explicit if instead of leaning on ands short
 	var ok := false
 	if err == OK:
@@ -1246,6 +1253,7 @@ func start_connect(ip: String) -> void:
 		await Transition.blur_out()
 		return
 
+	leave_game()
 	await Transition.show_status("Couldn't connect")
 	await get_tree().create_timer(1.5).timeout
 	get_tree().change_scene_to_file(MENU_SCENE)

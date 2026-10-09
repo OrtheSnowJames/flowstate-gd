@@ -149,8 +149,8 @@ var last_d_press := -1000.0
 
 @export_group("Jump")
 # only works standing in the shallow end a push off the pool floor same
-@export var jump_speed: float = 8.0
-@export var cube_jump_speed: float = 14.0
+@export var jump_speed: float = 16.0
+@export var cube_jump_speed: float = 7.0
 @export var cube_jump_range: float = 3.0
 # how sharply momentum stops paying off the launch scales with momentum max_momentum jump_momentum_exponent so
 @export_range(0.1, 1.0, 0.01) var jump_momentum_exponent: float = 0.5
