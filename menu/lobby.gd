@@ -81,7 +81,8 @@ func _on_leave() -> void:
 # fire and forget player_list gd owns its whole open blur close cycle and frees
 func _on_view_players() -> void:
 	var list := PLAYER_LIST.instantiate()
-	$UI.add_child(list)
+	Transition.add_child(list)
+	tree_exiting.connect(list.queue_free)
 	list.open()
 
 

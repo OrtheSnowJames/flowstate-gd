@@ -352,7 +352,8 @@ func leave_game() -> void:
 	_clear_spectator_drones()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
-	multiplayer.multiplayer_peer = null
+	# menu previews and solo play still need a local peer
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	_clear_players()
 	print("net: left the game")
 
@@ -1057,7 +1058,7 @@ func _on_connected_to_server() -> void:
 
 func _on_connection_failed() -> void:
 	push_error("net: connection failed")
-	multiplayer.multiplayer_peer = null
+	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 
 
 func _on_server_disconnected() -> void:

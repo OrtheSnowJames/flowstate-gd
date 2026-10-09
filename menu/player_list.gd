@@ -11,10 +11,17 @@ signal _close_requested
 
 @onready var _rows: VBoxContainer = $Panel/VBox/Rows
 @onready var _button_host: Control = $Panel/VBox/ButtonHost
+var _closing := false
 
 
 func _ready() -> void:
 	visible = false
+
+
+func _exit_tree() -> void:
+	# clear the blur if the round starts while the list is open
+	if not _closing:
+		Transition.blur_out()
 
 
 # blurs the background in shows the live roster and waits for close then blurs
@@ -29,6 +36,7 @@ func open() -> void:
 
 	await _close_requested
 
+	_closing = true
 	if Net.lobby_changed.is_connected(_refresh):
 		Net.lobby_changed.disconnect(_refresh)
 	await Transition.blur_out()

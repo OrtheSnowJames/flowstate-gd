@@ -12,10 +12,15 @@ const _OUT_DURATION := 0.2
 const _IN_DURATION := 0.3
 # delay between each buttons own in animation starting for a staggered rise instead of
 const _STAGGER := 0.05
+const _SCROLL_PADDING := 24.0
 
 var _buttons: Array[Control] = []
 # bumped on every show_buttons call each call captures its own value and checks it
 var _gen := 0
+
+
+func _ready() -> void:
+	resized.connect(_layout_buttons)
 
 
 # specs array of dictionaries two row kinds picked by type defaults to button when
@@ -94,6 +99,11 @@ func _spawn(specs: Array, my_gen: int) -> void:
 	for btn in new_buttons:
 		total_height += btn.size.y
 	total_height += float(maxi(new_buttons.size() - 1, 0)) * _ROW_GAP
+	if get_parent() is ScrollContainer:
+		custom_minimum_size.y = total_height + _SCROLL_PADDING * 2.0
+		await get_tree().process_frame
+		if my_gen != _gen:
+			return
 	var y := (size.y - total_height) * 0.5
 
 	var tw := create_tween()
@@ -105,4 +115,17 @@ func _spawn(specs: Array, my_gen: int) -> void:
 		tw.tween_property(btn, "position", rest_pos, _IN_DURATION) \
 			.set_delay(i * _STAGGER).set_trans(Tween.TRANS_QUART).set_ease(Tween.EASE_OUT)
 		tw.tween_property(btn, "modulate:a", 1.0, _IN_DURATION).set_delay(i * _STAGGER)
+		y += btn.size.y + _ROW_GAP
+	await tw.finished
+	if my_gen == _gen:
+		_layout_buttons()
+
+
+func _layout_buttons() -> void:
+	var total_height := float(maxi(_buttons.size() - 1, 0)) * _ROW_GAP
+	for btn in _buttons:
+		total_height += btn.size.y
+	var y := (size.y - total_height) * 0.5
+	for btn in _buttons:
+		btn.position = Vector2((size.x - btn.size.x) * 0.5, y)
 		y += btn.size.y + _ROW_GAP

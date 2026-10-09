@@ -3,7 +3,7 @@ extends Node3D
 
 const NAME_PROMPT := preload("res://menu/name_prompt.tscn")
 
-@onready var _menu_screen: Control = $UI/MenuScreen
+@onready var _menu_screen: Control = $UI/MenuScroll/MenuScreen
 
 
 func _ready() -> void:

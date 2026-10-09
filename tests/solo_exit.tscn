@@ -1,0 +1,8 @@
+[gd_scene load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://tests/solo_exit.gd" id="1"]
+
+[node name="TestScene" type="Node"]
+
+[node name="SoloExit" type="Node" parent="."]
+script = ExtResource("1")
