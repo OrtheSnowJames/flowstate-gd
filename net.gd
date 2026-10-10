@@ -36,6 +36,8 @@ var _spectator_camera: Camera3D = null
 var _local_spectator_target := 0
 var _spectator_targets: Dictionary = {}
 var _spectator_drones: Dictionary = {}
+var _session_generation := 0
+var _load_timeout_closing := false
 
 # off by default on purpose pressing test_lifeguard_key see project godots input map l as
 @export var enable_lifeguard_test_key: bool = true
@@ -357,6 +359,9 @@ func join_game(ip := "", port := PORT) -> Error:
 
 
 func leave_game() -> void:
+	_session_generation += 1
+	_awaiting_connection = false
+	_connect_flow_active = false
 	exit_spectator_mode()
 	Matchmaking.clear_room()
 	room_code = ""
@@ -464,10 +469,15 @@ func start_host_lobby(port := PORT) -> void:
 
 
 func open_host_lobby() -> void:
+	var generation := _session_generation
 	await Transition.fade_to_black()
+	if generation != _session_generation:
+		return
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if generation != _session_generation:
+		return
 	await Transition.fade_from_black()
 
 
@@ -485,22 +495,73 @@ func leave_lobby() -> void:
 	await Transition.fade_from_black()
 
 
-func _leave_current_game_to_menu() -> void:
-	if _leaving_game:
+func _leave_current_game_to_menu(immediate := false) -> void:
+	if _leaving_game and not immediate:
 		return
 	_leaving_game = true
 	leave_game()
+	var generation := _session_generation
 	_teams.clear()
 	_lifeguards.clear()
 	_arena_ready.clear()
 	_round_over = false
 	round_state = RoundState.LOBBY
-	await Transition.fade_to_black()
+	if not immediate:
+		await Transition.fade_to_black()
+	if generation != _session_generation:
+		return
 	get_tree().change_scene_to_file(MENU_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
-	await Transition.fade_from_black()
+	if generation != _session_generation:
+		return
+	if immediate:
+		Transition.reset_overlays()
+	else:
+		await Transition.fade_from_black()
 	_leaving_game = false
+
+
+func black_screen_timeout() -> void:
+	if _load_timeout_closing:
+		return
+	if is_online():
+		if multiplayer.is_server():
+			rpc("net_loading_aborted")
+		elif multiplayer.multiplayer_peer.get_connection_status() == MultiplayerPeer.CONNECTION_CONNECTED:
+			rpc_id(1, "net_report_loading_timeout")
+	_recover_loading_timeout()
+
+
+@rpc("any_peer", "reliable")
+func net_report_loading_timeout() -> void:
+	if not is_online() or not multiplayer.is_server():
+		return
+	if multiplayer.get_remote_sender_id() not in multiplayer.get_peers():
+		return
+	black_screen_timeout()
+
+
+@rpc("authority", "reliable")
+func net_loading_aborted() -> void:
+	_recover_loading_timeout()
+
+
+func _recover_loading_timeout() -> void:
+	if _load_timeout_closing:
+		return
+	_load_timeout_closing = true
+	push_warning("net: black screen exceeded 20 seconds ending session")
+	Transition.reset_overlays()
+	get_tree().paused = false
+	# give the abort message a chance to leave before closing the peer
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Matchmaking.busy = false
+	Matchmaking._searching = false
+	_input_blocked_by_menu = false
+	await _leave_current_game_to_menu(true)
+	_load_timeout_closing = false
 
 
 # how many peers are in the session host included the team table doubles as
@@ -534,12 +595,17 @@ func net_load_arena() -> void:
 
 # deliberately leaves the screen black at the end rather than fading back in here
 func _load_arena() -> void:
+	var generation := _session_generation
 	await Transition.fade_to_black()
+	if generation != _session_generation:
+		return
 	get_tree().change_scene_to_file("res://water/ocean1.tscn")
 	# wait for the players node to genuinely exist rather than counting frames and hoping
 	var waited := 0.0
 	while _players_root() == null and waited < 10.0:
 		await get_tree().process_frame
+		if generation != _session_generation:
+			return
 		waited += get_process_delta_time()
 	if _players_root() == null:
 		push_error("net: arena never came up -- can't join the round")
@@ -605,15 +671,20 @@ func net_countdown() -> void:
 
 # the 3 2 1 go itself each number is one full play of menu
 func _run_countdown() -> void:
+	var generation := _session_generation
 	# lock first fade second the bodies exist by now and this is the last
 	_set_movement_locked(true)
 	await Transition.fade_from_black()
+	if generation != _session_generation:
+		return
 	var prompt := _ensure_message_text()
 	for word in ["3", "2", "1", "GO!"]:
 		if prompt and is_instance_valid(prompt):
 			await prompt.play(word)
 		else:
 			await get_tree().create_timer(1.0).timeout
+		if generation != _session_generation:
+			return
 	_set_movement_locked(false)
 
 
@@ -667,6 +738,7 @@ func on_player_down() -> void:
 # everyone freeze the pool open everyones eyes show this windows own verdict then head
 @rpc("authority", "call_local", "reliable")
 func net_round_over(winners: Array) -> void:
+	var generation := _session_generation
 	_round_over = true
 	# down tools immediately before anything else the round is decided the moment the last
 	_set_movement_locked(true)
@@ -686,6 +758,8 @@ func net_round_over(winners: Array) -> void:
 		await prompt.play(verdict)
 	else:
 		await get_tree().create_timer(1.0).timeout
+	if generation != _session_generation:
+		return
 
 	# despawns arrive before clients unload the arena
 	if not is_online() or multiplayer.is_server():
@@ -703,6 +777,7 @@ func net_return_to_lobby() -> void:
 
 # back to the waiting room after a round with the roster intact so the
 func _return_to_lobby() -> void:
+	var generation := _session_generation
 	_clear_spectator_drones()
 	round_state = RoundState.LOBBY
 	Matchmaking.mark_dirty()
@@ -712,9 +787,13 @@ func _return_to_lobby() -> void:
 	if _spectator_from_faint:
 		exit_spectator_mode()
 	await Transition.fade_to_black()
+	if generation != _session_generation:
+		return
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if generation != _session_generation:
+		return
 	await Transition.fade_from_black()
 
 
@@ -1259,11 +1338,16 @@ func start_connect(ip: String, port := PORT, rtc_session: Dictionary = {}) -> vo
 	if _block_online_if_penalized():
 		return
 	_begin_connect_flow()
+	var generation := _session_generation
 	await Transition.blur_in()
+	if generation != _session_generation:
+		return
 	Transition.show_status("Connecting...")
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	if generation != _session_generation:
+		return
 
 	var err: Error
 	if rtc_session.is_empty():
@@ -1275,6 +1359,8 @@ func start_connect(ip: String, port := PORT, rtc_session: Dictionary = {}) -> vo
 	var ok := false
 	if err == OK:
 		ok = await _await_connection_result(35.0 if not rtc_session.is_empty() else 8.0)
+	if generation != _session_generation:
+		return
 	if _connection_game_in_progress:
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()

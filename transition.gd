@@ -6,6 +6,7 @@ const _BLUR_SHADER := preload("res://menu/blur_overlay.gdshader")
 const _BLUR_DURATION := 0.35
 const _FADE_DURATION := 0.4
 const _STATUS_DURATION := 0.25
+const BLACK_SCREEN_TIMEOUT_MSEC := 20000
 
 var _blur_rect: ColorRect
 var _blur_mat: ShaderMaterial
@@ -15,9 +16,11 @@ var _status_label: Label
 var _blur_tween: Tween
 var _fade_tween: Tween
 var _status_tween: Tween
+var _black_since_msec := -1
 
 
 func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
 	# above everything else drawn in any scene including that scenes own canvaslayers default layer
 	layer = 100
 
@@ -42,6 +45,31 @@ func _ready() -> void:
 	_status_label.modulate.a = 0.0
 	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_status_label)
+
+
+func _process(_delta: float) -> void:
+	_check_black_screen(Time.get_ticks_msec())
+
+
+func _check_black_screen(now: int) -> void:
+	if _fade_rect.color.a < 0.99:
+		_black_since_msec = -1
+		return
+	if _black_since_msec < 0:
+		_black_since_msec = now
+	elif now - _black_since_msec >= BLACK_SCREEN_TIMEOUT_MSEC:
+		_black_since_msec = -1
+		Net.black_screen_timeout()
+
+
+func reset_overlays() -> void:
+	for tween in [_fade_tween, _blur_tween, _status_tween]:
+		if tween and tween.is_valid():
+			tween.kill()
+	_fade_rect.color.a = 0.0
+	_blur_mat.set_shader_parameter("amount", 0.0)
+	_status_label.modulate.a = 0.0
+	_black_since_msec = -1
 
 
 # fully transparent but still a real control rect sitting on top of every other
