@@ -1,0 +1,90 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Flowstate player-hosted room directory
+
+Resources:
+  Rooms:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: room_code
+          AttributeType: S
+        - AttributeName: state
+          AttributeType: S
+        - AttributeName: expires_at
+          AttributeType: N
+      KeySchema:
+        - AttributeName: room_code
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: state-expires-index
+          KeySchema:
+            - AttributeName: state
+              KeyType: HASH
+            - AttributeName: expires_at
+              KeyType: RANGE
+          Projection:
+            ProjectionType: INCLUDE
+            NonKeyAttributes: [players, protocol]
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
+
+  Directory:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: .
+      Handler: lambda_function.handler
+      Runtime: python3.12
+      Architectures: [arm64]
+      MemorySize: 128
+      Timeout: 5
+      ReservedConcurrentExecutions: 5
+      Environment:
+        Variables:
+          ROOMS_TABLE: !Ref Rooms
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:UpdateItem
+                - dynamodb:DeleteItem
+              Resource: !GetAtt Rooms.Arn
+            - Effect: Allow
+              Action: dynamodb:Query
+              Resource: !Sub '${Rooms.Arn}/index/state-expires-index'
+
+  DirectoryUrl:
+    Type: AWS::Lambda::Url
+    Properties:
+      TargetFunctionArn: !GetAtt Directory.Arn
+      AuthType: NONE
+
+  UrlPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Directory
+      Action: lambda:InvokeFunctionUrl
+      Principal: '*'
+      FunctionUrlAuthType: NONE
+
+  InvokePermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      FunctionName: !Ref Directory
+      Action: lambda:InvokeFunction
+      Principal: '*'
+      InvokedViaFunctionUrl: true
+
+  DirectoryLogs:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/lambda/${Directory}'
+      RetentionInDays: 7
+
+Outputs:
+  MatchmakingUrl:
+    Value: !GetAtt DirectoryUrl.FunctionUrl

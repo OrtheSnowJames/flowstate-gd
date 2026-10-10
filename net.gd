@@ -2,7 +2,7 @@
 extends Node
 
 const PORT := 7654
-const MAX_PLAYERS := 8
+const MAX_PLAYERS := 20
 const PLAYER_SCENE := preload("res://water/player.tscn")
 # the scenes script preloaded purely to reach its team enum by name below rather
 const PLAYER_SCRIPT := preload("res://water/player.gd")
@@ -21,6 +21,7 @@ const _CONNECT_IN_PROGRESS_GRACE := 0.35
 
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
+var room_code := ""
 
 var _escape_menu_open := false
 var _input_blocked_by_menu := false
@@ -304,15 +305,23 @@ func _format_penalty_time(seconds: int) -> String:
 	return "%d:%02d" % [int(clamped / 60), clamped % 60]
 
 
-func host_game(port := PORT) -> Error:
+func host_game(port := PORT, use_webrtc := false) -> Error:
 	if _block_online_if_penalized(false):
 		push_warning("net: online penalty still has %s left" % online_penalty_text())
 		return FAILED
 	if is_online():
 		push_warning("net: already online, ignoring host_game()")
 		return ERR_ALREADY_IN_USE
-	var peer := ENetMultiplayerPeer.new()
-	var err := peer.create_server(port, MAX_PLAYERS)
+	var peer: MultiplayerPeer
+	var err: Error
+	if use_webrtc:
+		var rtc := WebRTCMultiplayerPeer.new()
+		err = rtc.create_server()
+		peer = rtc
+	else:
+		var enet := ENetMultiplayerPeer.new()
+		err = enet.create_server(port, MAX_PLAYERS - 1)
+		peer = enet
 	if err != OK:
 		push_error("net: couldn't host on port %d (error %d)" % [port, err])
 		return err
@@ -323,7 +332,7 @@ func host_game(port := PORT) -> Error:
 	# direct call not update_my_name we only just became the host inside this very function
 	net_report_name(Settings.player_name)
 	lobby_changed.emit()
-	print("net: hosting on port %d as peer %d" % [port, multiplayer.get_unique_id()])
+	print("net: hosting with WebRTC" if use_webrtc else "net: hosting on port %d" % port)
 	return OK
 
 
@@ -349,6 +358,8 @@ func join_game(ip := "", port := PORT) -> Error:
 
 func leave_game() -> void:
 	exit_spectator_mode()
+	Matchmaking.clear_room()
+	room_code = ""
 	_clear_spectator_drones()
 	if multiplayer.multiplayer_peer:
 		multiplayer.multiplayer_peer.close()
@@ -449,6 +460,10 @@ func start_host_lobby(port := PORT) -> void:
 		await Transition.hide_status()
 		await Transition.blur_out()
 		return
+	await open_host_lobby()
+
+
+func open_host_lobby() -> void:
 	await Transition.fade_to_black()
 	get_tree().change_scene_to_file(LOBBY_SCENE)
 	await get_tree().process_frame
@@ -512,6 +527,7 @@ func net_load_arena() -> void:
 	_clear_spectator_drones()
 	_arena_ready.clear()
 	round_state = RoundState.LOADING
+	Matchmaking.mark_dirty()
 	round_loading.emit()
 	_load_arena()
 
@@ -689,6 +705,7 @@ func net_return_to_lobby() -> void:
 func _return_to_lobby() -> void:
 	_clear_spectator_drones()
 	round_state = RoundState.LOBBY
+	Matchmaking.mark_dirty()
 	_round_over = false
 	_arena_ready.clear()
 	_lifeguards.clear()
@@ -708,8 +725,9 @@ func _silence_synchronizers() -> void:
 		return
 	# the whole scene not just the player bodies the players were the obvious suspects
 	for sync in _synchronizers_in(scene):
-		# stop updates without despawning the players during the result banner
-		sync.root_path = NodePath("")
+		# stop new updates but keep receiving packets already in flight
+		sync.replication_interval = 3600.0
+		sync.delta_interval = 3600.0
 
 
 func _synchronizers_in(node: Node) -> Array[MultiplayerSynchronizer]:
@@ -1010,6 +1028,8 @@ func _on_peer_connected(id: int) -> void:
 	# a client hears about the server connecting and nothing else enet is client server
 	if not multiplayer.is_server():
 		return
+	rpc_id(id, "net_room_code", room_code)
+	Matchmaking.mark_dirty()
 	if round_state != RoundState.LOBBY:
 		_offer_late_join_spectate(id)
 		return
@@ -1029,6 +1049,7 @@ func _on_peer_disconnected(id: int) -> void:
 	_arena_ready.erase(id)
 	if not multiplayer.is_server():
 		return
+	Matchmaking.mark_dirty()
 	if _spectator_targets.erase(id):
 		_broadcast_spectator_targets()
 	var players := _players_root()
@@ -1070,7 +1091,13 @@ func _on_connection_failed() -> void:
 
 func _on_server_disconnected() -> void:
 	push_warning("net: host closed the game")
-	leave_game()
+	_leave_current_game_to_menu()
+
+
+@rpc("authority", "call_local", "reliable")
+func net_room_code(code: String) -> void:
+	room_code = code
+	lobby_changed.emit()
 
 
 @rpc("authority", "reliable")
@@ -1228,7 +1255,7 @@ func start_connect_localhost() -> void:
 
 
 # the whole join somebodys game flow address and all split out of start_connect_localhost so
-func start_connect(ip: String, port := PORT) -> void:
+func start_connect(ip: String, port := PORT, rtc_session: Dictionary = {}) -> void:
 	if _block_online_if_penalized():
 		return
 	_begin_connect_flow()
@@ -1238,11 +1265,16 @@ func start_connect(ip: String, port := PORT) -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 
-	var err := join_game(ip, port)
+	var err: Error
+	if rtc_session.is_empty():
+		err = join_game(ip, port)
+	else:
+		_clear_players()
+		err = Matchmaking.rtc.start_client(rtc_session)
 	# not err ok and await an explicit if instead of leaning on ands short
 	var ok := false
 	if err == OK:
-		ok = await _await_connection_result()
+		ok = await _await_connection_result(35.0 if not rtc_session.is_empty() else 8.0)
 	if _connection_game_in_progress:
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()

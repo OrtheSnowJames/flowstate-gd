@@ -1,6 +1,7 @@
 extends Control
 
 signal submitted(ip: String, port: int)
+signal code_submitted(code: String)
 
 @onready var _panel: PanelContainer = $Margin/Scroll/Center/Panel
 @onready var _title: Label = $Margin/Scroll/Center/Panel/VBox/Title
@@ -12,6 +13,7 @@ signal submitted(ip: String, port: int)
 
 var _hosting := false
 var _submitted := false
+var _code_mode := false
 
 
 func _ready() -> void:
@@ -40,6 +42,16 @@ func open(hosting: bool) -> void:
 func _submit() -> void:
 	if _submitted:
 		return
+	if _code_mode:
+		var code := _address.text.strip_edges().to_upper()
+		if not Matchmaking.valid_code(code):
+			_error.text = "Enter a valid 6 character room code"
+			_address.grab_focus()
+			return
+		_submitted = true
+		code_submitted.emit(code)
+		queue_free()
+		return
 	var address := _address.text.strip_edges()
 	var port_text := _port.text.strip_edges()
 	if not _hosting and address.is_empty():
@@ -53,6 +65,21 @@ func _submit() -> void:
 	_submitted = true
 	submitted.emit(address, port_text.to_int())
 	queue_free()
+
+
+func open_code() -> void:
+	_code_mode = true
+	_title.text = "Join Code"
+	_address_row.get_node("Label").text = "Room Code"
+	_address.placeholder_text = "ABC234"
+	_address.max_length = 6
+	_port.get_parent().hide()
+	_buttons.show_buttons([
+		{"label": "Join", "on_press": _submit},
+		{"label": "Cancel", "on_press": queue_free},
+	])
+	await get_tree().process_frame
+	_address.grab_focus()
 
 
 func _unhandled_input(event: InputEvent) -> void:

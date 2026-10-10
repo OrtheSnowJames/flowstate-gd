@@ -24,8 +24,8 @@ func _run() -> void:
 	var menu := get_tree().current_scene
 	menu._menu_screen._buttons[0].pressed.emit()
 	await get_tree().create_timer(0.8).timeout
-	_expect(menu._menu_screen._buttons[2].button_text == "Custom Server", "play includes custom server")
-	menu._menu_screen._buttons[2].pressed.emit()
+	_expect(menu._menu_screen._buttons[4].button_text == "Custom Server", "play includes custom server")
+	menu._menu_screen._buttons[4].pressed.emit()
 	await get_tree().create_timer(0.8).timeout
 	menu._menu_screen._buttons[1 if role == "host" else 0].pressed.emit()
 	await get_tree().create_timer(0.8).timeout
@@ -107,7 +107,7 @@ func _test_form(menu: Node, prompt: Control) -> void:
 	_expect(not menu.has_node("UI/ServerPrompt"), "cancel closes prompt")
 	menu._menu_screen._buttons[2].pressed.emit()
 	await get_tree().create_timer(0.8).timeout
-	_expect(menu._menu_screen._buttons[0].button_text == "Solo Play", "back returns to play")
+	_expect(menu._menu_screen._buttons[0].button_text == "Quick Play", "back returns to play")
 
 
 func _expect(condition: bool, message: String) -> void:

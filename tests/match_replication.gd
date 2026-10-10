@@ -6,6 +6,7 @@ var roles: Dictionary = {}
 var checks: Dictionary = {}
 var failed := false
 var test_port := int(OS.get_environment("FLOWSTATE_TEST_PORT")) if OS.has_environment("FLOWSTATE_TEST_PORT") else 17654
+var use_webrtc := OS.get_environment("FLOWSTATE_TEST_WEBRTC") == "1"
 
 
 func _ready() -> void:
@@ -17,12 +18,13 @@ func _ready() -> void:
 
 func _run() -> void:
 	reparent(get_tree().root)
-	get_tree().create_timer(60.0).timeout.connect(func() -> void: _fail("test timed out"))
+	get_tree().create_timer(100.0 if use_webrtc else 60.0).timeout.connect(func() -> void: _fail("test timed out"))
 	if role == "host":
 		await _host()
 	else:
 		Net._connect_flow_active = true
-		if Net.join_game("127.0.0.1", test_port) != OK:
+		var err := await _join_webrtc() if use_webrtc else Net.join_game("127.0.0.1", test_port)
+		if err != OK:
 			_fail("could not connect")
 			return
 		await multiplayer.connected_to_server
@@ -43,10 +45,29 @@ func _run() -> void:
 			local.set_physics_process(false)
 
 
+func _join_webrtc() -> Error:
+	var code := OS.get_environment("FLOWSTATE_TEST_CODE")
+	var token := Crypto.new().generate_random_bytes(32).hex_encode()
+	var result: Dictionary = await Matchmaking._request(HTTPClient.METHOD_POST, "/rooms/" + code + "/connections", {}, token)
+	if result.status != 201:
+		return FAILED
+	var session: Dictionary = result.data
+	session["code"] = code
+	session["token"] = token
+	return Matchmaking.rtc.start_client(session)
+
+
 func _host() -> void:
-	if Net.host_game(test_port) != OK:
+	if Net.host_game(test_port, use_webrtc) != OK:
 		_fail("could not host")
 		return
+	if use_webrtc:
+		Matchmaking._webrtc = true
+		Matchmaking._host_port = test_port
+		if not await Matchmaking._register_room(Matchmaking._generation):
+			_fail("could not register")
+			return
+		print("RTC_HOST_READY ", Net.room_code)
 	await _until(func() -> bool: return roles.has("first") and roles.has("second"))
 	Net._teams = {1: 0, roles.first: 1, roles.second: 0}
 	Net._broadcast_roster()

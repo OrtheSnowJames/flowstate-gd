@@ -35,7 +35,12 @@ wait_for() {
 }
 
 launch host
-wait_for 'hosting on port'
+if [[ "${FLOWSTATE_TEST_WEBRTC:-0}" == 1 ]]; then
+    wait_for RTC_HOST_READY
+    export FLOWSTATE_TEST_CODE="$(sed -n 's/^RTC_HOST_READY //p' "$log_dir/host.log" | head -1)"
+else
+    wait_for 'hosting on port'
+fi
 launch first
 launch second
 wait_for READY_FOR_SPECTATOR

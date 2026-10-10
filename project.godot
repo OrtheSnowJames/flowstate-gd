@@ -48,11 +48,16 @@ buses/default_bus_layout="uid://cndx0ruoe7yhk"
 Net="*res://net.gd"
 Settings="*res://settings.gd"
 Transition="*res://transition.gd"
+Matchmaking="*res://matchmaking/matchmaking.gd"
 SimpleGrass="*uid://bfq0snth8sj3h"
 
 [display]
 
 window/stretch/mode="canvas_items"
+
+[matchmaking]
+
+endpoint=""
 
 [dotnet]
 

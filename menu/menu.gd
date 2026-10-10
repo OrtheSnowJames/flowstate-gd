@@ -24,6 +24,8 @@ func _show_play() -> void:
 	if Net.online_penalty_remaining() > 0:
 		connect_label = "Online Penalty: %s" % Net.online_penalty_text()
 	_menu_screen.show_buttons([
+		{"label": "Quick Play", "on_press": Matchmaking.quick_play},
+		{"label": "Join Code", "on_press": _open_code_prompt},
 		{"label": "Solo Play", "on_press": _on_solo_play},
 		{"label": connect_label, "on_press": _on_connect_localhost},
 		{"label": "Custom Server", "on_press": _show_custom_server},
@@ -47,9 +49,21 @@ func _open_server_prompt(hosting: bool) -> void:
 	prompt.open(hosting)
 	prompt.submitted.connect(func(ip: String, port: int) -> void:
 		if hosting:
-			Net.start_host_lobby(port)
+			if Matchmaking.configured():
+				Matchmaking.host_match(port)
+			else:
+				Net.start_host_lobby(port)
 		else:
 			Net.start_connect(ip, port))
+
+
+func _open_code_prompt() -> void:
+	if $UI.has_node("ServerPrompt"):
+		return
+	var prompt := SERVER_PROMPT.instantiate()
+	$UI.add_child(prompt)
+	prompt.open_code()
+	prompt.code_submitted.connect(Matchmaking.join_code)
 
 
 func _show_settings() -> void:

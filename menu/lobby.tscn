@@ -21,8 +21,8 @@ transform = Transform3D(0.3092244, 0.07972919, -0.9476411, -0.024732945, 0.99681
 [node name="Count" type="Label" parent="UI"]
 anchors_preset = 10
 anchor_right = 1.0
-offset_top = 48.0
-offset_bottom = 148.0
+offset_top = 24.0
+offset_bottom = 100.0
 grow_horizontal = 2
 theme_override_fonts/font = ExtResource("4_font")
 theme_override_font_sizes/font_size = 28
@@ -30,10 +30,24 @@ text = "1 player in the lobby"
 horizontal_alignment = 1
 vertical_alignment = 1
 
+[node name="RoomCode" type="Button" parent="UI"]
+anchors_preset = 10
+anchor_right = 1.0
+offset_top = 104.0
+offset_bottom = 148.0
+theme_override_fonts/font = ExtResource("4_font")
+theme_override_font_sizes/font_size = 22
+tooltip_text = "Copy room code"
+flat = true
+mouse_default_cursor_shape = 2
+
 [node name="MenuScreen" type="Control" parent="UI"]
 anchors_preset = 15
 anchor_right = 1.0
 anchor_bottom = 1.0
+offset_top = 160.0
 grow_horizontal = 2
 grow_vertical = 2
 script = ExtResource("3_menuscreen")
+
+[connection signal="pressed" from="UI/RoomCode" to="." method="_on_copy_code"]

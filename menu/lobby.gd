@@ -44,8 +44,8 @@ func _refresh() -> void:
 			blue += 1
 		else:
 			red += 1
-	_count.text = "%d %s in the lobby\nRed %d  -  Blue %d" % [
-		count, "player" if count == 1 else "players", red, blue]
+	_count.text = "%d / %d players\nRed %d  -  Blue %d" % [count, Net.MAX_PLAYERS, red, blue]
+	$UI/RoomCode.text = "Room Code: " + Net.room_code if not Net.room_code.is_empty() else ""
 
 	# only the host can start everyone else is told what theyre waiting for is_server
 	if multiplayer.is_server() or not Net.is_online():
@@ -88,3 +88,8 @@ func _on_view_players() -> void:
 
 func _noop() -> void:
 	pass
+
+
+func _on_copy_code() -> void:
+	if not Net.room_code.is_empty():
+		DisplayServer.clipboard_set(Net.room_code)
