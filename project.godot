@@ -55,10 +55,6 @@ SimpleGrass="*uid://bfq0snth8sj3h"
 
 window/stretch/mode="canvas_items"
 
-[matchmaking]
-
-endpoint=""
-
 [dotnet]
 
 project/assembly_name="flowstate"
@@ -143,10 +139,14 @@ look_scoreboard={
 
 3d_render/layer_17="SimpleGrassTextured interactive layer"
 
+[matchmaking]
+
+endpoint=""
+
 [physics]
 
-common/physics_interpolation=true
 3d/physics_engine="Rapier3D"
+common/physics_interpolation=true
 
 [rendering]
 

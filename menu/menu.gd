@@ -16,7 +16,7 @@ func _show_root() -> void:
 	_menu_screen.show_buttons([
 		{"label": "Play", "on_press": _show_play},
 		{"label": "Settings", "on_press": _show_settings},
-	])
+	], "FLOWSTATE")
 
 
 func _show_play() -> void:

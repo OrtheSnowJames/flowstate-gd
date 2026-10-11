@@ -13,6 +13,9 @@ const _IN_DURATION := 0.3
 # delay between each buttons own in animation starting for a staggered rise instead of
 const _STAGGER := 0.05
 const _SCROLL_PADDING := 24.0
+const _HEADING_HEIGHT := 108.0
+
+var _heading := preload("res://menu/menu_title.gd").new()
 
 var _buttons: Array[Control] = []
 # bumped on every show_buttons call each call captures its own value and checks it
@@ -20,16 +23,20 @@ var _gen := 0
 
 
 func _ready() -> void:
+	add_child(_heading)
+	_heading.hide()
 	resized.connect(_layout_buttons)
 
 
 # specs array of dictionaries two row kinds picked by type defaults to button when
-func show_buttons(specs: Array) -> void:
+func show_buttons(specs: Array, heading := "") -> void:
 	_gen += 1
 	var my_gen := _gen
 	await _clear_current()
 	if my_gen != _gen:
 		return
+	_heading.text = heading
+	_heading.visible = not heading.is_empty()
 	await _spawn(specs, my_gen)
 
 
@@ -99,12 +106,18 @@ func _spawn(specs: Array, my_gen: int) -> void:
 	for btn in new_buttons:
 		total_height += btn.size.y
 	total_height += float(maxi(new_buttons.size() - 1, 0)) * _ROW_GAP
+	if _heading.visible:
+		total_height += _HEADING_HEIGHT + _ROW_GAP
 	if get_parent() is ScrollContainer:
 		custom_minimum_size.y = total_height + _SCROLL_PADDING * 2.0
 		await get_tree().process_frame
 		if my_gen != _gen:
 			return
 	var y := (size.y - total_height) * 0.5
+	if _heading.visible:
+		_heading.position = Vector2(0.0, y)
+		_heading.size = Vector2(size.x, _HEADING_HEIGHT)
+		y += _HEADING_HEIGHT + _ROW_GAP
 
 	var tw := create_tween()
 	tw.set_parallel(true)
@@ -125,7 +138,13 @@ func _layout_buttons() -> void:
 	var total_height := float(maxi(_buttons.size() - 1, 0)) * _ROW_GAP
 	for btn in _buttons:
 		total_height += btn.size.y
+	if _heading.visible:
+		total_height += _HEADING_HEIGHT + _ROW_GAP
 	var y := (size.y - total_height) * 0.5
+	if _heading.visible:
+		_heading.position = Vector2(0.0, y)
+		_heading.size = Vector2(size.x, _HEADING_HEIGHT)
+		y += _HEADING_HEIGHT + _ROW_GAP
 	for btn in _buttons:
 		btn.position = Vector2((size.x - btn.size.x) * 0.5, y)
 		y += btn.size.y + _ROW_GAP
