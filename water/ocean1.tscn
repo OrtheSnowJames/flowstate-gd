@@ -28,6 +28,7 @@
 [ext_resource type="PackedScene" uid="uid://k8jnug1811ve" path="res://mesh/chairs.fbx" id="26_2qpaf"]
 [ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="27_2euab"]
 [ext_resource type="PackedScene" uid="uid://dyr5uukucdgrp" path="res://mesh/character_gray.tscn" id="28_2euab"]
+[ext_resource type="PackedScene" uid="uid://b8e3x60f5saj5" path="res://mesh/banana.glb" id="29_oalkl"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -167,7 +168,7 @@ albedo_texture = ExtResource("16_lta4o")
 [sub_resource type="PlaneMesh" id="PlaneMesh_2qpaf"]
 size = Vector2(20, 80)
 
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_2euab"]
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_vyau6"]
 render_priority = 0
 shader = ExtResource("17_fywoq")
 shader_parameter/albedo = Color(1, 1, 1, 1)
@@ -706,7 +707,7 @@ mesh = SubResource("PlaneMesh_2qpaf")
 
 [node name="SimpleGrassTextured" type="MultiMeshInstance3D" parent="StaticBody3D2" unique_id=844937069]
 transform = Transform3D(-4.371139e-08, 0, -1, 0, 1, 0, 1, 0, -4.371139e-08, 0, 0, 0)
-material_override = SubResource("ShaderMaterial_2euab")
+material_override = SubResource("ShaderMaterial_vyau6")
 multimesh = SubResource("MultiMesh_fywoq")
 script = ExtResource("20_biqxj")
 sgt_radius = 2.0
@@ -833,3 +834,6 @@ shape = SubResource("BoxShape3D_oalkl")
 [node name="CollisionShape3D4" type="CollisionShape3D" parent="walls" unique_id=942971688]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 20.5, 8.391151)
 shape = SubResource("BoxShape3D_oalkl")
+
+[node name="Sketchfab_Scene" parent="." unique_id=2006442429 instance=ExtResource("29_oalkl")]
+transform = Transform3D(-200, 7.816117e-06, -2.9170149e-05, 0, 193.18517, 51.76381, 3.019916e-05, 51.76381, -193.18517, 32, 16, -2)
