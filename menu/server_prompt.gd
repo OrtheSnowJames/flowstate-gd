@@ -2,6 +2,7 @@ extends Control
 
 signal submitted(ip: String, port: int)
 signal code_submitted(code: String)
+signal mode_selected(mode: int)
 
 @onready var _panel: PanelContainer = $Margin/Scroll/Center/Panel
 @onready var _title: Label = $Margin/Scroll/Center/Panel/VBox/Title
@@ -10,10 +11,12 @@ signal code_submitted(code: String)
 @onready var _port: LineEdit = $Margin/Scroll/Center/Panel/VBox/Port/Input
 @onready var _error: Label = $Margin/Scroll/Center/Panel/VBox/Error
 @onready var _buttons: Control = $Margin/Scroll/Center/Panel/VBox/Buttons
+@onready var _mode: OptionButton = $Margin/Scroll/Center/Panel/VBox/Mode
 
 var _hosting := false
 var _submitted := false
 var _code_mode := false
+var _mode_choice := false
 
 
 func _ready() -> void:
@@ -41,6 +44,9 @@ func open(hosting: bool) -> void:
 
 func _submit() -> void:
 	if _submitted:
+		return
+	if _mode_choice:
+		_finish_mode(_mode.get_selected_id())
 		return
 	if _code_mode:
 		var code := _address.text.strip_edges().to_upper()
@@ -82,10 +88,38 @@ func open_code() -> void:
 	_address.grab_focus()
 
 
+func open_mode() -> int:
+	_mode_choice = true
+	_title.text = "Room Mode"
+	_address_row.hide()
+	_port.get_parent().hide()
+	_error.hide()
+	_mode.show()
+	_mode.add_item("Normal", Net.GameMode.NORMAL)
+	_mode.add_item("King of the Cube", Net.GameMode.KING_OF_CUBE)
+	_buttons.show_buttons([
+		{"label": "Create", "on_press": _submit},
+		{"label": "Cancel", "on_press": func() -> void: _finish_mode(-1)},
+	])
+	_mode.grab_focus()
+	return await mode_selected
+
+
+func _finish_mode(mode: int) -> void:
+	if _submitted:
+		return
+	_submitted = true
+	mode_selected.emit(mode)
+	queue_free()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("ui_cancel"):
 		get_viewport().set_input_as_handled()
-		queue_free()
+		if _mode_choice:
+			_finish_mode(-1)
+		else:
+			queue_free()
 
 
 func _resize_panel() -> void:

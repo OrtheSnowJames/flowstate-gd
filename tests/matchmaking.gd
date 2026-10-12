@@ -31,6 +31,12 @@ func _run() -> void:
 		await _test_ui(menu)
 	elif role == "host":
 		menu._menu_screen._buttons[0].pressed.emit()
+		while not Transition.has_node("ServerPrompt"):
+			await get_tree().process_frame
+		var mode_prompt := Transition.get_node("ServerPrompt")
+		_expect(not Net.is_online(), "mode is chosen before creating the room")
+		mode_prompt._mode.select(Net.GameMode.KING_OF_CUBE)
+		mode_prompt._submit()
 		while Matchmaking.busy:
 			await get_tree().process_frame
 		_expect(Net.is_online() and multiplayer.is_server(), "empty quick play creates a host")
@@ -67,6 +73,8 @@ func _run() -> void:
 				await get_tree().process_frame
 		_expect(Net.is_online() and not multiplayer.is_server(), "matchmaking connects to player host")
 		_expect(Net.room_code == code, "room code replicates to clients")
+		_expect(Net.game_mode == Net.GameMode.KING_OF_CUBE, "host mode replicates to joining clients")
+		_expect(not Transition.has_node("ServerPrompt"), "joining never asks for a mode")
 		while Net.lobby_count() < 3:
 			await get_tree().process_frame
 		while Net.is_online():

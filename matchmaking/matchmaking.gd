@@ -112,12 +112,18 @@ func _notice(message: String) -> void:
 
 
 func _host_room(port: int, use_webrtc := true) -> void:
-	await Transition.show_status("Creating room...")
 	if use_webrtc and not rtc.available():
 		await _notice("WebRTC extension is missing")
 		return
+	await _hide_search()
+	var mode: int = await Net.choose_room_mode()
+	if mode < 0:
+		return
+	_searching = true
+	await Transition.blur_in()
+	await Transition.show_status("Creating room...")
 	_webrtc = use_webrtc
-	if Net.host_game(port, use_webrtc) != OK:
+	if Net.host_game(port, use_webrtc, mode) != OK:
 		await _notice("Couldn't host on port %d" % port)
 		return
 	_host_port = port

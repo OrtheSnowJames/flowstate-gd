@@ -44,7 +44,7 @@ func _refresh() -> void:
 			blue += 1
 		else:
 			red += 1
-	_count.text = "%d / %d players\nRed %d  -  Blue %d" % [count, Net.MAX_PLAYERS, red, blue]
+	_count.text = "%s\n%d / %d players  -  Red %d / Blue %d" % [Net.game_mode_name(), count, Net.MAX_PLAYERS, red, blue]
 	$UI/RoomCode.text = "Room Code: " + Net.room_code if not Net.room_code.is_empty() else ""
 
 	# only the host can start everyone else is told what theyre waiting for is_server

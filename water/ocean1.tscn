@@ -29,6 +29,7 @@
 [ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="27_2euab"]
 [ext_resource type="PackedScene" uid="uid://dyr5uukucdgrp" path="res://mesh/character_gray.tscn" id="28_2euab"]
 [ext_resource type="PackedScene" uid="uid://b8e3x60f5saj5" path="res://mesh/banana.glb" id="29_oalkl"]
+[ext_resource type="Script" uid="uid://bs3u8l4groj4f" path="res://water/king_of_cube.gd" id="30_cube_mode"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -559,6 +560,9 @@ mesh = SubResource("BoxMesh_pcube")
 [node name="CollisionShape3D" type="CollisionShape3D" parent="PushCube" unique_id=1499544290]
 shape = SubResource("BoxShape3D_pcube")
 
+[node name="KingOfCube" type="Node" parent="PushCube" unique_id=304024839]
+script = ExtResource("30_cube_mode")
+
 [node name="Buoyancy" type="Node3D" parent="PushCube" unique_id=1853879476]
 script = ExtResource("8_buoy")
 water_path = NodePath("../../water base")
@@ -820,19 +824,19 @@ transform = Transform3D(0.7071068, 0, 0.7071068, 0, 1, 0, -0.7071068, 0, 0.70710
 [node name="walls" type="StaticBody3D" parent="." unique_id=1906444513]
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="walls" unique_id=374045487]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 20.5, 21.547321)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 17.5, 21.547321)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D2" type="CollisionShape3D" parent="walls" unique_id=754616332]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 20.5, -21.608849)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.5, 18.5, -21.608849)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="walls" unique_id=326566403]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 26.5, 20.5, 8.391151)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 26.5, 18.5, 8.391151)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D4" type="CollisionShape3D" parent="walls" unique_id=942971688]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 20.5, 8.391151)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.5, 18.5, 8.391151)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="Sketchfab_Scene" parent="." unique_id=2006442429 instance=ExtResource("29_oalkl")]

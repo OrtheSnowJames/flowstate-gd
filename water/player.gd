@@ -156,6 +156,8 @@ var last_d_press := -1000.0
 @export_range(0.1, 1.0, 0.01) var jump_momentum_exponent: float = 0.5
 # seconds after a jump before another one can trigger
 @export var jump_cooldown: float = 1.0
+@export var jump_cancel_momentum: float = 8.0
+@export var jump_cancel_stamina_cost: float = 10.0
 
 @export_group("Blackout")
 # fallback for how long the eyelids take to fall shut normally the close is
@@ -187,11 +189,13 @@ var last_d_press := -1000.0
 @export var stamina_recovery_out_of_water_per_second: float = 9.0 * balance_mult
 @export var water_power_stamina_cost: float = 10.0 * balance_mult
 @export var water_attack_stamina_cost: float = 5.0 * balance_mult
+@export var water_pelt_stamina_cost: float = 5.0
 @export var water_wall_stamina_cost_per_second: float = 20.0 * balance_mult
 
 # seconds after casting before that same move can fire again same reasoning as dodge_cooldown
 @export var water_power_cooldown: float = 0.6
 @export var water_attack_cooldown: float = 0.4
+@export var water_pelt_cooldown: float = 0.45
 
 # how much extra water_power strength banked momentum buys on top of the baseline 1
 @export var water_power_momentum_bonus: float = 1.5
@@ -243,9 +247,12 @@ var _ocean: Node = null
 # counts down after a dodge jump until another one is allowed
 var _dodge_cooldown_timer: float = 0.0
 var _jump_cooldown_timer: float = 0.0
+var _jump_cancel_available := false
 # counts down after casting water_power water_attack until that same move can fire again see
 var _water_power_cooldown_timer: float = 0.0
 var _water_attack_cooldown_timer: float = 0.0
+var _water_pelt_cooldown_timer: float = 0.0
+var _pelt_sequence := 0
 # how long a d has been continuously held resets the instant its released only
 var _turn_hold_time: float = 0.0
 
@@ -382,6 +389,7 @@ func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON if _is_local() else Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_cam_pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	mass = body_mass
+	max_contacts_reported = maxi(max_contacts_reported, 8)
 	_gravity = float(ProjectSettings.get_setting("physics/3d/default_gravity", 9.8))
 	# keep the capsule upright buoyancy torque shouldnt tip the player over
 	lock_rotation = true
@@ -550,7 +558,20 @@ func _fix_animation_loop_modes() -> void:
 		if _anim_player.has_animation(anim_name):
 			_anim_player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
 
-# turns this body into a puppet of the peer that owns it its transform
+# forward client collisions to host owned props
+func _integrate_forces(state: PhysicsDirectBodyState3D) -> void:
+	if not _is_local() or not Net.is_online() or multiplayer.is_server() or _unconscious or movement_locked:
+		return
+	for i in range(state.get_contact_count()):
+		var body := state.get_contact_collider_object(i)
+		if is_instance_valid(body) and body.has_method("queue_contact_push"):
+			var impulse := state.get_contact_impulse(i)
+			if impulse.dot(body.global_position - global_position) < 0.0:
+				impulse = -impulse
+			body.queue_contact_push(impulse)
+
+
+# remote bodies follow their owners
 func _setup_remote_body() -> void:
 	freeze_mode = RigidBody3D.FREEZE_MODE_KINEMATIC
 	freeze = true
@@ -719,18 +740,28 @@ func _anim_change() -> void:
 
 
 # water moves over the network which move net_cast_water_move is carrying sent as an int
-enum WaterMove { POWER, ATTACK }
+enum WaterMove { POWER, ATTACK, PELT }
 
 # fires a one shot water move on every peer only the local player ever
 func _cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
+	if not _is_local() or _ocean == null:
+		return
+	# resolve once so every peer consumes the same attack
+	var hit: Dictionary
+	if kind == WaterMove.PELT:
+		_pelt_sequence += 1
+		hit = {"id": "%s_%d" % [name, _pelt_sequence]}
+	else:
+		hit = _ocean.resolve_wave_hit(origin, aim, strength, self, kind == WaterMove.ATTACK)
 	if Net.is_online():
 		# call_local so this covers us too no separate local call
-		rpc("net_cast_water_move", kind, origin, aim, strength)
+		rpc("net_cast_water_move", kind, origin, aim, strength, hit)
 	else:
-		net_cast_water_move(kind, origin, aim, strength)
+		net_cast_water_move(kind, origin, aim, strength, hit)
 
-@rpc("any_peer", "call_local", "reliable")
-func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
+@rpc("authority", "call_local", "reliable")
+func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float,
+		hit: Dictionary = {}) -> void:
 	if _ocean == null:
 		return
 	# everyone draws the wave only the peer that cast it resolves what it hit
@@ -740,13 +771,28 @@ func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strengt
 		WaterMove.POWER:
 			if _ocean.has_method("send_wave"):
 				_ocean.send_wave(origin, aim, strength, self, apply_hits,
-						water_power_damage_min, water_power_damage_max)
+						water_power_damage_min, water_power_damage_max, hit)
 			_play_water_action_anim("water_power")
 		WaterMove.ATTACK:
 			if _ocean.has_method("send_attack_wave"):
 				_ocean.send_attack_wave(origin, aim, strength, self, apply_hits,
-						water_attack_damage_min, water_attack_damage_max)
+						water_attack_damage_min, water_attack_damage_max, hit)
 			_play_water_action_anim("water_attack")
+		WaterMove.PELT:
+			_ocean.send_water_pelt(origin, aim, self, str(hit.get("id", "")))
+			_play_water_action_anim("water_attack")
+
+
+func _try_water_pelt() -> bool:
+	if not _is_local() or _unconscious or movement_locked or Net.is_spectating() \
+			or Net.input_blocked_by_menu() or _ocean == null \
+			or stamina < water_pelt_stamina_cost or _water_pelt_cooldown_timer > 0.0:
+		return false
+	var origin := global_position + Vector3.UP * 0.35
+	_cast_water_move(WaterMove.PELT, origin, _mouse_aim_direction_3d(origin), 1.0)
+	stamina -= water_pelt_stamina_cost
+	_water_pelt_cooldown_timer = water_pelt_cooldown
+	return true
 
 # the wall is held rather than fired so it re sends every frame its
 func _cast_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
@@ -961,8 +1007,35 @@ func _jump(on_ground: bool) -> void:
 	# diminishing returns on momentum the exponent 1 flattens the curve so arriving at full
 	var t := clampf(momentum / max_momentum, 0.0, 1.0)
 	linear_velocity.y = cube_jump_speed if cube_boost else jump_speed * pow(t, jump_momentum_exponent)
+	_jump_cancel_available = _submersion() > 0.0
 	momentum = 0.0
 	movement_state = MovementState.JUMP
+
+
+func _try_jump_cancel() -> bool:
+	if not _is_local() or not _jump_cancel_available:
+		return false
+	if _unconscious or movement_locked or Net.input_blocked_by_menu() or Net.is_spectating() \
+			or _submersion() <= 0.0 or linear_velocity.y <= 0.0:
+		_jump_cancel_available = false
+		return false
+	if stamina < jump_cancel_stamina_cost:
+		return false
+	_jump_cancel_available = false
+	stamina -= jump_cancel_stamina_cost
+	momentum = minf(momentum + jump_cancel_momentum, max_momentum)
+	# turn the rising jump into a horizontal burst
+	var horizontal := Vector3(linear_velocity.x, 0.0, linear_velocity.z)
+	var axis := Input.get_axis("forward", "back")
+	var direction := global_basis * Vector3(0.0, 0.0, axis)
+	if direction.is_zero_approx():
+		direction = horizontal if horizontal.length() > 0.1 else -global_basis.z
+	direction.y = 0.0
+	dir = direction.normalized()
+	linear_velocity = dir * maxf(horizontal.length(), swim_speed * momentum / max_momentum)
+	movement_state = MovementState.SWIM
+	can_move = true
+	return true
 
 
 func _can_cube_jump() -> bool:
@@ -1005,6 +1078,7 @@ func net_death() -> void:
 	if _unconscious:
 		return
 	_unconscious = true
+	_jump_cancel_available = false
 	movement_state = MovementState.IDLE
 	momentum = 0.0
 	# stop taking input at the source rather than only ignoring it downstream _input stops
@@ -1070,6 +1144,7 @@ func net_revive() -> void:
 	if not _unconscious:
 		return
 	_unconscious = false
+	_jump_cancel_available = false
 	set_process_input(true)
 	stamina = max_stamina * revive_stamina_fraction
 	momentum = 0.0
@@ -1107,6 +1182,21 @@ func net_revive() -> void:
 			from,
 			0.0,
 			eyelid_open_time)
+
+
+func respawn(at: Vector3, yaw: float) -> void:
+	net_revive()
+	_jump_cancel_available = false
+	global_position = at
+	rotation = Vector3(0, yaw, 0)
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	_remote_transform = transform
+	_remote_from = transform
+	_remote_blend = 1.0
+	reset_physics_interpolation()
+	stamina = max_stamina
+	momentum = 0.0
 
 # lifeguard revives the downed teammate this body could pick up right now or null
 func _revive_target() -> Node:
@@ -1216,6 +1306,7 @@ func _turn_from_input(delta: float) -> void:
 
 # bleeds off whatever drift is left so the body coasts to a stop instead
 func _drift_to_a_stop() -> void:
+	_jump_cancel_available = false
 	var v := linear_velocity
 	apply_central_force(
 		Vector3(-v.x, 0.0, -v.z) * (water_linear_drag * 1.5) * mass)
@@ -1251,14 +1342,19 @@ func _physics_process(delta: float) -> void:
 	_jump_cooldown_timer = maxf(_jump_cooldown_timer - delta, 0.0)
 	_water_power_cooldown_timer = maxf(_water_power_cooldown_timer - delta, 0.0)
 	_water_attack_cooldown_timer = maxf(_water_attack_cooldown_timer - delta, 0.0)
+	_water_pelt_cooldown_timer = maxf(_water_pelt_cooldown_timer - delta, 0.0)
 
 	# compute these once per tick in_shallow_end runs a raycast so dont call it or
 	var submersion := _submersion()
 	var shallow := in_shallow_end()
+	if submersion <= 0.0 or linear_velocity.y <= 0.0:
+		_jump_cancel_available = false
 
 	if Input.is_action_just_pressed("jump"):
 		# cube boosts can also launch from the water
 		_jump(shallow or submersion <= 0.0)
+	if Input.is_action_just_pressed("swim_key"):
+		_try_jump_cancel()
 
 	# entry exit splashes are handled by the water sim itself it detects the body
 
@@ -1308,6 +1404,8 @@ func _physics_process(delta: float) -> void:
 		_cast_water_move(WaterMove.ATTACK, attack_origin, attack_aim, 1.0)
 		stamina -= water_attack_stamina_cost
 		_water_attack_cooldown_timer = water_attack_cooldown
+	if Input.is_action_just_pressed("water_pelt"):
+		_try_water_pelt()
 
 	# water wall water_wall action hold 3 raises a stationary wall of water in front
 	if submersion > 0.0 and Input.is_action_pressed("water_wall") and stamina > 0.0 \
@@ -1402,7 +1500,20 @@ func _water_height() -> float:
 			return _ocean.get_height_at(global_position)
 	return 0.0
 
-# horizontal direction from the player toward wherever the mouse cursor is pointing for aiming
+# aim at the mouse in three dimensions
+func _mouse_aim_direction_3d(origin: Vector3) -> Vector3:
+	var mouse := get_viewport().get_mouse_position()
+	var ray_origin := _camera.project_ray_origin(mouse)
+	var ray_direction := _camera.project_ray_normal(mouse)
+	var end := ray_origin + ray_direction * 100.0
+	var query := PhysicsRayQueryParameters3D.create(ray_origin, end, 1, [get_rid()])
+	var hit := get_world_3d().direct_space_state.intersect_ray(query)
+	var target: Vector3 = hit.get("position", end)
+	var aim := target - origin
+	return aim.normalized() if not aim.is_zero_approx() else ray_direction
+
+
+# aim along the water surface
 func _mouse_aim_direction() -> Vector3:
 	var mouse_pos := get_viewport().get_mouse_position()
 	var ray_origin := _camera.project_ray_origin(mouse_pos)

@@ -5,7 +5,71 @@ extends "res://poolk/fluid_box.gd"
 const _SplashCrown := preload("res://water/splash.tscn")
 const _WaveShader := preload("res://water/wave.gdshader")
 const _DropletShader := preload("res://water/droplet.gdshader")
+const _BubbleBeam := preload("res://water/bubble_beam.gd")
 var _active_waves: Array[Dictionary] = []
+var _active_pelts: Dictionary = {}
+var _consumed_pelts: Dictionary = {}
+
+
+func send_water_pelt(origin: Vector3, direction: Vector3, caster: Node3D, key: String,
+		travelled := 0.0) -> void:
+	var now := Time.get_ticks_msec()
+	for old_key in _consumed_pelts.keys():
+		if now - int(_consumed_pelts[old_key]) > 5000:
+			_consumed_pelts.erase(old_key)
+	if key.is_empty() or _active_pelts.has(key) or _consumed_pelts.has(key) or travelled >= _BubbleBeam.RANGE:
+		return
+	var beam := _BubbleBeam.new()
+	beam.name = "Pelt_" + key.validate_node_name()
+	beam.key = key
+	beam.origin = origin
+	beam.direction = direction.normalized() if not direction.is_zero_approx() else Vector3.FORWARD
+	beam.travelled = maxf(travelled, 0.0)
+	beam.caster_path = caster.get_path() if is_instance_valid(caster) else NodePath()
+	beam.simulate_hits = not Net.is_online() or multiplayer.is_server()
+	_active_pelts[key] = beam
+	add_child(beam)
+
+
+func finish_pelt(key: String, body: Node3D = null) -> void:
+	if (Net.is_online() and not multiplayer.is_server()) or not _active_pelts.has(key):
+		return
+	var damage := 10.0
+	var scene := get_tree().current_scene
+	var cube := scene.get_node_or_null("PushCube/KingOfCube") if scene else null
+	if is_instance_valid(body) and cube and cube.supports_player(body):
+		damage *= 2.0
+	if Net.is_online():
+		rpc("net_remove_pelt", key)
+	else:
+		net_remove_pelt(key)
+	if is_instance_valid(body) and body.has_method("take_stamina_damage"):
+		_send_to_owner(body, "take_stamina_damage", [damage], func() -> void: body.take_stamina_damage(damage))
+
+
+@rpc("authority", "call_local", "reliable")
+func net_remove_pelt(key: String) -> void:
+	# a hit can arrive before the cast from another peer
+	_consumed_pelts[key] = Time.get_ticks_msec()
+	var beam = _active_pelts.get(key)
+	_active_pelts.erase(key)
+	if is_instance_valid(beam):
+		beam.hide()
+		beam.queue_free()
+
+
+func get_active_pelts() -> Array:
+	var pelts := []
+	for beam in _active_pelts.values():
+		if is_instance_valid(beam) and not beam.is_queued_for_deletion():
+			pelts.append([beam.key, beam.origin, beam.direction, beam.travelled, beam.caster_path])
+	return pelts
+
+
+func restore_active_pelts(pelts: Array) -> void:
+	for pelt in pelts:
+		var caster := get_node_or_null(pelt[4]) as Node3D if not NodePath(pelt[4]).is_empty() else null
+		send_water_pelt(pelt[1], pelt[2], caster, pelt[0], pelt[3])
 
 
 func get_active_waves() -> Array:
@@ -33,26 +97,42 @@ func get_rest_height() -> float:
 	return global_position.y
 
 
+func resolve_wave_hit(origin: Vector3, direction: Vector3, strength: float,
+		caster: Node3D, close_range := false) -> Dictionary:
+	strength = clampf(strength, 0.3, 4.0)
+	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
+	if travel_dir == Vector3.ZERO:
+		travel_dir = Vector3.FORWARD
+	var distance := 7.0 * strength * (0.28 if close_range else 1.0)
+	var width := _hit_half_width * strength * (1.6 if close_range else 1.0)
+	var hit := _find_wave_target(origin, travel_dir, distance, width, caster)
+	if hit.is_empty():
+		return {"path": NodePath(), "along": distance}
+	return {"path": hit.body.get_path(), "along": hit.along}
+
+
 # a big forward lancing wave for the water power key an actual crest of
 func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 		caster: Node3D = null, apply_hits: bool = true,
 		damage_min: float = _stamina_damage_power_min,
-		damage_max: float = _stamina_damage_power_max) -> void:
+		damage_max: float = _stamina_damage_power_max, hit: Dictionary = {}) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
 		travel_dir = Vector3.FORWARD
 
 	var max_distance := 7.0 * strength
-	var hit := _find_wave_target(origin, travel_dir, max_distance, _hit_half_width * strength, caster)
-	var reach := max_distance
-	if not hit.is_empty():
-		# the wave stops at whatever it ran into for everyone thats what it looks
-		reach = hit.along
-		if apply_hits:
-			_knockback(hit.body, travel_dir, _knockback_impulse_power * strength)
+	if hit.is_empty():
+		hit = resolve_wave_hit(origin, travel_dir, strength, caster)
+	var target_path: NodePath = hit.path
+	var reach: float = hit.along
+	var consumed := not target_path.is_empty()
+	if consumed:
+		var body := get_node_or_null(target_path) as Node3D
+		if apply_hits and body:
+			_knockback(body, travel_dir, _knockback_impulse_power * strength)
 			# long range lance a hit that lands at full extension is harder to land
-			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+			_apply_hit_damage(body, strength, reach, max_distance,
 					damage_min, damage_max, false)
 
 	# elongation drives the sims along direction reach see the class comment above so shrinking
@@ -61,29 +141,34 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 	# a burst right where it launches water visibly kicking up as you shove
 	_spawn_splash(origin, 220.0 * strength, 1.0)
 
-	_spawn_wave_crest(origin, travel_dir, strength, reach)
+	if consumed:
+		_spawn_splash(origin + travel_dir * reach, 220.0 * strength, 1.0)
+	else:
+		_spawn_wave_crest(origin, travel_dir, strength, reach)
 
 
 # close range counterpart to send_wave for the water attack key a bigger denser burst
 func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 		caster: Node3D = null, apply_hits: bool = true,
 		damage_min: float = _stamina_damage_attack_min,
-		damage_max: float = _stamina_damage_attack_max) -> void:
+		damage_max: float = _stamina_damage_attack_max, hit: Dictionary = {}) -> void:
 	strength = clampf(strength, 0.3, 4.0)
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
 		travel_dir = Vector3.FORWARD
 
 	var max_distance := 7.0 * strength * 0.28
-	# wider hit window than water power its a close range haymaker not a thin
-	var hit := _find_wave_target(origin, travel_dir, max_distance, _hit_half_width * strength * 1.6, caster)
-	var reach := max_distance
-	if not hit.is_empty():
-		reach = hit.along
-		if apply_hits:
-			_knockback(hit.body, travel_dir, _knockback_impulse_attack * strength)
+	if hit.is_empty():
+		hit = resolve_wave_hit(origin, travel_dir, strength, caster, true)
+	var target_path: NodePath = hit.path
+	var reach: float = hit.along
+	var consumed := not target_path.is_empty()
+	if consumed:
+		var body := get_node_or_null(target_path) as Node3D
+		if apply_hits and body:
+			_knockback(body, travel_dir, _knockback_impulse_attack * strength)
 			# point blank haymaker the opposite of water power the closer the hit lands the
-			_apply_hit_damage(hit.body, strength, hit.along, max_distance,
+			_apply_hit_damage(body, strength, reach, max_distance,
 					damage_min, damage_max, true)
 
 	add_impulse(origin, 0.6 * strength, 2.2 * strength, travel_dir, 1.0, 1.4 * (reach / max_distance))
@@ -91,7 +176,10 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 	# a much bigger kick up right at the point of impact
 	_spawn_splash(origin, 380.0 * strength, 1.3)
 
-	_spawn_wave_crest(origin, travel_dir, strength, reach, 1.8, 3.0)
+	if consumed:
+		_spawn_splash(origin + travel_dir * reach, 380.0 * strength, 1.3)
+	else:
+		_spawn_wave_crest(origin, travel_dir, strength, reach, 1.8, 3.0)
 
 
 # live water walls keyed by the caster that raised each one its a hold

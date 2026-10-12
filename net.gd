@@ -18,6 +18,16 @@ const DISCONNECT_PENALTY_SECONDS := 5 * 60
 const DISCONNECT_WARNING := "Are you sure you want to disconnect? You will receive a penalty!"
 const GAME_IN_PROGRESS_MESSAGE := "Game in progress..."
 const _CONNECT_IN_PROGRESS_GRACE := 0.35
+const CUBE_GOAL := 100
+const ROOM_PROMPT := preload("res://menu/server_prompt.tscn")
+
+enum GameMode { NORMAL, KING_OF_CUBE }
+enum CubeControl { NEUTRAL, RED, BLUE, CONTESTED }
+var game_mode: GameMode = GameMode.NORMAL
+var cube_control: CubeControl = CubeControl.NEUTRAL
+var _round_started := false
+var _room_prompt_open := false
+signal cube_control_changed
 
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
@@ -74,6 +84,7 @@ func _spawn_for_direct_scene_launch() -> void:
 	net_report_name(Settings.player_name)
 	_reset_round_scoreboard()
 	_add_player(multiplayer.get_unique_id())
+	_round_started = true
 
 
 # lets two instances be launched straight into a session from a terminal godot host
@@ -307,7 +318,7 @@ func _format_penalty_time(seconds: int) -> String:
 	return "%d:%02d" % [int(clamped / 60), clamped % 60]
 
 
-func host_game(port := PORT, use_webrtc := false) -> Error:
+func host_game(port := PORT, use_webrtc := false, mode: int = GameMode.NORMAL) -> Error:
 	if _block_online_if_penalized(false):
 		push_warning("net: online penalty still has %s left" % online_penalty_text())
 		return FAILED
@@ -328,6 +339,9 @@ func host_game(port := PORT, use_webrtc := false) -> Error:
 		push_error("net: couldn't host on port %d (error %d)" % [port, err])
 		return err
 	multiplayer.multiplayer_peer = peer
+	net_sync_game_mode(mode)
+	_round_started = false
+	_round_over = false
 	# the host plays too so it takes a lobby slot and a side right
 	round_state = RoundState.LOBBY
 	_assign_team(multiplayer.get_unique_id())
@@ -371,6 +385,8 @@ func leave_game() -> void:
 	# menu previews and solo play still need a local peer
 	multiplayer.multiplayer_peer = OfflineMultiplayerPeer.new()
 	_clear_players()
+	_round_started = false
+	net_sync_game_mode(GameMode.NORMAL)
 	print("net: left the game")
 
 
@@ -457,7 +473,10 @@ func start_host_lobby(port := PORT) -> void:
 	if is_online():
 		push_warning("net: already online, ignoring start_host_lobby()")
 		return
-	var err := host_game(port)
+	var mode := await choose_room_mode()
+	if mode < 0:
+		return
+	var err := host_game(port, false, mode)
 	if err != OK:
 		await Transition.blur_in()
 		await Transition.show_status("Couldn't host on port %d" % port)
@@ -466,6 +485,83 @@ func start_host_lobby(port := PORT) -> void:
 		await Transition.blur_out()
 		return
 	await open_host_lobby()
+
+
+func choose_room_mode() -> int:
+	if _room_prompt_open:
+		return -1
+	_room_prompt_open = true
+	_input_blocked_by_menu = true
+	var generation := _session_generation
+	await Transition.hide_status()
+	await Transition.blur_in()
+	var prompt := ROOM_PROMPT.instantiate()
+	Transition.add_child(prompt)
+	var mode: int = await prompt.open_mode()
+	await Transition.blur_out()
+	_room_prompt_open = false
+	_input_blocked_by_menu = false
+	return mode if generation == _session_generation else -1
+
+
+func game_mode_name() -> String:
+	return "King of the Cube" if game_mode == GameMode.KING_OF_CUBE else "Normal"
+
+
+@rpc("authority", "call_local", "reliable")
+func net_sync_game_mode(mode: int) -> void:
+	game_mode = GameMode.KING_OF_CUBE if mode == GameMode.KING_OF_CUBE else GameMode.NORMAL
+	cube_control = CubeControl.NEUTRAL
+	cube_control_changed.emit()
+	lobby_changed.emit()
+
+
+@rpc("authority", "call_local", "reliable")
+func net_sync_cube_control(control: int) -> void:
+	cube_control = control as CubeControl
+	cube_control_changed.emit()
+
+
+func set_cube_control(control: CubeControl) -> void:
+	if (is_online() and not multiplayer.is_server()) or cube_control == control:
+		return
+	if is_online():
+		rpc("net_sync_cube_control", control)
+	else:
+		net_sync_cube_control(control)
+
+
+func cube_round_active() -> bool:
+	return game_mode == GameMode.KING_OF_CUBE and round_state == RoundState.PLAYING \
+		and _round_started and not _round_over
+
+
+func award_cube_point(team: int) -> void:
+	if not cube_round_active() or (is_online() and not multiplayer.is_server()):
+		return
+	if team == PLAYER_SCRIPT.Team.RED:
+		_round_red_score = mini(_round_red_score + 1, CUBE_GOAL)
+	elif team == PLAYER_SCRIPT.Team.BLUE:
+		_round_blue_score = mini(_round_blue_score + 1, CUBE_GOAL)
+	else:
+		return
+	_sync_round_scoreboard()
+	if _round_score_for(team) < CUBE_GOAL:
+		return
+	if is_online():
+		rpc("net_round_over", [team])
+	else:
+		net_round_over([team])
+
+
+@rpc("authority", "call_local", "reliable")
+func net_cube_respawn(id: int) -> void:
+	if game_mode != GameMode.KING_OF_CUBE or round_state != RoundState.PLAYING or _round_over:
+		return
+	var players := _players_root()
+	var player := players.get_node_or_null(str(id)) if players else null
+	if player:
+		player.respawn(spawn_position(id), spawn_rotation_y(id))
 
 
 func open_host_lobby() -> void:
@@ -585,6 +681,7 @@ func start_round() -> void:
 # everyone switch to the arena then report back the host doesnt spawn anybody until
 @rpc("authority", "call_local", "reliable")
 func net_load_arena() -> void:
+	_round_started = false
 	_clear_spectator_drones()
 	_arena_ready.clear()
 	round_state = RoundState.LOADING
@@ -686,6 +783,7 @@ func _run_countdown() -> void:
 		if generation != _session_generation:
 			return
 	_set_movement_locked(false)
+	_round_started = true
 
 
 # winning and losing set the moment a round is decided cleared once everyone is
@@ -697,6 +795,8 @@ func on_player_down() -> void:
 	if is_online() and not multiplayer.is_server():
 		return
 	if round_state != RoundState.PLAYING or _round_over:
+		return
+	if game_mode == GameMode.KING_OF_CUBE:
 		return
 	var players := _players_root()
 	if players == null:
@@ -782,6 +882,7 @@ func _return_to_lobby() -> void:
 	round_state = RoundState.LOBBY
 	Matchmaking.mark_dirty()
 	_round_over = false
+	_round_started = false
 	_arena_ready.clear()
 	_lifeguards.clear()
 	if _spectator_from_faint:
@@ -850,6 +951,9 @@ var _round_blue_goal := 0
 
 
 func _reset_round_scoreboard() -> void:
+	_round_red_score = 0
+	_round_blue_score = 0
+	set_cube_control(CubeControl.NEUTRAL)
 	_round_faints[PLAYER_SCRIPT.Team.RED] = {}
 	_round_faints[PLAYER_SCRIPT.Team.BLUE] = {}
 	_sync_round_scoreboard()
@@ -884,10 +988,14 @@ func _opponent_team(team: int) -> int:
 
 
 func _round_score_for(team: int) -> int:
+	if game_mode == GameMode.KING_OF_CUBE:
+		return _round_red_score if team == PLAYER_SCRIPT.Team.RED else _round_blue_score
 	return int(_round_faints.get(team, {}).size())
 
 
 func _round_goal_for(team: int) -> int:
+	if game_mode == GameMode.KING_OF_CUBE:
+		return CUBE_GOAL
 	var opponent := _opponent_team(team)
 	return _peers_on_team(opponent).size() if opponent >= 0 else 0
 
@@ -1108,6 +1216,8 @@ func _on_peer_connected(id: int) -> void:
 	if not multiplayer.is_server():
 		return
 	rpc_id(id, "net_room_code", room_code)
+	rpc_id(id, "net_sync_game_mode", game_mode)
+	rpc_id(id, "net_sync_cube_control", cube_control)
 	Matchmaking.mark_dirty()
 	if round_state != RoundState.LOBBY:
 		_offer_late_join_spectate(id)
@@ -1254,6 +1364,7 @@ func net_spectator_ready() -> void:
 		rpc_id(id, "net_spectator_lobby")
 		return
 	rpc_id(id, "net_sync_roster", _teams, _lifeguards, _names)
+	rpc_id(id, "net_sync_cube_control", cube_control)
 	rpc_id(id, "net_sync_round_scoreboard",
 		_round_red_score, _round_blue_score, _round_red_goal, _round_blue_goal)
 	_arena_ready[id] = true
@@ -1268,15 +1379,16 @@ func net_spectator_ready() -> void:
 	var scene := get_tree().current_scene
 	var ocean := scene.get_node_or_null("water base") if scene else null
 	if ocean and ocean.has_method("get_active_waves"):
-		rpc_id(id, "net_sync_water_effects", ocean.get_active_waves())
+		rpc_id(id, "net_sync_water_effects", ocean.get_active_waves(), ocean.get_active_pelts())
 
 
 @rpc("authority", "reliable")
-func net_sync_water_effects(waves: Array) -> void:
+func net_sync_water_effects(waves: Array, pelts: Array = []) -> void:
 	var scene := get_tree().current_scene
 	var ocean := scene.get_node_or_null("water base") if scene else null
 	if ocean and ocean.has_method("restore_active_waves"):
 		ocean.restore_active_waves(waves)
+		ocean.restore_active_pelts(pelts)
 
 
 @rpc("authority", "reliable")
@@ -1288,6 +1400,7 @@ func net_spectator_lobby() -> void:
 
 # solo play a one player round runs the exact same load everyone ready spawn
 func start_solo_play() -> void:
+	net_sync_game_mode(GameMode.NORMAL)
 	# a roster of exactly us cleared first so a previous sessions leftovers cant put
 	_teams.clear()
 	_lifeguards.clear()
@@ -1326,11 +1439,10 @@ func start_connect_localhost() -> void:
 	# nobodys home undo whatever join_game left behind before hosting on a hard refusal _on_connection_failed
 	if is_online():
 		leave_game()
-	Transition.show_status("Starting a lobby...")
-	host_game()
-	await get_tree().create_timer(0.3).timeout
 	await Transition.hide_status()
 	await Transition.blur_out()
+	await _leave_current_game_to_menu(true)
+	await start_host_lobby()
 
 
 # the whole join somebodys game flow address and all split out of start_connect_localhost so
@@ -1472,6 +1584,8 @@ func _is_escape_pressed(event: InputEvent) -> bool:
 
 # debug keys placeholder until the real menu ui exists raw keycodes rather than input
 func _unhandled_input(event: InputEvent) -> void:
+	if _room_prompt_open:
+		return
 	if _is_escape_pressed(event) and _escape_scene_active():
 		if _escape_menu_open:
 			return

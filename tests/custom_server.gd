@@ -36,6 +36,7 @@ func _run() -> void:
 		prompt._port.text = str(TEST_PORT)
 		prompt._buttons._buttons[0].pressed.emit()
 		if role == "host":
+			await _choose_normal()
 			await get_tree().create_timer(1.0).timeout
 			_expect(get_tree().current_scene.scene_file_path == Net.LOBBY_SCENE, "custom host opens lobby")
 			_expect(multiplayer.is_server() and Net.is_online(), "custom host is online")
@@ -53,6 +54,7 @@ func _run() -> void:
 		prompt.queue_free()
 		var blocker := ENetMultiplayerPeer.new()
 		_expect(blocker.create_server(TEST_PORT) == OK, "reserve test port")
+		_choose_normal()
 		await Net.start_host_lobby(TEST_PORT)
 		_expect(get_tree().current_scene == menu, "failed host stays in menu")
 		_expect(not Net.is_online(), "failed host stays offline")
@@ -65,6 +67,12 @@ func _run() -> void:
 		_expect(multiplayer.multiplayer_peer is OfflineMultiplayerPeer, "failed join closes pending peer")
 	print("%s custom server %s" % ["FAIL" if failed else "PASS", role])
 	get_tree().quit(1 if failed else 0)
+
+
+func _choose_normal() -> void:
+	while not Transition.has_node("ServerPrompt"):
+		await get_tree().process_frame
+	Transition.get_node("ServerPrompt")._submit()
 
 
 func _test_form(menu: Node, prompt: Control) -> void:

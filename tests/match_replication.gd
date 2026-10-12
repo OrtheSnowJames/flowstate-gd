@@ -119,6 +119,38 @@ func _host() -> void:
 	await get_tree().create_timer(0.1).timeout
 	rpc_id(roles.spectator, "check_wave")
 	await _until(func() -> bool: return checks.has("wave"))
+	rpc_id(roles.first, "cancel_jump")
+	await get_tree().create_timer(0.4).timeout
+	_expect(is_equal_approx(_body(roles.first).momentum, 8.0), "host receives jump cancel momentum")
+	_expect(is_equal_approx(_body(roles.first).stamina, 90.0), "host receives jump cancel stamina")
+	rpc_id(roles.spectator, "check_jump_cancel", roles.first)
+	await _until(func() -> bool: return checks.has("jump cancel"))
+	var hit_origin := Vector3(10, 7.655, 4)
+	rpc_id(roles.first, "prepare_wave_target", hit_origin + Vector3(1, -0.5, 0))
+	rpc_id(roles.second, "prepare_wave_target", hit_origin + Vector3(1.8, -0.5, 0))
+	await get_tree().create_timer(0.5).timeout
+	host.water_power_damage_min = 5.0
+	host.water_power_damage_max = 5.0
+	host.water_attack_damage_min = 5.0
+	host.water_attack_damage_max = 5.0
+	for kind in [host.WaterMove.POWER, host.WaterMove.ATTACK]:
+		host._cast_water_move(kind, hit_origin, Vector3.RIGHT, 1.0)
+		await get_tree().create_timer(0.4).timeout
+		var expected_stamina := 95.0 if kind == host.WaterMove.POWER else 90.0
+		_expect(is_equal_approx(_body(roles.first).stamina, expected_stamina), "attack damages first target once")
+		_expect(is_equal_approx(_body(roles.second).stamina, 100.0), "attack does not reach the player behind")
+		var stage := "consumed wave %d" % kind
+		rpc_id(roles.spectator, "check_consumed_wave", stage, hit_origin, roles.first, roles.second, expected_stamina)
+		await _until(func() -> bool: return checks.has(stage))
+	rpc_id(roles.first, "prepare_wave_target", Vector3(12, 16, 0))
+	rpc_id(roles.second, "prepare_wave_target", Vector3(6, 14, 0))
+	await get_tree().create_timer(0.5).timeout
+	rpc_id(roles.second, "cast_pelt", Vector3(6, 14, 0), Vector3(6, 2, 0).normalized())
+	await get_tree().create_timer(0.7).timeout
+	_expect(is_equal_approx(_body(roles.first).stamina, 90.0), "client pelt damages the target once")
+	_expect(get_tree().current_scene.get_node("water base").get_active_pelts().is_empty(), "host removes client pelt after impact")
+	rpc_id(roles.spectator, "check_pelt", roles.first)
+	await _until(func() -> bool: return checks.has("pelt"))
 	host._death()
 	await get_tree().create_timer(0.3).timeout
 	rpc_id(roles.spectator, "check_score", roles.first)
@@ -259,6 +291,56 @@ func check_wave() -> void:
 	_expect(not get_tree().current_scene.get_node("water base").get_active_waves().is_empty(), "live water move")
 	_expect(_body(1)._anim_player.assigned_animation == "water_power", "live move animation")
 	rpc_id(1, "checked", "wave")
+
+
+@rpc("authority", "reliable")
+func prepare_wave_target(pos: Vector3) -> void:
+	var local := _body(multiplayer.get_unique_id())
+	local.freeze = true
+	local.linear_velocity = Vector3.ZERO
+	local.position = pos
+	local.stamina = 100.0
+
+
+@rpc("authority", "reliable")
+func check_consumed_wave(stage: String, origin: Vector3, target: int, behind: int, stamina: float) -> void:
+	for wave in get_tree().current_scene.get_node("water base").get_active_waves():
+		_expect(not wave[0].is_equal_approx(origin), "spectator sees no wave after the hit")
+	_expect(is_equal_approx(_body(target).stamina, stamina), "spectator receives the hit once")
+	_expect(is_equal_approx(_body(behind).stamina, 100.0), "spectator sees the player behind unharmed")
+	rpc_id(1, "checked", stage)
+
+
+@rpc("authority", "reliable")
+func cast_pelt(origin: Vector3, direction: Vector3) -> void:
+	var local := _body(multiplayer.get_unique_id())
+	local._cast_water_move(local.WaterMove.PELT, origin, direction, 1.0)
+
+
+@rpc("authority", "reliable")
+func check_pelt(target: int) -> void:
+	_expect(get_tree().current_scene.get_node("water base").get_active_pelts().is_empty(), "spectator removes pelt after impact")
+	_expect(is_equal_approx(_body(target).stamina, 90.0), "spectator receives pelt damage once")
+	rpc_id(1, "checked", "pelt")
+
+
+@rpc("authority", "reliable")
+func cancel_jump() -> void:
+	var local := _body(multiplayer.get_unique_id())
+	local.momentum = local.max_momentum
+	local.stamina = local.max_stamina
+	local._jump_cooldown_timer = 0.0
+	local._jump(true)
+	_expect(local._try_jump_cancel(), "client cancels its water jump")
+	local.freeze = false
+
+
+@rpc("authority", "reliable")
+func check_jump_cancel(id: int) -> void:
+	_expect(is_equal_approx(_body(id).momentum, 8.0), "spectator receives jump cancel momentum")
+	_expect(is_equal_approx(_body(id).stamina, 90.0), "spectator receives jump cancel stamina")
+	_expect(_body(id).position.distance_to(Vector3(10, 6, 4)) > 0.5, "spectator sees the burst moving")
+	rpc_id(1, "checked", "jump cancel")
 
 
 @rpc("authority", "reliable")
