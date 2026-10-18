@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bj783m50hc7up"
 path.s3tc="res://.godot/imported/character_0_black.png-9473949af08fd782c482dfc2d7c47059.s3tc.ctex"
+path.etc2="res://.godot/imported/character_0_black.png-9473949af08fd782c482dfc2d7c47059.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://mesh/character_0_black.png"
-dest_files=["res://.godot/imported/character_0_black.png-9473949af08fd782c482dfc2d7c47059.s3tc.ctex"]
+dest_files=["res://.godot/imported/character_0_black.png-9473949af08fd782c482dfc2d7c47059.s3tc.ctex", "res://.godot/imported/character_0_black.png-9473949af08fd782c482dfc2d7c47059.etc2.ctex"]
 
 [params]
 

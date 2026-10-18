@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bfkxqdick8x3d"
 path.s3tc="res://.godot/imported/stylized_pine_2.png-a41f79cfaa4a9810a9cd72ac12083041.s3tc.ctex"
+path.etc2="res://.godot/imported/stylized_pine_2.png-a41f79cfaa4a9810a9cd72ac12083041.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://mesh/stylized_pine_2.png"
-dest_files=["res://.godot/imported/stylized_pine_2.png-a41f79cfaa4a9810a9cd72ac12083041.s3tc.ctex"]
+dest_files=["res://.godot/imported/stylized_pine_2.png-a41f79cfaa4a9810a9cd72ac12083041.s3tc.ctex", "res://.godot/imported/stylized_pine_2.png-a41f79cfaa4a9810a9cd72ac12083041.etc2.ctex"]
 
 [params]
 

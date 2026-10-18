@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://ba83k33m8cyht"
 path.s3tc="res://.godot/imported/banana_0.jpg-9e3a658d1329d3de572e18871aede57c.s3tc.ctex"
+path.etc2="res://.godot/imported/banana_0.jpg-9e3a658d1329d3de572e18871aede57c.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://addons/simplegrasstextured/textures/banana_0.jpg"
-dest_files=["res://.godot/imported/banana_0.jpg-9e3a658d1329d3de572e18871aede57c.s3tc.ctex"]
+dest_files=["res://.godot/imported/banana_0.jpg-9e3a658d1329d3de572e18871aede57c.s3tc.ctex", "res://.godot/imported/banana_0.jpg-9e3a658d1329d3de572e18871aede57c.etc2.ctex"]
 
 [params]
 

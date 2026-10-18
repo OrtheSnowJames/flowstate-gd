@@ -119,6 +119,15 @@ func _host() -> void:
 	await get_tree().create_timer(0.1).timeout
 	rpc_id(roles.spectator, "check_wave")
 	await _until(func() -> bool: return checks.has("wave"))
+	host.stamina = 100.0
+	_expect(host._try_water_counter(), "host counter casts")
+	await get_tree().create_timer(0.2).timeout
+	rpc_id(roles.spectator, "check_counter", true)
+	await _until(func() -> bool: return checks.has("counter up"))
+	host._update_water_counter(1.01)
+	await get_tree().create_timer(0.2).timeout
+	rpc_id(roles.spectator, "check_counter", false)
+	await _until(func() -> bool: return checks.has("counter down"))
 	rpc_id(roles.first, "cancel_jump")
 	await get_tree().create_timer(0.4).timeout
 	_expect(is_equal_approx(_body(roles.first).momentum, 8.0), "host receives jump cancel momentum")
@@ -232,6 +241,7 @@ func register_role(value: String) -> void:
 	roles[value] = multiplayer.get_remote_sender_id()
 	if value == "spectator":
 		var host := _body(1)
+		host._cast_water_wall_stop()
 		host._cast_water_move(host.WaterMove.POWER, Vector3(-20, 4, 0), Vector3.RIGHT, 4.0)
 		host._cast_water_wall(Vector3(-20, 4, -6), Vector3.FORWARD, 1.0)
 
@@ -291,6 +301,16 @@ func check_wave() -> void:
 	_expect(not get_tree().current_scene.get_node("water base").get_active_waves().is_empty(), "live water move")
 	_expect(_body(1)._anim_player.assigned_animation == "water_power", "live move animation")
 	rpc_id(1, "checked", "wave")
+
+
+@rpc("authority", "reliable")
+func check_counter(up: bool) -> void:
+	var host := _body(1)
+	var ocean := get_tree().current_scene.get_node("water base")
+	_expect(host._water_wall_up == up, "counter wall state replicates")
+	_expect(ocean._walls.has(host.get_instance_id()) == up, "counter wall visual replicates")
+	_expect(is_equal_approx(host.stamina, 50.0), "counter cost replicates")
+	rpc_id(1, "checked", "counter up" if up else "counter down")
 
 
 @rpc("authority", "reliable")

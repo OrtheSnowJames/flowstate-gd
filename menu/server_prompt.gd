@@ -97,6 +97,7 @@ func open_mode() -> int:
 	_mode.show()
 	_mode.add_item("Normal", Net.GameMode.NORMAL)
 	_mode.add_item("King of the Cube", Net.GameMode.KING_OF_CUBE)
+	_mode.add_item("Arcade Mode", Net.GameMode.ARCADE)
 	_buttons.show_buttons([
 		{"label": "Create", "on_press": _submit},
 		{"label": "Cancel", "on_press": func() -> void: _finish_mode(-1)},

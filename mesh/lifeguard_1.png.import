@@ -4,8 +4,9 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://bqpxe7l8mkk32"
 path.s3tc="res://.godot/imported/lifeguard_1.png-d574f7f30ea5f94f35152333b4480cd7.s3tc.ctex"
+path.etc2="res://.godot/imported/lifeguard_1.png-d574f7f30ea5f94f35152333b4480cd7.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 generator_parameters={
@@ -15,7 +16,7 @@ generator_parameters={
 [deps]
 
 source_file="res://mesh/lifeguard_1.png"
-dest_files=["res://.godot/imported/lifeguard_1.png-d574f7f30ea5f94f35152333b4480cd7.s3tc.ctex"]
+dest_files=["res://.godot/imported/lifeguard_1.png-d574f7f30ea5f94f35152333b4480cd7.s3tc.ctex", "res://.godot/imported/lifeguard_1.png-d574f7f30ea5f94f35152333b4480cd7.etc2.ctex"]
 
 [params]
 

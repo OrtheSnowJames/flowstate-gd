@@ -72,6 +72,28 @@ func _run() -> void:
 	_expect(InputMap.has_action("water_pelt"), "input binding exists")
 	player.movement_locked = false
 	player.stamina = 100.0
+	player._cast_water_wall(Vector3(0, 7.655, 0), Vector3.RIGHT, 1.0)
+	for kind in [player.WaterMove.POWER, player.WaterMove.ATTACK, player.WaterMove.PELT]:
+		player._cast_water_move(kind, Vector3(0, 20, 0), Vector3.UP, 1.0)
+		player.net_cast_water_move(kind, Vector3(0, 20, 0), Vector3.UP, 1.0, {"id": "blocked wall"})
+	_expect(not player._try_water_pelt(), "wall blocks pelt input")
+	_expect(ocean.get_active_pelts().is_empty() and ocean.get_active_waves().is_empty(), "wall blocks all local and replicated attacks")
+	_expect(player.stamina == 100.0 and player._water_pelt_cooldown_timer == 0.0, "blocked pelt spends no stamina or cooldown")
+	player._cast_water_wall_stop()
+	player.global_position = Vector3(0, 7.655, 0)
+	for action in ["water_wall", "water_power", "water_attack", "water_pelt"]:
+		Input.action_press(action)
+	player._physics_process(1.0 / 60.0)
+	_expect(player._water_wall_up, "simultaneous inputs raise the wall")
+	_expect(ocean.get_active_pelts().is_empty() and ocean.get_active_waves().is_empty(), "simultaneous attacks cannot pass through the wall")
+	_expect(player._water_power_cooldown_timer == 0.0 and player._water_attack_cooldown_timer == 0.0 and player._water_pelt_cooldown_timer == 0.0, "blocked attacks start no cooldowns")
+	for action in ["water_wall", "water_power", "water_attack", "water_pelt"]:
+		Input.action_release(action)
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	player._physics_process(1.0 / 60.0)
+	_expect(not player._water_wall_up, "releasing the wall unlocks attacks")
+	player.stamina = 100.0
 	_expect(player._try_water_pelt(), "ready player can cast")
 	_expect(player.stamina == 95.0, "casting costs five stamina")
 	_expect(not player._try_water_pelt(), "cooldown prevents repeat casts")

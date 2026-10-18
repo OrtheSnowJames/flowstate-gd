@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://cobff378w34nb"
 path.s3tc="res://.godot/imported/enchant_extractor.png-fe42b8669d147609a4102df9bf3fd0b8.s3tc.ctex"
+path.etc2="res://.godot/imported/enchant_extractor.png-fe42b8669d147609a4102df9bf3fd0b8.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://img/enchant_extractor.png"
-dest_files=["res://.godot/imported/enchant_extractor.png-fe42b8669d147609a4102df9bf3fd0b8.s3tc.ctex"]
+dest_files=["res://.godot/imported/enchant_extractor.png-fe42b8669d147609a4102df9bf3fd0b8.s3tc.ctex", "res://.godot/imported/enchant_extractor.png-fe42b8669d147609a4102df9bf3fd0b8.etc2.ctex"]
 
 [params]
 

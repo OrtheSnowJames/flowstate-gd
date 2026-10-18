@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://lwxj8kenskgx"
 path.s3tc="res://.godot/imported/square_brick_floor_diff_1k.jpg-620dbd91c3ece1bc363a67688f6a094f.s3tc.ctex"
+path.etc2="res://.godot/imported/square_brick_floor_diff_1k.jpg-620dbd91c3ece1bc363a67688f6a094f.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://img/square_brick_floor_diff_1k.jpg"
-dest_files=["res://.godot/imported/square_brick_floor_diff_1k.jpg-620dbd91c3ece1bc363a67688f6a094f.s3tc.ctex"]
+dest_files=["res://.godot/imported/square_brick_floor_diff_1k.jpg-620dbd91c3ece1bc363a67688f6a094f.s3tc.ctex", "res://.godot/imported/square_brick_floor_diff_1k.jpg-620dbd91c3ece1bc363a67688f6a094f.etc2.ctex"]
 
 [params]
 

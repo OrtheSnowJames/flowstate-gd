@@ -21,7 +21,7 @@ const _CONNECT_IN_PROGRESS_GRACE := 0.35
 const CUBE_GOAL := 100
 const ROOM_PROMPT := preload("res://menu/server_prompt.tscn")
 
-enum GameMode { NORMAL, KING_OF_CUBE }
+enum GameMode { NORMAL, KING_OF_CUBE, ARCADE }
 enum CubeControl { NEUTRAL, RED, BLUE, CONTESTED }
 var game_mode: GameMode = GameMode.NORMAL
 var cube_control: CubeControl = CubeControl.NEUTRAL

@@ -4,15 +4,16 @@ importer="texture"
 type="CompressedTexture2D"
 uid="uid://c7eu2bvokypa5"
 path.s3tc="res://.godot/imported/olive_veneer_diff_1k.jpg-e3f9de679d34add9137f6b5a3fd5e5f8.s3tc.ctex"
+path.etc2="res://.godot/imported/olive_veneer_diff_1k.jpg-e3f9de679d34add9137f6b5a3fd5e5f8.etc2.ctex"
 metadata={
-"imported_formats": ["s3tc_bptc"],
+"imported_formats": ["s3tc_bptc", "etc2_astc"],
 "vram_texture": true
 }
 
 [deps]
 
 source_file="res://img/olive_veneer_diff_1k.jpg"
-dest_files=["res://.godot/imported/olive_veneer_diff_1k.jpg-e3f9de679d34add9137f6b5a3fd5e5f8.s3tc.ctex"]
+dest_files=["res://.godot/imported/olive_veneer_diff_1k.jpg-e3f9de679d34add9137f6b5a3fd5e5f8.s3tc.ctex", "res://.godot/imported/olive_veneer_diff_1k.jpg-e3f9de679d34add9137f6b5a3fd5e5f8.etc2.ctex"]
 
 [params]
 
