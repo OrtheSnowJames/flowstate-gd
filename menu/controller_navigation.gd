@@ -63,7 +63,7 @@ func _activate() -> void:
 func _process(delta: float) -> void:
 	if _direction == 0:
 		return
-	if Input.get_connected_joypads().is_empty():
+	if not VR.active and Input.get_connected_joypads().is_empty():
 		_direction = 0
 		_stick_direction = 0
 		_pad_direction = 0

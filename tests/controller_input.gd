@@ -39,6 +39,16 @@ func _run() -> void:
 	_expect(probe.right == 0, "slow taps do not dodge")
 	movement.detect_dodge(probe, 1.6, tap)
 	_expect(probe.right == 1, "double dpad right dodges right")
+	VR.active = true
+	var grip := InputEventAction.new()
+	grip.action = "vr_dodge_left"
+	grip.pressed = true
+	movement.detect_dodge(probe, 2.0, grip)
+	_expect(probe.left == 2, "vr left grip dodges without double tapping")
+	grip.action = "vr_dodge_right"
+	movement.detect_dodge(probe, 2.1, grip)
+	_expect(probe.right == 2, "vr right grip dodges without double tapping")
+	VR.active = false
 	var player = Net._players_root().get_node("1")
 	player.freeze = true
 	player.set_physics_process(false)

@@ -51,6 +51,7 @@ Transition="*res://transition.gd"
 Matchmaking="*res://matchmaking/matchmaking.gd"
 SimpleGrass="*uid://bfq0snth8sj3h"
 ControllerNavigation="*res://menu/controller_navigation.gd"
+VR="*res://vr.gd"
 
 [display]
 
@@ -65,6 +66,15 @@ project/assembly_name="flowstate"
 enabled=PackedStringArray("res://addons/simplegrasstextured/plugin.cfg")
 
 [input]
+
+vr_dodge_left={
+"deadzone": 0.2,
+"events": []
+}
+vr_dodge_right={
+"deadzone": 0.2,
+"events": []
+}
 
 forward={
 "deadzone": 0.2,
@@ -228,6 +238,9 @@ common/physics_interpolation=true
 
 [rendering]
 
+renderer/rendering_method.quest="gl_compatibility"
+textures/vram_compression/import_etc2_astc=true
+
 textures/canvas_textures/default_texture_filter=0
 rendering_device/driver.windows="d3d12"
 textures/vram_compression/import_etc2_astc=true
@@ -277,3 +290,9 @@ sgt_wind_pattern={
 "type": "sampler2D",
 "value": "res://addons/simplegrasstextured/images/wind_pattern.png"
 }
+
+[xr]
+
+openxr/enabled=false
+openxr/enabled.android=true
+shaders/enabled=true

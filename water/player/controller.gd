@@ -2,6 +2,11 @@ extends RefCounted
 
 
 static func track(player, event: InputEvent) -> void:
+	if VR.active:
+		if not player.using_controller:
+			player.controller_angles = Vector2(player._cam_pivot.global_rotation.y, player._camera.rotation.x)
+		player.using_controller = true
+		return
 	var using_pad: bool = player.using_controller
 	if event is InputEventJoypadButton and event.pressed:
 		using_pad = true

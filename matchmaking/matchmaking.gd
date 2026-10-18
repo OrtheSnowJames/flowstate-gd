@@ -112,6 +112,9 @@ func _notice(message: String) -> void:
 
 
 func _host_room(port: int, use_webrtc := true) -> void:
+	if VR.quest_standalone:
+		await _notice("No available room. Standalone Quest can join games but cannot host.")
+		return
 	if use_webrtc and not rtc.available():
 		await _notice("WebRTC extension is missing")
 		return

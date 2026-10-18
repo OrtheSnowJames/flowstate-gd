@@ -45,7 +45,7 @@ func _drone(delta: float) -> void:
 
 
 func _look_at_target(target_position: Vector3) -> void:
-	if Input.is_action_pressed("look_scoreboard") and not Net.input_blocked_by_menu():
+	if not VR.active and Input.is_action_pressed("look_scoreboard") and not Net.input_blocked_by_menu():
 		var scene := get_tree().current_scene
 		var scoreboard := scene.get_node_or_null("Scoreboard") if scene else null
 		if scoreboard is Node3D:

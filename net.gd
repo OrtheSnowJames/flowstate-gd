@@ -322,6 +322,8 @@ func _format_penalty_time(seconds: int) -> String:
 
 
 func host_game(port := PORT, use_webrtc := false, mode: int = GameMode.NORMAL) -> Error:
+	if VR.quest_standalone:
+		return ERR_UNAVAILABLE
 	if _block_online_if_penalized(false):
 		push_warning("net: online penalty still has %s left" % online_penalty_text())
 		return FAILED
@@ -471,6 +473,11 @@ func net_sync_arena_peers(peers: Dictionary) -> void:
 
 # open a lobby and wait in it the hosts half of start_connect_localhost reached directly
 func start_host_lobby(port := PORT) -> void:
+	if VR.quest_standalone:
+		await Transition.show_status("Standalone Quest can join games but cannot host.")
+		await get_tree().create_timer(1.5).timeout
+		await Transition.hide_status()
+		return
 	if _block_online_if_penalized():
 		return
 	if is_online():
@@ -1610,7 +1617,7 @@ func _unhandled_input(event: InputEvent) -> void:
 				# start_connect not the bare join_game opening the connection without also getting into the lobby
 				if not is_online():
 					start_connect(join_ip)
-	if enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
+	if not VR.active and enable_lifeguard_test_key and event.is_action_pressed("test_lifeguard_key"):
 		_toggle_local_lifeguard()
 
 

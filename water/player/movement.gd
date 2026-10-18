@@ -17,6 +17,12 @@ static func _integrate_forces(player, state: PhysicsDirectBodyState3D) -> void:
 
 
 static func detect_dodge(player, now: float, event: InputEvent) -> void:
+	if VR.active and event.is_action_pressed("vr_dodge_left"):
+		player._dodge_left()
+		return
+	if VR.active and event.is_action_pressed("vr_dodge_right"):
+		player._dodge_right()
+		return
 	if event is InputEventJoypadButton and event.button_index in [JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]:
 		if not event.pressed:
 			return

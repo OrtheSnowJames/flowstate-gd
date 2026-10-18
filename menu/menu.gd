@@ -8,6 +8,9 @@ const SERVER_PROMPT := preload("res://menu/server_prompt.tscn")
 
 
 func _ready() -> void:
+	VR.mode_changed.connect(func():
+		if _menu_screen._heading.visible:
+			_show_root())
 	_show_root()
 
 
@@ -16,6 +19,7 @@ func _show_root() -> void:
 	_menu_screen.show_buttons([
 		{"label": "Play", "on_press": _show_play},
 		{"label": "Settings", "on_press": _show_settings},
+		{"label": "Exit VR" if VR.active else "Enter VR", "on_press": _toggle_vr},
 	], "FLOWSTATE")
 
 
@@ -34,11 +38,23 @@ func _show_play() -> void:
 
 
 func _show_custom_server() -> void:
-	_menu_screen.show_buttons([
+	var choices := [
 		{"label": "Join", "on_press": _open_server_prompt.bind(false)},
-		{"label": "Host", "on_press": _open_server_prompt.bind(true)},
-		{"label": "Back", "on_press": _show_play},
-	])
+	]
+	if not VR.quest_standalone:
+		choices.append({"label": "Host", "on_press": _open_server_prompt.bind(true)})
+	choices.append({"label": "Back", "on_press": _show_play})
+	_menu_screen.show_buttons(choices)
+
+
+func _toggle_vr() -> void:
+	if VR.active:
+		VR.stop()
+	elif not VR.start():
+		await Transition.show_status("OpenXR unavailable. Launch with --xr-mode on and your VR runtime running.")
+		await get_tree().create_timer(2.0).timeout
+		await Transition.hide_status()
+	_show_root()
 
 
 func _open_server_prompt(hosting: bool) -> void:
@@ -166,6 +182,8 @@ func _toggle_exponential_sensitivity() -> void:
 
 
 func _toggle_performance_mode() -> void:
+	if VR.quest_standalone:
+		return
 	Settings.performance_mode = not Settings.performance_mode
 	Settings.save_settings()
 	_show_settings()

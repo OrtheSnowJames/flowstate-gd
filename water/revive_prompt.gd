@@ -29,7 +29,7 @@ func _ready() -> void:
 # called every frame by the local player with whichever body it could revive right
 func show_for(target: Node3D, camera: Camera3D, using_controller: bool = false) -> void:
 	_camera = camera
-	$Box/Row/Keycap/Key.text = "Right D-pad" if using_controller else "R"
+	$Box/Row/Keycap/Key.text = "Right Stick" if VR.active else ("Right D-pad" if using_controller else "R")
 	_box.reset_size()
 	if target == _target:
 		return

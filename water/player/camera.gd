@@ -47,7 +47,7 @@ static func _camera_pivot_change(player, delta: float) -> void:
 			player.controller_angles.x -= look.x * 2.5 * delta
 			player.controller_angles.y = clampf(player.controller_angles.y - look.y * 1.8 * delta, deg_to_rad(-75), deg_to_rad(25))
 		target_angles = player.controller_angles
-	if Input.is_action_pressed("look_scoreboard"):
+	if not VR.active and Input.is_action_pressed("look_scoreboard"):
 		target_angles = player._camera_look_angles(player._scoreboard_look_node(), target_angles)
 	var current_yaw = player._cam_pivot.global_transform.basis.get_euler().y
 	var new_yaw = lerp_angle(current_yaw, target_angles.x, 1.0 - exp(-player.camera_turn_speed * delta))

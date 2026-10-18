@@ -19,7 +19,12 @@ var turn_speed: float = 2.5
 # whether a d turning ramps up the longer the key is held on or
 var exponential_turn_sensitivity: bool = false
 # lowers water cost for weaker machines
-var performance_mode: bool = false
+var _performance_mode := false
+var performance_mode: bool:
+	get:
+		return _performance_mode or VR.quest_standalone
+	set(value):
+		_performance_mode = value
 # unix time until online connect is allowed again
 var online_penalty_until_unix: int = 0
 
@@ -50,7 +55,7 @@ func save_settings() -> void:
 	cfg.set_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	cfg.set_value(_SECTION, "turn_speed", turn_speed)
 	cfg.set_value(_SECTION, "exponential_turn_sensitivity", exponential_turn_sensitivity)
-	cfg.set_value(_GRAPHICS_SECTION, "performance_mode", performance_mode)
+	cfg.set_value(_GRAPHICS_SECTION, "performance_mode", _performance_mode)
 	cfg.set_value(_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	cfg.set_value(_PROFILE_SECTION, "player_name", player_name)
 	var err := cfg.save(_SAVE_PATH)
