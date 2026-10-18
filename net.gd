@@ -24,6 +24,7 @@ const ROOM_PROMPT := preload("res://menu/server_prompt.tscn")
 enum GameMode { NORMAL, KING_OF_CUBE, ARCADE }
 enum CubeControl { NEUTRAL, RED, BLUE, CONTESTED }
 var game_mode: GameMode = GameMode.NORMAL
+var arcade = preload("res://water/arcade_combat.gd").new()
 var cube_control: CubeControl = CubeControl.NEUTRAL
 var _round_started := false
 var _room_prompt_open := false
@@ -62,6 +63,8 @@ const _TEAM_SPAWN_Z := 11.0
 const _TEAM_SPAWN_SPACING := 3.0
 
 func _ready() -> void:
+	arcade.name = "ArcadeCombat"
+	add_child(arcade)
 	# connected once here rather than inside host_game hosting twice would otherwise stack duplicate connections
 	multiplayer.peer_connected.connect(_on_peer_connected)
 	multiplayer.peer_disconnected.connect(_on_peer_disconnected)
@@ -505,12 +508,17 @@ func choose_room_mode() -> int:
 
 
 func game_mode_name() -> String:
-	return "King of the Cube" if game_mode == GameMode.KING_OF_CUBE else "Normal"
+	match game_mode:
+		GameMode.KING_OF_CUBE:
+			return "King of the Cube"
+		GameMode.ARCADE:
+			return "Arcade"
+	return "Normal"
 
 
 @rpc("authority", "call_local", "reliable")
 func net_sync_game_mode(mode: int) -> void:
-	game_mode = GameMode.KING_OF_CUBE if mode == GameMode.KING_OF_CUBE else GameMode.NORMAL
+	game_mode = mode as GameMode if mode in GameMode.values() else GameMode.NORMAL
 	cube_control = CubeControl.NEUTRAL
 	cube_control_changed.emit()
 	lobby_changed.emit()

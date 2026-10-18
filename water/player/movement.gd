@@ -69,6 +69,21 @@ static func _dodge(player, local_dir: Vector3) -> void:
 		right = -right
 	player.apply_central_impulse(right * player.dodge_impulse)
 
+static func _jump_arcade(player, on_ground: bool) -> void:
+	if player._jump_cooldown_timer > 0.0:
+		return
+	if not on_ground and player._submersion() <= 0.0:
+		return
+	if player._submersion() <= 0.0:
+		var query = PhysicsRayQueryParameters3D.create(player.global_position,
+			player.global_position + Vector3.DOWN * (player.body_half_height + 0.2), 1, [player.get_rid()])
+		if player.get_world_3d().direct_space_state.intersect_ray(query).is_empty():
+			return
+	player._jump_cooldown_timer = player.jump_cooldown
+	player.linear_velocity.y = player.jump_speed * player.arcade_jump_mult
+	player._jump_cancel_available = false
+	player.movement_state = MovementState.JUMP
+	player._play_water_action_anim("jump_high")
 
 static func _jump(player, on_ground: bool) -> void:
 	if player._jump_cooldown_timer > 0.0:
@@ -86,6 +101,8 @@ static func _jump(player, on_ground: bool) -> void:
 
 
 static func _try_jump_cancel(player) -> bool:
+	if Net.game_mode == Net.GameMode.ARCADE:
+		return false
 	if not player._is_local() or not player._jump_cancel_available:
 		return false
 	if player._unconscious or player.movement_locked or Net.input_blocked_by_menu() or Net.is_spectating() \
@@ -368,7 +385,8 @@ static func update(player, delta: float, submersion: float, shallow: bool) -> vo
 
 	if Input.is_action_just_pressed("jump"):
 		# cube boosts can also launch from the water
-		player._jump(shallow or submersion <= 0.0)
+		if Net.game_mode != Net.GameMode.ARCADE or not Input.is_action_pressed("swim_key"):
+			player._jump(shallow or submersion <= 0.0)
 	if Input.is_action_just_pressed("swim_key"):
 		player._try_jump_cancel()
 
@@ -385,6 +403,9 @@ static func update(player, delta: float, submersion: float, shallow: bool) -> vo
 		player._swim(delta) # not holding swim in open water glides
 	else:
 		player._walk(delta)
+
+	if Net.game_mode == Net.GameMode.ARCADE and (player.linear_velocity.y > 1.0 or Net.arcade.airborne(player)):
+		player.movement_state = MovementState.JUMP
 
 	# gravity stays on everywhere buoyancy grows smoothly with submersion so the body has one
 	if not (shallow and not wants_swim):

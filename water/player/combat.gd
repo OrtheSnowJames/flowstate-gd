@@ -5,7 +5,7 @@ const WaterMove = Types.WaterMove
 
 
 static func _cast_water_move(player, kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
-	if not player._is_local() or player._ocean == null or player._water_wall_up:
+	if not player._is_local() or player._ocean == null or player._water_wall_up or Net.arcade.controls(player):
 		return
 	# resolve once so every peer consumes the same attack
 	var hit: Dictionary
@@ -120,6 +120,8 @@ static func _water_power_strength(player) -> float:
 
 
 static func process_input(player, delta: float, submersion: float) -> void:
+	if Net.arcade.controls(player):
+		return
 	# resolve the wall first so simultaneous inputs cannot fire through it
 	if Input.is_action_just_pressed("water_counter"):
 		player._try_water_counter()

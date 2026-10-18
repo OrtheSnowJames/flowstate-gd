@@ -115,6 +115,8 @@ static func _fix_animation_loop_modes(player) -> void:
 
 
 static func _apply_replicated_animation(player) -> void:
+	if Net.arcade.controls(player):
+		return
 	if not player._anim_player or player._received_animation.size() != 4:
 		return
 	var clip: String = player._received_animation[0]
@@ -179,6 +181,8 @@ static func _stop_water_wall_anim(player) -> void:
 
 
 static func _anim_change(player) -> void:
+	if Net.arcade.controls(player):
+		return
 	if player.movement_state == MovementState.DODGE:
 		return # todo handle in dodge functions
 	if not player._anim_player:

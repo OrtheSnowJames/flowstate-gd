@@ -127,6 +127,7 @@ var last_d_press := -1000.0
 @export_group("Jump")
 # only works standing in the shallow end a push off the pool floor same
 @export var jump_speed: float = 16.0
+@export var arcade_jump_mult: float = 2.0
 @export var cube_jump_speed: float = 7.0
 @export var cube_jump_range: float = 3.0
 # how sharply momentum stops paying off the launch scales with momentum max_momentum jump_momentum_exponent so
@@ -157,6 +158,7 @@ var last_d_press := -1000.0
 @export var stamina: float = 100.0
 # bullshit v
 @export var max_stamina: float = 100.0
+@export var max_arcade_stamina: float = 200.0
 @export var balance_mult: float = 0.5
 @export var stamina_expended_dodge: float = 20.0 # cant dodge in the deep end
 @export var stamina_in_shallow_end_per_second: float = 9.0 * balance_mult
@@ -364,6 +366,12 @@ func _exit_tree() -> void:
 func _is_local() -> bool:
 	return is_multiplayer_authority()
 
+func max_stamina_per_mode(game_mode: Net.GameMode) -> float:
+	if game_mode == Net.GameMode.ARCADE:
+		return max_arcade_stamina
+	else:
+		return max_stamina
+
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON if _is_local() else Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_cam_pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
@@ -394,6 +402,8 @@ func _ready() -> void:
 		_setup_remote_body()
 		return
 
+	stamina = max_stamina_per_mode(Net.game_mode)
+
 	# saved camera turning settings before any of it gets used below camera_hover_height in particular
 	Settings.apply_to(self)
 
@@ -414,7 +424,7 @@ func _ready() -> void:
 	if gui:
 		var stamina_bar: Range = gui.get_node_or_null("stamina_bar")
 		if stamina_bar:
-			stamina_bar.max_value = max_stamina
+			stamina_bar.max_value = max_stamina_per_mode(Net.game_mode)
 		var momentum_bar: Range = gui.get_node_or_null("momentum_bar")
 		if momentum_bar:
 			momentum_bar.max_value = max_momentum
@@ -495,7 +505,8 @@ func _process(delta: float) -> void:
 
 	# the camera the cursor and the shake are per window so they only make
 	if not _is_local():
-		_interpolate_remote_movement(delta)
+		if not Net.arcade.controls(self):
+			_interpolate_remote_movement(delta)
 		return
 
 	if CONTROL_CAMERA:
@@ -600,6 +611,8 @@ func _input(event: InputEvent) -> void:
 	# nothing lands before the countdown finishes not moves not the revive key not the
 	if movement_locked:
 		return
+	if Net.arcade.handle_input(self, event):
+		return
 	detect_death(event)
 	# reachable only while conscious thanks to the _unconscious guard above which is exactly right
 	if event.is_action_pressed("revive"):
@@ -626,7 +639,10 @@ func _dodge(local_dir: Vector3) -> void:
 	Movement._dodge(self, local_dir)
 
 func _jump(on_ground: bool) -> void:
-	Movement._jump(self, on_ground)
+	if Net.game_mode == Net.GameMode.ARCADE:
+		Movement._jump_arcade(self, on_ground)
+	else:
+		Movement._jump(self, on_ground)
 
 
 func _try_jump_cancel() -> bool:
@@ -692,10 +708,13 @@ func _drift_to_a_stop() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	var _max_stamina = max_stamina_per_mode(Net.game_mode)
 	# a remote body is a puppet its transform is replicated in from the peer
 	if not _is_local():
 		return
 	_update_water_counter(delta)
+	if Net.arcade.controls(self):
+		return
 
 	if _unconscious:
 		# limp body input is ignored no turning no strokes no momentum but the water
@@ -732,7 +751,7 @@ func _physics_process(delta: float) -> void:
 
 	# wire the numbers up to the bar see the exported stamina_ knobs above
 	_stamina_change(delta)
-	stamina = clampf(stamina, 0.0, max_stamina)
+	stamina = clampf(stamina, 0.0, _max_stamina)
 
 func _submersion() -> float:
 	return Movement._submersion(self)
@@ -756,7 +775,6 @@ func _water_height() -> float:
 
 func _mouse_aim_direction_3d(origin: Vector3) -> Vector3:
 	return Camera._mouse_aim_direction_3d(self, origin)
-
 
 func _mouse_aim_direction() -> Vector3:
 	return Camera._mouse_aim_direction(self)

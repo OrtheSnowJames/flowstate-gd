@@ -28,7 +28,7 @@ static func _stamina_change(player, delta: float) -> void:
 static func take_stamina_damage(player, amount: float) -> void:
 	if player._water_wall_up:
 		amount *= player.water_wall_block_reduction
-	player.stamina = clampf(player.stamina - amount, 0.0, player.max_stamina)
+	player.stamina = clampf(player.stamina - amount, 0.0, player.max_stamina_per_mode(Net.game_mode))
 	if player.stamina <= 5.0:
 		player._death()
 
@@ -115,7 +115,7 @@ static func net_revive(player) -> void:
 	player._unconscious = false
 	player._jump_cancel_available = false
 	player.set_process_input(true)
-	player.stamina = player.max_stamina * player.revive_stamina_fraction
+	player.stamina = player.max_stamina_per_mode(Net.game_mode) * player.revive_stamina_fraction
 	player.momentum = 0.0
 	player.movement_state = MovementState.TREAD
 	# the death clip holds on its last frame and _anim_change refuses to touch the
@@ -164,7 +164,7 @@ static func respawn(player, at: Vector3, yaw: float) -> void:
 	player._remote_from = player.transform
 	player._remote_blend = 1.0
 	player.reset_physics_interpolation()
-	player.stamina = player.max_stamina
+	player.stamina = player.max_stamina_per_mode(Net.game_mode)
 	player.momentum = 0.0
 
 
