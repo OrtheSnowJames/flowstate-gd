@@ -76,7 +76,7 @@ func controls(player) -> bool:
 func pick_target(player) -> int:
 	if not active() or not is_instance_valid(player._camera):
 		return 0
-	var camera: Camera3D = player._camera
+	var camera: Camera3D = VR.view_camera(player._camera)
 	var mouse: Vector2 = player.Controller.aim_position(player)
 	var best := 160.0
 	var target := 0
@@ -87,7 +87,7 @@ func pick_target(player) -> int:
 			continue
 		if player.global_position.distance_to(other.global_position) > DASH_RANGE:
 			continue
-		var distance := camera.unproject_position(other.global_position).distance_to(mouse)
+		var distance := VR.project_ui_position(other.global_position, camera).distance_to(mouse)
 		if distance < best and _clear_path(player.global_position, other.global_position):
 			best = distance
 			target = other_id

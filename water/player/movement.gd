@@ -83,7 +83,10 @@ static func _dodge(player, local_dir: Vector3) -> void:
 	player.momentum = max(player.momentum, player.dodge_momentum, player.momentum_needed_to_swim)
 
 	# 2 impulse
-	var right = player._camera.global_basis.x
+	var right = VR.view_camera(player._camera).global_basis.x
+	if VR.immersive:
+		right.y = 0.0
+		right = right.normalized()
 	if local_dir == Vector3.LEFT:
 		right = -right
 	player.apply_central_impulse(right * player.dodge_impulse)
@@ -180,6 +183,9 @@ static func _can_cube_jump(player) -> bool:
 
 
 static func _turn_from_input(player, delta: float) -> void:
+	if VR.immersive and player._is_local():
+		player.rotation.y = player.controller_angles.x
+		return
 	if player.using_controller:
 		var stick: Vector2 = player.Controller.move_input()
 		if stick.length() > 0.0:
@@ -436,8 +442,12 @@ static func update(player, delta: float, submersion: float, shallow: bool) -> vo
 
 	# movement mode you can swim wherever theres enough water by holding the swim key
 	var wants_swim = Input.is_action_pressed("swim_key")
+	var vr_swim: bool = VR.immersive and player._is_local() and (VR.immersion.swim_enabled or VR.immersion.stroke_boost > 0.0)
+	wants_swim = wants_swim or vr_swim
 
-	if wants_swim and (shallow or submersion > 0.25):
+	if vr_swim and (shallow or submersion > 0.25):
+		VR.immersion.swim(player, delta)
+	elif wants_swim and (shallow or submersion > 0.25):
 		player._swim(delta)
 	elif shallow:
 		player._walk(delta) # shallow end always walks unless actively swimming

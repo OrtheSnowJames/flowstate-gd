@@ -26,6 +26,8 @@ static func move_input() -> Vector2:
 
 
 static func movement_input(player) -> Vector2:
+	if VR.immersive and player._is_local():
+		return move_input()
 	if player.using_controller:
 		return Vector2(0.0, -move_input().length())
 	return Vector2(0.0, Input.get_axis("forward", "back"))

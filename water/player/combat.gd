@@ -120,6 +120,9 @@ static func _water_power_strength(player) -> float:
 
 
 static func process_input(player, delta: float, submersion: float) -> void:
+	if VR.immersive and player._is_local():
+		VR.immersion.combat(player, delta)
+		return
 	if Net.arcade.controls(player):
 		return
 	# resolve the wall first so simultaneous inputs cannot fire through it

@@ -1,6 +1,12 @@
 extends Node
 
 var clicks := 0
+var escapes := 0
+
+
+func _input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		escapes += 1
 
 
 func _ready() -> void:
@@ -8,6 +14,28 @@ func _ready() -> void:
 
 
 func _run() -> void:
+	var start := InputEventJoypadButton.new()
+	start.button_index = JOY_BUTTON_START
+	start.pressed = true
+	assert(start.is_action_pressed("ui_cancel"))
+	assert(Net._is_escape_pressed(start))
+	assert(not VR._update_escape_chord(true, false, 1.0))
+	assert(escapes == 0)
+	assert(VR._update_escape_chord(true, true, 0.3))
+	assert(escapes == 0)
+	VR._update_escape_chord(true, true, 0.31)
+	Input.flush_buffered_events()
+	assert(escapes == 1)
+	VR._update_escape_chord(true, true, 2.0)
+	assert(escapes == 1)
+	assert(VR._update_escape_chord(false, true, 0.1))
+	VR._update_escape_chord(true, true, 1.0)
+	assert(escapes == 1)
+	assert(not VR._update_escape_chord(false, false, 0.1))
+	VR._update_escape_chord(true, true, 0.61)
+	Input.flush_buffered_events()
+	assert(escapes == 2)
+	VR._update_escape_chord(false, false, 0.1)
 	var menu := Control.new()
 	add_child(menu)
 	menu.add_to_group("controller_menu")

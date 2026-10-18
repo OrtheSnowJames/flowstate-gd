@@ -326,6 +326,17 @@ var replicated_animation: Array:
 			_apply_replicated_animation()
 
 var _wall_state: Array = []
+var vr_arms: Node3D
+var _received_vr_pose: Array = []
+var replicated_vr_pose: Array:
+	get:
+		return vr_arms.pose if is_instance_valid(vr_arms) else _received_vr_pose
+	set(value):
+		if preload("res://water/player/vr_arms.gd").valid_pose(value):
+			_received_vr_pose = value
+			if is_instance_valid(vr_arms):
+				vr_arms.pose = value
+
 var replicated_wall: Array:
 	get:
 		return _wall_state
@@ -360,6 +371,9 @@ func _enter_tree() -> void:
 			sync.queue_free()
 		if spawn_sync:
 			spawn_sync.queue_free()
+		var vr_sync := get_node_or_null("VRPoseSynchronizer")
+		if vr_sync:
+			vr_sync.queue_free()
 	# lets net gd find the local player without assuming where in the tree it
 	add_to_group("player")
 
@@ -402,6 +416,11 @@ func _ready() -> void:
 
 	# kickboard rig stat buffs if is_lifeguard was baked on for this instance deferred to
 	_apply_lifeguard_loadout()
+	if _owner_peer > 0:
+		vr_arms = preload("res://water/player/vr_arms.gd").new()
+		vr_arms.name = "TrackedArms"
+		vr_arms.pose = _received_vr_pose
+		add_child(vr_arms)
 
 	# everything past here belongs to whoever is playing in this window the one cursor
 	if not _is_local():

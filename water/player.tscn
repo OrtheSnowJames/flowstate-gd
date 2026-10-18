@@ -68,6 +68,14 @@ properties/9/replication_mode = 0
 properties/10/path = NodePath(".:movement_locked")
 properties/10/spawn = true
 properties/10/replication_mode = 1
+properties/11/path = NodePath(".:replicated_vr_pose")
+properties/11/spawn = true
+properties/11/replication_mode = 0
+
+[sub_resource type="SceneReplicationConfig" id="SceneReplicationConfig_vr"]
+properties/0/path = NodePath(".:replicated_vr_pose")
+properties/0/spawn = true
+properties/0/replication_mode = 1
 
 [node name="Player" type="RigidBody3D"]
 collision_layer = 524289
@@ -103,3 +111,9 @@ replication_config = SubResource("SceneReplicationConfig_player")
 script = ExtResource("3_sync")
 public_visibility = false
 replication_config = SubResource("SceneReplicationConfig_spawn")
+
+[node name="VRPoseSynchronizer" type="MultiplayerSynchronizer" parent="."]
+script = ExtResource("3_sync")
+public_visibility = false
+replication_interval = 0.05
+replication_config = SubResource("SceneReplicationConfig_vr")

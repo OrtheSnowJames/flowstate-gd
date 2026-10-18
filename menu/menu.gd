@@ -16,11 +16,14 @@ func _ready() -> void:
 
 # screens
 func _show_root() -> void:
-	_menu_screen.show_buttons([
+	var choices := [
 		{"label": "Play", "on_press": _show_play},
 		{"label": "Settings", "on_press": _show_settings},
 		{"label": "Exit VR" if VR.active else "Enter VR", "on_press": _toggle_vr},
-	], "FLOWSTATE")
+	]
+	if VR.active and not VR.immersive:
+		choices.insert(2, {"label": "Real VR", "on_press": VR.enter_immersive})
+	_menu_screen.show_buttons(choices, "FLOWSTATE")
 
 
 func _show_play() -> void:

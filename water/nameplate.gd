@@ -32,5 +32,5 @@ func _process(_delta: float) -> void:
 		_box.visible = false
 		return
 	_box.visible = true
-	var screen := _camera.unproject_position(world)
+	var screen := VR.project_ui_position(world, _camera)
 	_box.position = screen - Vector2(_box.size.x * 0.5, _box.size.y)

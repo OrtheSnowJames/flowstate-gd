@@ -3,7 +3,11 @@ extends Node
 signal mode_changed
 
 const DEVICE := 15
+const ESCAPE_HOLD_SECONDS := 0.6
 var active := false
+var immersive := false
+var entering := false
+var immersion: Node
 var quest_standalone := false
 var room_view: SubViewport
 var _interface: XRInterface
@@ -11,6 +15,17 @@ var _hands: Array[XRController3D] = []
 var _buttons: Dictionary = {}
 var _axes: Dictionary = {}
 var _actions: Dictionary = {}
+var _escape_hold := 0.0
+var _escape_engaged := false
+var _escape_fired := false
+var _origin: XROrigin3D
+var _head: Camera3D
+var _room: Node3D
+var _environment: WorldEnvironment
+var _light: OmniLight3D
+var _zoom: Tween
+var _saved_transparent := false
+var _saved_disable_3d := false
 
 
 func _ready() -> void:
@@ -46,6 +61,7 @@ func start(preview := false) -> bool:
 	room_view.use_xr = not preview
 	add_child(room_view)
 	var room: Node3D = load("res://water/vr_room.tscn").instantiate()
+	_room = room
 	room.scale = Vector3.ONE * 3.0
 	room_view.add_child(room)
 	var screen := MeshInstance3D.new()
@@ -60,6 +76,7 @@ func start(preview := false) -> bool:
 	screen.material_override = material
 	room.add_child(screen)
 	var environment := WorldEnvironment.new()
+	_environment = environment
 	environment.environment = Environment.new()
 	environment.environment.background_mode = Environment.BG_COLOR
 	environment.environment.background_color = Color(0.08, 0.09, 0.1)
@@ -68,13 +85,16 @@ func start(preview := false) -> bool:
 	environment.environment.ambient_light_energy = 0.8
 	room_view.add_child(environment)
 	var light := OmniLight3D.new()
+	_light = light
 	light.position = Vector3(0, 2.1, 0)
 	light.omni_range = 8
 	room_view.add_child(light)
 	var origin := XROrigin3D.new()
+	_origin = origin
 	origin.position = Vector3(0, 0, 1.8)
 	room_view.add_child(origin)
 	var camera: Camera3D = Camera3D.new() if preview else XRCamera3D.new()
+	_head = camera
 	origin.add_child(camera)
 	camera.current = true
 	if preview:
@@ -91,7 +111,72 @@ func start(preview := false) -> bool:
 	return true
 
 
+func enter_immersive() -> void:
+	if not active or immersive or entering:
+		return
+	entering = true
+	var target := Vector3(-0.087, 1.23, -0.78) - _head.position
+	_zoom = create_tween()
+	_zoom.tween_property(_origin, "position", target, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	await _zoom.finished
+	if not active:
+		return
+	room_view.remove_child(_room)
+	_room.queue_free()
+	_light.hide()
+	_environment.environment = null
+	# keep the old world alive until the viewport releases its render scenario
+	var previous_world := room_view.find_world_3d()
+	room_view.own_world_3d = false
+	room_view.world_3d = get_tree().root.world_3d
+	previous_world = null
+	_saved_disable_3d = get_tree().root.disable_3d
+	_saved_transparent = get_tree().root.transparent_bg
+	get_tree().root.disable_3d = true
+	get_tree().root.transparent_bg = true
+	immersion = preload("res://vr/immersive.gd").new()
+	add_child(immersion)
+	immersion.setup(_origin, _head)
+	immersive = true
+	entering = false
+	for action in ["water_attack", "water_power", "water_wall", "water_pelt", "water_counter", "swim_key"]:
+		_action(action, false)
+	mode_changed.emit()
+
+
+func body_pose(player) -> Array:
+	return immersion.body_pose(player) if immersive and is_instance_valid(immersion) else []
+
+
+func view_camera(fallback: Camera3D) -> Camera3D:
+	return _head if immersive else fallback
+
+
+func project_ui_position(world: Vector3, fallback: Camera3D) -> Vector2:
+	if not immersive:
+		return fallback.unproject_position(world)
+	var local := _head.to_local(world)
+	var point := Vector2(local.x, -local.y) * 2.0 / maxf(-local.z, 0.01)
+	return (point / immersion.panel.mesh.size + Vector2(0.5, 0.5)) * get_tree().root.get_visible_rect().size
+
+
 func stop() -> void:
+	if _zoom and _zoom.is_running():
+		_zoom.kill()
+	if immersive:
+		immersion.cancel_gestures()
+		immersion.restore_overlays()
+		immersion.panel.queue_free()
+		immersion.blur.queue_free()
+		immersion.fade.queue_free()
+		immersion.queue_free()
+		get_tree().root.disable_3d = _saved_disable_3d
+		get_tree().root.transparent_bg = _saved_transparent
+	immersive = false
+	entering = false
+	_escape_hold = 0.0
+	_escape_engaged = false
+	_escape_fired = false
 	for action in _actions.keys():
 		_action(action, false)
 	for button in _buttons.keys():
@@ -106,29 +191,54 @@ func stop() -> void:
 	mode_changed.emit()
 
 
-func _process(_delta: float) -> void:
+func _process(delta: float) -> void:
 	if not active or _hands.size() != 2:
 		return
+	var left_click := _hands[0].get_is_active() and _hands[0].is_button_pressed("primary_click")
+	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
+	var escape_chord := _update_escape_chord(left_click, right_click, delta)
 	var menus := not ControllerNavigation._controls().is_empty()
+	if immersive:
+		immersion.swim_click(left_click, right_click, escape_chord)
 	for i in range(2):
 		var hand := _hands[i]
 		var tracked := hand.get_is_active()
 		var stick := hand.get_vector2("primary") if tracked else Vector2.ZERO
 		_axis(i * 2, stick.x)
-		_axis(i * 2 + 1, -stick.y)
+		_axis(i * 2 + 1, 0.0 if immersive and i == 1 else -stick.y)
 		var ax := tracked and hand.is_button_pressed("ax_button")
 		var by := tracked and hand.is_button_pressed("by_button")
 		_button(JOY_BUTTON_A if i == 1 else JOY_BUTTON_X, ax if menus else false)
 		_button(JOY_BUTTON_B if i == 1 else JOY_BUTTON_Y, by if menus else false)
-		_action("jump" if i == 1 else "water_attack", ax and not menus)
-		_action("water_power" if i == 1 else "water_wall", by and not menus)
-		_action("revive" if i == 1 else "swim_key", tracked and hand.is_button_pressed("primary_click") and not menus)
+		_action("jump" if i == 1 else "water_attack", ax and not menus and (not immersive or i == 1))
+		_action("water_power" if i == 1 else "water_wall", by and not menus and not immersive)
+		var click := tracked and hand.is_button_pressed("primary_click") and not menus and not escape_chord
+		if immersive and i == 0:
+			click = immersion.swim_enabled and immersion.can_gesture() and not escape_chord
+		_action("revive" if i == 1 else "swim_key", click)
 		_action("vr_dodge_right" if i == 1 else "vr_dodge_left", tracked and hand.get_float("grip") > 0.65 and not menus)
 		var trigger := tracked and hand.get_float("trigger") > 0.65 and not menus
 		var arcade := Net.game_mode == Net.GameMode.ARCADE
 		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade)
-		_action("water_pelt" if i == 1 else "water_counter", trigger and not arcade)
-	_action("ui_cancel", _hands[0].get_is_active() and _hands[0].is_button_pressed("menu_button"))
+		_action("water_pelt" if i == 1 else "water_counter", trigger and not arcade and not immersive)
+
+
+func _update_escape_chord(left: bool, right: bool, delta: float) -> bool:
+	if not left and not right:
+		_escape_hold = 0.0
+		_escape_engaged = false
+		_escape_fired = false
+		return false
+	if left and right:
+		_escape_engaged = true
+		_escape_hold += delta
+		if _escape_hold >= ESCAPE_HOLD_SECONDS and not _escape_fired:
+			_escape_fired = true
+			_action("ui_cancel", true)
+			_action("ui_cancel", false)
+	else:
+		_escape_hold = 0.0
+	return _escape_engaged
 
 
 func _action(action: String, pressed: bool) -> void:

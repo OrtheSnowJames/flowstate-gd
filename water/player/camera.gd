@@ -31,6 +31,9 @@ static func shake_camera(player, strength: float, duration: float) -> void:
 
 
 static func _camera_pivot_change(player, delta: float) -> void:
+	if VR.immersive:
+		player._gui_change()
+		return
 	if not is_instance_valid(player._cam_pivot) or not player._cam_pivot.is_inside_tree():
 		return
 
@@ -148,7 +151,7 @@ static func _update_revive_prompt(player) -> void:
 		return
 	var prompt = player._ensure_revive_prompt()
 	if prompt:
-		prompt.show_for(target, player._camera, player.using_controller)
+		prompt.show_for(target, VR.view_camera(player._camera), player.using_controller)
 
 
 static func _teammates_in_arena(player) -> Array:
@@ -185,4 +188,4 @@ static func _update_nameplates(player) -> void:
 			var plate = player._NAMEPLATE.instantiate()
 			player.gui.add_child(plate)
 			player._nameplates[pid] = plate
-		player._nameplates[pid].setup(wanted[pid], player._camera, Net.name_of(pid))
+		player._nameplates[pid].setup(wanted[pid], VR.view_camera(player._camera), Net.name_of(pid))

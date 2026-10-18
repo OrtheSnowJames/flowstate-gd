@@ -7,6 +7,14 @@ var _pad_direction := 0
 var _accept_held := false
 
 
+func _ready() -> void:
+	var start := InputEventJoypadButton.new()
+	start.button_index = JOY_BUTTON_START
+	start.device = -1
+	if not InputMap.action_has_event("ui_cancel", start):
+		InputMap.action_add_event("ui_cancel", start)
+
+
 func _input(event: InputEvent) -> void:
 	if event is InputEventJoypadButton and event.button_index == JOY_BUTTON_A:
 		if not event.pressed:
