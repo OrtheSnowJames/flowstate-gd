@@ -60,6 +60,23 @@ If the lifeguard dies, you can only see an overhead view of the pool. All hope i
 
 If a game just started, you can still spectate! When you join, press the spectate button.
 
+## Matchmaking
+
+### Quick Play/Join Code
+
+To hop in a match and play fast, press the quick play button, connecting you to an open room or making a new one. Make sure you have internet at all times! (You will need to communicate to the matchmaker)
+If you want to join a friend without their IP, you can join with a code if they used quick play.
+
+### Custom Servers
+
+If you don't want to connect to matchmaking and have randoms join your room, you can make your own server.
+You just share the IP and port with your friends and they can connect.
+
+### Solo Play
+
+If you just want to play alone, there's always solo play. It doesn't require internet.
+
 ## TODO:
-- Add matchmaking/lobbies
-- King of the Hill/Cube
+Done: Add matchmaking/lobbies
+
+Done: King of the Hill/Cube
