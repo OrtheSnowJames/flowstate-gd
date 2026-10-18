@@ -15,6 +15,7 @@ var _closing := false
 
 
 func _ready() -> void:
+	add_to_group("controller_modal")
 	visible = false
 
 

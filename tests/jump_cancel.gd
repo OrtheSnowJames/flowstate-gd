@@ -143,6 +143,7 @@ func _reset() -> void:
 	player.position = Vector3(2, 7, 0)
 	player.rotation = Vector3.ZERO
 	player.linear_velocity = Vector3.ZERO
+	player.Movement._refresh_jump(player)
 	player.momentum = player.max_momentum
 	player.stamina = player.max_stamina
 	player._jump_cooldown_timer = 0.0

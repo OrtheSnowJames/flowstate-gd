@@ -17,6 +17,19 @@ static func _integrate_forces(player, state: PhysicsDirectBodyState3D) -> void:
 
 
 static func detect_dodge(player, now: float, event: InputEvent) -> void:
+	if event is InputEventJoypadButton and event.button_index in [JOY_BUTTON_DPAD_LEFT, JOY_BUTTON_DPAD_RIGHT]:
+		if not event.pressed:
+			return
+		var key := Vector2i(event.device, event.button_index)
+		var previous: float = player.controller_dodge_taps.get(key, -1000.0)
+		player.controller_dodge_taps[key] = now
+		if now - previous <= player.DODGE_DOUBLE_TAP_TIME:
+			player.controller_dodge_taps.erase(key)
+			if event.button_index == JOY_BUTTON_DPAD_LEFT:
+				player._dodge_left()
+			else:
+				player._dodge_right()
+		return
 	if event.is_action_pressed("forward") \
 		or event.is_action_pressed("back") \
 		or event.is_action_pressed("swim_key"):
@@ -69,16 +82,30 @@ static func _dodge(player, local_dir: Vector3) -> void:
 		right = -right
 	player.apply_central_impulse(right * player.dodge_impulse)
 
-static func _jump_arcade(player, on_ground: bool) -> void:
-	if player._jump_cooldown_timer > 0.0:
+static func _jump_support(player) -> bool:
+	var excluded: Array[RID] = []
+	for body in player.get_tree().get_nodes_in_group("player"):
+		if body is CollisionObject3D:
+			excluded.append(body.get_rid())
+	var query := PhysicsRayQueryParameters3D.create(player.global_position,
+		player.global_position + Vector3.DOWN * (player.body_half_height + 0.2), 1, excluded)
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	return not hit.is_empty() and hit.normal.y > 0.5
+
+
+static func _refresh_jump(player) -> void:
+	if player.linear_velocity.y <= 0.5 and (player._submersion() > 0.1 or _jump_support(player)):
+		player._jump_spent = false
+
+
+static func _can_launch(player) -> bool:
+	return not player._jump_spent and (player._submersion() > 0.0 or _jump_support(player))
+
+
+static func _jump_arcade(player, _on_ground: bool) -> void:
+	if player._jump_cooldown_timer > 0.0 or not _can_launch(player):
 		return
-	if not on_ground and player._submersion() <= 0.0:
-		return
-	if player._submersion() <= 0.0:
-		var query = PhysicsRayQueryParameters3D.create(player.global_position,
-			player.global_position + Vector3.DOWN * (player.body_half_height + 0.2), 1, [player.get_rid()])
-		if player.get_world_3d().direct_space_state.intersect_ray(query).is_empty():
-			return
+	player._jump_spent = true
 	player._jump_cooldown_timer = player.jump_cooldown
 	player.linear_velocity.y = player.jump_speed * player.arcade_jump_mult
 	player._jump_cancel_available = false
@@ -86,11 +113,12 @@ static func _jump_arcade(player, on_ground: bool) -> void:
 	player._play_water_action_anim("jump_high")
 
 static func _jump(player, on_ground: bool) -> void:
-	if player._jump_cooldown_timer > 0.0:
+	if player._jump_cooldown_timer > 0.0 or not _can_launch(player):
 		return
 	var cube_boost = player._can_cube_jump()
 	if not cube_boost and (not on_ground or player.momentum <= 0.0):
 		return
+	player._jump_spent = true
 	player._jump_cooldown_timer = player.jump_cooldown
 	# diminishing returns on momentum the exponent 1 flattens the curve so arriving at full
 	var t = clampf(player.momentum / player.max_momentum, 0.0, 1.0)
@@ -146,6 +174,12 @@ static func _can_cube_jump(player) -> bool:
 
 
 static func _turn_from_input(player, delta: float) -> void:
+	if player.using_controller:
+		var stick: Vector2 = player.Controller.move_input()
+		if stick.length() > 0.0:
+			var direction = Basis(Vector3.UP, player.controller_angles.x) * Vector3(stick.x, 0, stick.y)
+			player.rotation.y = lerp_angle(player.rotation.y, atan2(-direction.x, -direction.z), 1.0 - exp(-12.0 * delta))
+		return
 	var turn = Input.get_axis("left", "right")
 	if turn == 0.0:
 		player._turn_hold_time = 0.0
@@ -227,8 +261,8 @@ static func _water_height(player) -> float:
 static func _walk(player, delta: float) -> void:
 	player.can_move = true
 	# forward back only left right now turn instead of strafing see _turn_from_input same as
-	var input_dir = Vector2(0.0, Input.get_axis("forward", "back"))
-	var direction = (player.transform.basis * Vector3(input_dir.x, 0, input_dir.y)).normalized()
+	var input_dir: Vector2 = player.Controller.movement_input(player)
+	var direction = player.transform.basis * Vector3(input_dir.x, 0, input_dir.y)
 	# walk while moving idle when standing still
 	player.movement_state = MovementState.WALK if direction else MovementState.IDLE
 
@@ -255,7 +289,7 @@ static func _swim(player, delta: float) -> void:
 	var t = player.momentum / player.max_momentum
 
 	# intentional swim thrust direction horizontal only forward back only left right turn instead of
-	var input_dir = Vector2(0.0, Input.get_axis("forward", "back"))
+	var input_dir: Vector2 = player.Controller.movement_input(player)
 	if Input.is_action_pressed("back"):
 		player._last_backstroke_time = player._time_since_start()
 	# switch a backstroke s straight into a forward stroke w without releasing the swim
@@ -305,6 +339,7 @@ static func _glide(player, delta: float) -> void:
 	# press a movement key to cancel the glide or stop dead if we hit
 	if (Input.is_action_just_pressed("forward")
 			or Input.is_action_just_pressed("back")
+			or (player.using_controller and player.Controller.move_input().length() > 0.0)
 			or player._wall_ahead(glide_dir)):
 		player._stop_gliding()
 		return
@@ -380,6 +415,7 @@ static func _apply_central_force(player, force: Vector3) -> void:
 
 
 static func update(player, delta: float, submersion: float, shallow: bool) -> void:
+	_refresh_jump(player)
 	if submersion <= 0.0 or player.linear_velocity.y <= 0.0:
 		player._jump_cancel_available = false
 

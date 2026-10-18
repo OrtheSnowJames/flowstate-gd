@@ -11,6 +11,8 @@ const NORMAL_MULT = 1.0
 var _tween: Tween
 
 func _ready() -> void:
+	my_button.focus_entered.connect(_on_button_hovered)
+	my_button.focus_exited.connect(_on_button_unhovered)
 	# 1 triggered when the mouse enters the button area hover start
 	my_button.mouse_entered.connect(_on_button_hovered)
 
@@ -32,7 +34,7 @@ func _on_button_hovered() -> void:
 	_animate_to(HOVERED_MULT)
 
 func _on_button_unhovered() -> void:
-	_animate_to(NORMAL_MULT)
+	_animate_to(HOVERED_MULT if my_button.has_focus() else NORMAL_MULT)
 
 func _on_button_down() -> void:
 	_animate_to(CLICKED_MULT)
@@ -45,6 +47,7 @@ func _on_button_pressed() -> void:
 
 # scale is a vector2 its a control property so the target needs to be
 func _animate_to(mult: float) -> void:
+	my_button.modulate = Color(1.0, 0.85, 0.45) if my_button.has_focus() else Color.WHITE
 	if _tween:
 		_tween.kill()
 	_tween = create_tween()

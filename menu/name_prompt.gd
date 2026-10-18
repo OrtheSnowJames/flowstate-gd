@@ -9,6 +9,10 @@ var _on_submit: Callable
 var _on_cancel: Callable
 
 
+func _ready() -> void:
+	add_to_group("controller_modal")
+
+
 # shows the prompt pre filled with initial_text titled title calls on_submit new_text with non
 func open(initial_text: String, title: String, on_submit: Callable,
 		on_cancel: Callable = Callable()) -> void:

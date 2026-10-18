@@ -77,7 +77,7 @@ func pick_target(player) -> int:
 	if not active() or not is_instance_valid(player._camera):
 		return 0
 	var camera: Camera3D = player._camera
-	var mouse: Vector2 = player.get_viewport().get_mouse_position()
+	var mouse: Vector2 = player.Controller.aim_position(player)
 	var best := 160.0
 	var target := 0
 	var id := str(player.name).to_int()
@@ -433,6 +433,7 @@ func _receive(version: int, snapshot: Dictionary, releases: Dictionary) -> void:
 			continue
 		var state: Dictionary = snapshot[id]
 		if not _puppets.has(id):
+			player._jump_spent = true
 			_puppets[id] = {"body": player, "freeze": player.freeze, "phase": -1}
 			player.freeze = true
 			player.net_water_wall_stop()

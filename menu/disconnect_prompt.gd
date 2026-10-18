@@ -11,6 +11,7 @@ var _escape_confirms := false
 
 
 func _ready() -> void:
+	add_to_group("controller_modal")
 	visible = false
 	set_process_unhandled_input(false)
 

@@ -23,6 +23,7 @@ var _gen := 0
 
 
 func _ready() -> void:
+	add_to_group("controller_menu")
 	add_child(_heading)
 	_heading.hide()
 	resized.connect(_layout_buttons)
@@ -48,11 +49,21 @@ func _clear_current() -> void:
 	var tw := create_tween()
 	tw.set_parallel(true)
 	for btn in old:
+		_disable_focus(btn)
 		tw.tween_property(btn, "position:y", btn.position.y + _SLIDE_DISTANCE, _OUT_DURATION)
 		tw.tween_property(btn, "modulate:a", 0.0, _OUT_DURATION)
 	await tw.finished
 	for btn in old:
 		btn.queue_free()
+
+
+func _disable_focus(node: Node) -> void:
+	if node is Control:
+		node.focus_mode = Control.FOCUS_NONE
+	if node is BaseButton:
+		node.disabled = true
+	for child in node.get_children():
+		_disable_focus(child)
 
 
 func _spawn(specs: Array, my_gen: int) -> void:

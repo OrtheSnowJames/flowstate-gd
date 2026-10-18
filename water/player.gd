@@ -1,6 +1,12 @@
 # scene properties and rpc entry points stay on the player
 extends RigidBody3D
 
+const Controller = preload("res://water/player/controller.gd")
+var using_controller := false
+var controller_angles := Vector2.ZERO
+var controller_dodge_taps: Dictionary = {}
+var _jump_spent := false
+
 const Types = preload("res://water/player/types.gd")
 const Appearance = preload("res://water/player/appearance.gd")
 const Camera = preload("res://water/player/camera.gd")
@@ -602,6 +608,7 @@ func _input(event: InputEvent) -> void:
 	# keystrokes in this window drive this windows player and nobody elses without this one
 	if not _is_local():
 		return
+	Controller.track(self, event)
 	if Net.input_blocked_by_menu():
 		return
 	if Net.is_spectating():

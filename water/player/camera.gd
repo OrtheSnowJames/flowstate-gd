@@ -41,6 +41,12 @@ static func _camera_pivot_change(player, delta: float) -> void:
 	var target_yaw = view_transform.basis.get_euler().y
 	var target_pitch = deg_to_rad(player.default_camera_pitch_deg)
 	var target_angles = Vector2(target_yaw, target_pitch)
+	if player.using_controller:
+		if not Net.input_blocked_by_menu() and not Net.is_spectating():
+			var look := Input.get_vector("pad_look_left", "pad_look_right", "pad_look_up", "pad_look_down")
+			player.controller_angles.x -= look.x * 2.5 * delta
+			player.controller_angles.y = clampf(player.controller_angles.y - look.y * 1.8 * delta, deg_to_rad(-75), deg_to_rad(25))
+		target_angles = player.controller_angles
 	if Input.is_action_pressed("look_scoreboard"):
 		target_angles = player._camera_look_angles(player._scoreboard_look_node(), target_angles)
 	var current_yaw = player._cam_pivot.global_transform.basis.get_euler().y
@@ -95,7 +101,7 @@ static func _update_camera_pitch(player) -> void:
 
 
 static func _mouse_aim_direction_3d(player, origin: Vector3) -> Vector3:
-	var mouse = player.get_viewport().get_mouse_position()
+	var mouse: Vector2 = player.Controller.aim_position(player)
 	var ray_origin = player._camera.project_ray_origin(mouse)
 	var ray_direction = player._camera.project_ray_normal(mouse)
 	var end = ray_origin + ray_direction * 100.0
@@ -107,7 +113,7 @@ static func _mouse_aim_direction_3d(player, origin: Vector3) -> Vector3:
 
 
 static func _mouse_aim_direction(player) -> Vector3:
-	var mouse_pos = player.get_viewport().get_mouse_position()
+	var mouse_pos: Vector2 = player.Controller.aim_position(player)
 	var ray_origin = player._camera.project_ray_origin(mouse_pos)
 	var ray_dir = player._camera.project_ray_normal(mouse_pos)
 	var plane_y = player._water_height()
@@ -142,7 +148,7 @@ static func _update_revive_prompt(player) -> void:
 		return
 	var prompt = player._ensure_revive_prompt()
 	if prompt:
-		prompt.show_for(target, player._camera)
+		prompt.show_for(target, player._camera, player.using_controller)
 
 
 static func _teammates_in_arena(player) -> Array:

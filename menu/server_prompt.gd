@@ -20,6 +20,7 @@ var _mode_choice := false
 
 
 func _ready() -> void:
+	add_to_group("controller_modal")
 	resized.connect(_resize_panel)
 	_resize_panel()
 	_address.text_submitted.connect(func(_text: String) -> void: _submit())
