@@ -1,6 +1,7 @@
 extends Node
 
 const Gestures := preload("res://vr/gestures.gd")
+const Arms := preload("res://water/player/vr_arms.gd")
 var gestures := Gestures.new()
 var origin: XROrigin3D
 var head: Camera3D
@@ -113,7 +114,7 @@ func _process(delta: float) -> void:
 		if not menus and not player._unconscious and not player.movement_locked:
 			_yaw -= Input.get_axis("pad_look_left", "pad_look_right") * 2.2 * delta
 		origin.rotation = Vector3(0, _yaw, 0)
-		origin.position = player.get_global_transform_interpolated().origin + Vector3.UP * 0.55 - origin.basis * _center
+		origin.position = player.get_global_transform_interpolated().origin + Vector3.UP * Arms.EYE_HEIGHT - origin.basis * _center
 		player.using_controller = true
 		player.controller_angles = Vector2(head.global_rotation.y, 0)
 	else:
@@ -142,6 +143,12 @@ func swim_click(left: bool, right: bool, chord: bool) -> void:
 		_click_chord = false
 
 
+func hand_transform(hand: XRController3D) -> Transform3D:
+	var pose := hand.global_transform
+	pose.origin.y -= Arms.ARM_DROP
+	return pose
+
+
 func body_pose(body) -> Array:
 	if body != player or Net.is_spectating():
 		return []
@@ -149,11 +156,11 @@ func body_pose(body) -> Array:
 	var result: Array = [inverse * head.global_transform, Transform3D.IDENTITY, Transform3D.IDENTITY, 0]
 	for i in range(VR._hands.size()):
 		if VR._hands[i].get_is_active():
-			result[i + 1] = inverse * VR._hands[i].global_transform
+			result[i + 1] = inverse * hand_transform(VR._hands[i])
 			result[3] |= 1 << i
 		else:
 			result[i + 1] = result[0]
-	return result if preload("res://water/player/vr_arms.gd").valid_pose(result) else []
+	return result if Arms.valid_pose(result) else []
 
 
 func combat(body, delta: float) -> void:
@@ -168,10 +175,11 @@ func combat(body, delta: float) -> void:
 	var events: Array[Dictionary] = []
 	for i in range(VR._hands.size()):
 		var hand: XRController3D = VR._hands[i]
-		var wet: bool = absf(hand.global_position.y - body._water_height()) <= 0.45 and body._submersion() > 0.0
+		var at := hand_transform(hand).origin
+		var wet: bool = absf(at.y - body._water_height()) <= 0.45 and body._submersion() > 0.0
 		var event := gestures.sample(i, hand.position, wet, hand.get_is_active(), movement, delta, heading)
 		if not event.is_empty():
-			event["at"] = hand.global_position
+			event["at"] = at
 			events.append(event)
 	# walls take priority when both hands finish a gesture together
 	for kind in ["wall", "stroke", "wave"]:

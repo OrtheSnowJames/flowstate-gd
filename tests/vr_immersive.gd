@@ -53,10 +53,30 @@ func _run() -> void:
 	await get_tree().create_timer(0.3).timeout
 	_expect(not VR.immersion.blur.visible, "gameplay is sharp")
 	_expect(not Transition._fade_rect.visible and not Transition._blur_rect.visible, "fullscreen overlays stay off the ui panel")
-	_expect(VR._head.global_position.distance_to(player.global_position + Vector3.UP * 0.55) < 0.05, "camera at first person height")
+	_expect(VR._head.global_position.distance_to(player.global_position + Vector3.UP * Arms.EYE_HEIGHT) < 0.05, "camera at raised face height")
 	_expect(not player.get_node("blockbench_export").visible, "own body hidden")
 	_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible, "tracked arms visible")
 	_expect(player.replicated_vr_pose.size() == 4 and player.replicated_vr_pose[3] == 3, "both tracked hands published")
+	var wrist: Transform3D = player.replicated_vr_pose[1]
+	_expect(is_equal_approx(wrist.origin.y, Arms.EYE_HEIGHT - Arms.ARM_DROP - 0.45), "hands lowered below face")
+	_expect((player.global_transform * wrist).origin.is_equal_approx(VR.immersion.hand_transform(VR._hands[0]).origin), "rendered and gesture hands agree")
+	var head_position: Vector3 = VR._head.position
+	VR._head.position.x += 4.0
+	for i in range(10):
+		await get_tree().process_frame
+		_expect(not player.get_node("blockbench_export").visible, "invalid tracking never reveals own body")
+	_expect(player.replicated_vr_pose.is_empty(), "invalid pose reproduces old visibility fallback")
+	VR._head.position = head_position
+	await get_tree().process_frame
+	await get_tree().process_frame
+	var lifeguard: bool = player.is_lifeguard
+	player.is_lifeguard = not lifeguard
+	_expect(not player.get_node("blockbench_export").visible, "replacement body is hidden immediately")
+	await get_tree().process_frame
+	await get_tree().process_frame
+	player.is_lifeguard = lifeguard
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var pose: Array = player.replicated_vr_pose.duplicate()
 	_expect(Arms.valid_pose(pose), "pose validates")
 	pose[1].origin.x = 100.0
@@ -118,6 +138,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_expect(player.replicated_vr_pose[3] == 0, "lost tracking clears hand mask")
+	_expect(not player.get_node("blockbench_export").visible, "tracking loss keeps own body hidden")
 	Net.enter_spectator_after_faint()
 	await get_tree().create_timer(0.1).timeout
 	_expect(player.replicated_vr_pose.is_empty(), "spectators stop publishing their arms")

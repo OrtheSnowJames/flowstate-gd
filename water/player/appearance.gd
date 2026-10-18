@@ -44,6 +44,8 @@ static func _apply_mesh_for_lifeguard(player) -> void:
 	player._fix_animation_loop_modes()
 	# likewise unconditional a swapped in rig arrives with the untouched imported material on every
 	player._apply_team_colors()
+	if VR.immersive and player._owner_peer > 0 and player._is_local():
+		player.get_node("blockbench_export").hide()
 
 
 static func _apply_team_colors(player) -> void:

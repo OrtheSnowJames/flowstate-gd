@@ -1,5 +1,8 @@
 extends Node3D
 
+const EYE_HEIGHT := 1.05
+const ARM_DROP := EYE_HEIGHT * 0.5
+
 var pose: Array = []
 var _display: Array = []
 var _segments: Array[MeshInstance3D] = []
@@ -52,6 +55,7 @@ func _ready() -> void:
 		add_child(hand)
 		_hands.append(hand)
 	hide()
+	_process(0.0)
 
 
 func _process(delta: float) -> void:
@@ -71,7 +75,7 @@ func _process(delta: float) -> void:
 	var enabled := not pose.is_empty()
 	visible = enabled
 	if _rig:
-		if enabled and local:
+		if local and VR.immersive:
 			_rig.hide()
 			_hidden = true
 		elif _hidden:
@@ -99,7 +103,7 @@ func _process(delta: float) -> void:
 			continue
 		var side := -1.0 if i == 0 else 1.0
 		var wrist: Transform3D = _display[i + 1]
-		var shoulder := head.origin + yaw * Vector3(side * 0.22, -0.28, 0.04)
+		var shoulder := head.origin + yaw * Vector3(side * 0.22, -ARM_DROP, 0.04)
 		var elbow := shoulder.lerp(wrist.origin, 0.5) + yaw * Vector3(side * 0.12, -0.18, 0.06)
 		_segment(_segments[i * 2], shoulder, elbow)
 		_segment(_segments[i * 2 + 1], elbow, wrist.origin)
