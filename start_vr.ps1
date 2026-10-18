@@ -4,11 +4,20 @@ param(
 
 $ErrorActionPreference = "Stop"
 $project = $PSScriptRoot
-$command = Get-Command $Godot -ErrorAction SilentlyContinue
+$command = Get-Command $Godot -ErrorAction SilentlyContinue | Select-Object -First 1
+if ($command -is [System.Management.Automation.AliasInfo]) {
+    $command = $command.ResolvedCommand
+}
 if (-not $command) {
     throw 'Godot was not found. Run .\start_vr.ps1 -Godot "C:\path\to\Godot_v4.6.3-stable_win64_console.exe"'
 }
-$binary = $command.Source
+if ($command -isnot [System.Management.Automation.ApplicationInfo]) {
+    throw 'Godot must resolve to an executable. Pass its full path with -Godot "C:\path\to\Godot.exe"'
+}
+$binary = $command.Path
+if ([string]::IsNullOrWhiteSpace($binary) -or -not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    throw "Godot executable does not exist: $binary"
+}
 $version = (& $binary --version | Out-String).Trim()
 if ($version -notmatch '^4\.(\d+)\.' -or [int]$Matches[1] -lt 6) {
     throw "Flowstate needs Godot 4.6 or newer in the 4.x series. Found: $version"
