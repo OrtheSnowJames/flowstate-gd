@@ -72,10 +72,9 @@ func _rebuild_arms() -> void:
 			var box: AABB = (source.global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
 			bounds = box if first else bounds.merge(box)
 			first = false
-		# anchor the end of the original arm at the controller grip
-		var tip := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
-		var basis := Basis(Vector3.RIGHT, PI / 2.0).scaled(_rig.scale)
-		arm.transform = Transform3D(basis, -(basis * tip))
+		# center the model on the grip with the arm facing forward
+		var basis := Basis(Vector3.RIGHT, -PI / 2.0).scaled(_rig.scale)
+		arm.transform = Transform3D(basis, -(basis * bounds.get_center()))
 
 
 func _before_draw() -> void:

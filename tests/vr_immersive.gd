@@ -194,6 +194,7 @@ func _run() -> void:
 	_expect(immersion.stroke_boost == 0.0, "attack posture cannot produce swim strokes")
 	await _test_continuous(player)
 	await _test_stroke_recovery(player)
+	await _test_stroke_recovery(player, true)
 	await _test_tracked_attacks(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
@@ -242,6 +243,14 @@ func _check_model_arms(player) -> void:
 		var originals: Array = player._mesh_instances_in(source)
 		var copies: Array = player._mesh_instances_in(arm)
 		_expect(not copies.is_empty() and copies.size() == originals.size(), "vr uses every mesh from the current player arm")
+		var bounds := AABB()
+		var first := true
+		for mesh in copies:
+			var box: AABB = (arm.global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
+			bounds = box if first else bounds.merge(box)
+			first = false
+		_expect((arm.global_transform * bounds.get_center()).distance_to(VR._hands[i].global_position) < 0.001, "controller sits at the middle of the model arm")
+		_expect(arm.basis.y.normalized().dot(Vector3.FORWARD) > 0.999, "model arm orientation is reversed from the old backwards mount")
 		for mesh in originals:
 			var copy: MeshInstance3D = arm.get_node(source.get_path_to(mesh))
 			_expect(copy.mesh == mesh.mesh, "vr uses the actual normal or lifeguard arm geometry")
@@ -287,6 +296,9 @@ func _test_gestures() -> void:
 	_expect(short.get("kind") == "wave" and long.get("kind") == "wave", "forward sweeps launch waves")
 	_expect(Gestures.wave_strength(long.get("distance", 0.0)) > Gestures.wave_strength(short.get("distance", 0.0)), "longer sweep travels farther")
 	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0).get("kind") == "wall", "side sweep raises wall")
+	_expect(_sweep(Vector3.LEFT * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "outward sweep swims with inward facing controllers")
+	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "inward sweep swims with inward facing controllers")
+	_expect(_sweep(Vector3.RIGHT * 0.03, 0.0, true, Gestures.HandMode.SWIM).is_empty(), "sideways tracking jitter does not swim")
 	_expect(_sweep(Vector3.BACK * 0.4, -1.0).get("kind") == "stroke", "forward swimming pull")
 	_expect(_sweep(Vector3.BACK * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "arm strokes work without holding the stick")
 	_expect(_sweep(Vector3.FORWARD * 0.4, 1.0).get("kind") == "stroke", "backstroke swimming push")
@@ -366,7 +378,7 @@ func _test_continuous(player) -> void:
 	_expect(player.vr_arms._hands[0].global_position.distance_to(VR._hands[0].global_position) < 0.01, "recovered controller resumes exact hand tracking")
 
 
-func _test_stroke_recovery(player) -> void:
+func _test_stroke_recovery(player, lateral := false) -> void:
 	var immersion = VR.immersion
 	var start: Vector3 = player.position
 	player.position = Vector3(20, 7.5, 0)
@@ -387,6 +399,9 @@ func _test_stroke_recovery(player) -> void:
 		var phase := fmod(elapsed, 2.0)
 		var reach := minf(phase / 0.5, 1.0) if phase < 1.5 else 1.0 - (phase - 1.5) / 0.5
 		var positions := [Vector3(-0.3, 1.15, -0.75 + 0.4 * reach), Vector3(0.3, 1.15, -0.5)]
+		if lateral:
+			var width := 0.2 + 0.4 * (phase if phase < 1.0 else 2.0 - phase)
+			positions = [Vector3(-width, 1.15, -0.5), Vector3(width, 1.15, -0.5)]
 		for i in range(2):
 			var aim: Vector3 = (positions[1 - i] - positions[i]).normalized()
 			trackers[i].set_pose("grip", Transform3D(Basis(Quaternion(Vector3.UP, aim)), positions[i]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
@@ -395,7 +410,10 @@ func _test_stroke_recovery(player) -> void:
 			least_momentum = minf(least_momentum, player.momentum)
 			least_speed = minf(least_speed, Vector2(player.linear_velocity.x, player.linear_velocity.z).length())
 			boost_expired = boost_expired or immersion.stroke_boost <= 0.0
-	_expect(boost_expired, "stroke recovery test includes gaps with no active boost")
+	if not lateral:
+		_expect(boost_expired, "stroke recovery test includes gaps with no active boost")
+	else:
+		_expect(not player._water_wall_up and player._water_power_cooldown_timer <= 0.0, "outward and inward swimming never casts water moves")
 	_expect(least_momentum > 0.2 and least_speed > 0.2, "arms only swimming keeps moving between slow strokes")
 	_expect(player.position.distance_to(Vector3(20, 7.5, 0)) > 2.0, "arms only swimming covers distance without the stick")
 	player.freeze = true

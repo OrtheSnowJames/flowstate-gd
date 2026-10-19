@@ -54,8 +54,8 @@ func sample(hand: int, position: Vector3, touching_water: bool, tracked: bool, m
 		return _finish(hand)
 	var kind := ""
 	if step.length() / delta >= MIN_SPEED:
-		if mode == HandMode.ATTACK and absf(step.x) > absf(step.z) * 1.4 and absf(step.x) > absf(step.y):
-			kind = "wall"
+		if absf(step.x) > absf(step.z) * 1.4 and absf(step.x) > absf(step.y):
+			kind = "stroke" if mode == HandMode.SWIM else "wall"
 		elif absf(step.z) > absf(step.x) and absf(step.z) > absf(step.y) * 0.7:
 			if mode == HandMode.SWIM and ((movement <= 0.2 and step.z > 0.0) or (movement > 0.2 and step.z < 0.0)):
 				kind = "stroke"
