@@ -158,7 +158,7 @@ func update_hand_mode(delta := 0.0) -> void:
 		return
 	var next := Gestures.HandMode.NEUTRAL
 	if VR._hands.size() == 2 and VR._hands[0].get_is_active() and VR._hands[1].get_is_active():
-		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode)
+		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode, _point_direction(VR._hands[0]), _point_direction(VR._hands[1]))
 	# stop adding swim momentum as soon as the controllers no longer face each other
 	if hand_mode == Gestures.HandMode.SWIM and next != Gestures.HandMode.SWIM:
 		cancel_gestures()
@@ -170,8 +170,7 @@ func update_hand_mode(delta := 0.0) -> void:
 		_pending_mode = next
 		_mode_time = 0.0
 	_mode_time += delta
-	var settle_time := 0.2 if next == Gestures.HandMode.SWIM else 0.12
-	if next != hand_mode and _mode_time >= settle_time:
+	if next != hand_mode and _mode_time >= 0.1:
 		cancel_gestures()
 		hand_mode = next
 		swim_enabled = next == Gestures.HandMode.SWIM
@@ -179,6 +178,16 @@ func update_hand_mode(delta := 0.0) -> void:
 
 func hand_transform(hand: XRController3D) -> Transform3D:
 	return hand.global_transform
+
+
+func _point_direction(hand: XRController3D) -> Vector3:
+	var tracker := XRServer.get_tracker(hand.tracker) as XRPositionalTracker
+	if tracker and tracker.has_pose("aim"):
+		var aim := tracker.get_pose("aim")
+		if aim.has_tracking_data:
+			# aim gives the pointing direction when grip axes differ across controllers
+			return -(origin.global_basis * aim.get_adjusted_transform().basis.z)
+	return Vector3.ZERO
 
 
 func body_pose(body, network := true) -> Array:
