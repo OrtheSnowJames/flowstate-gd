@@ -2,6 +2,7 @@ extends Node
 
 const Gestures := preload("res://vr/gestures.gd")
 const Arms := preload("res://water/player/vr_arms.gd")
+const SWIM_MOMENTUM_GAIN := 2.0
 var gestures := Gestures.new()
 var origin: XROrigin3D
 var head: Camera3D
@@ -155,8 +156,10 @@ func update_hand_mode(delta := 0.0) -> void:
 		return
 	var next := Gestures.HandMode.NEUTRAL
 	if VR._hands.size() == 2 and VR._hands[0].get_is_active() and VR._hands[1].get_is_active():
-		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode, Basis(Vector3.UP, head.global_rotation.y))
-	# ambiguous wrists and brief occlusion do not cancel an ongoing stroke
+		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode)
+	# stop adding swim momentum as soon as the controllers no longer face each other
+	if hand_mode == Gestures.HandMode.SWIM and next != Gestures.HandMode.SWIM:
+		cancel_gestures()
 	if next == Gestures.HandMode.NEUTRAL:
 		_pending_mode = next
 		_mode_time = 0.0
@@ -165,7 +168,8 @@ func update_hand_mode(delta := 0.0) -> void:
 		_pending_mode = next
 		_mode_time = 0.0
 	_mode_time += delta
-	if next != hand_mode and _mode_time >= 0.12:
+	var settle_time := 0.2 if next == Gestures.HandMode.SWIM else 0.12
+	if next != hand_mode and _mode_time >= settle_time:
 		cancel_gestures()
 		hand_mode = next
 		swim_enabled = next == Gestures.HandMode.SWIM
@@ -201,6 +205,7 @@ func combat(body, delta: float) -> void:
 	if body != player or not can_gesture():
 		cancel_gestures()
 		return
+	update_hand_mode()
 	stroke_boost = maxf(0.0, stroke_boost - delta)
 	if hand_mode == Gestures.HandMode.NEUTRAL:
 		return
@@ -282,6 +287,7 @@ func restore_overlays() -> void:
 
 
 func swim(body, delta: float) -> void:
+	update_hand_mode()
 	var input := Input.get_vector("pad_move_left", "pad_move_right", "pad_move_up", "pad_move_down")
 	body.can_move = true
 	if input.is_zero_approx() and stroke_boost > 0.0 and swim_enabled:
@@ -290,7 +296,7 @@ func swim(body, delta: float) -> void:
 	if moving:
 		body.dir = Basis(Vector3.UP, head.global_rotation.y) * Vector3(input.x, 0, input.y)
 	var target: float = body.max_momentum * (1.0 if stroke_boost > 0.0 else 0.45) if moving and swim_enabled else 0.0
-	var gain: float = body.SWIM_GAIN * (2.0 if target > body.momentum else 0.5)
+	var gain: float = SWIM_MOMENTUM_GAIN if target > body.momentum else body.SWIM_GAIN * 0.5
 	body.momentum = move_toward(body.momentum, target, gain * delta)
 	body.movement_state = body.MovementState.SWIM if moving and swim_enabled else body.MovementState.GLIDE
 	if body.momentum <= 0.0:

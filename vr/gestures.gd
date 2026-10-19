@@ -19,22 +19,18 @@ func reset() -> void:
 	_cooldown = [0.0, 0.0]
 
 
-static func hand_mode(left: Transform3D, right: Transform3D, previous := HandMode.NEUTRAL, heading := Basis.IDENTITY) -> HandMode:
+static func hand_mode(left: Transform3D, right: Transform3D, previous := HandMode.NEUTRAL) -> HandMode:
 	if not left.is_finite() or not right.is_finite():
 		return HandMode.NEUTRAL
-	# measure wrist roll against the head so alternating strokes keep the same mode
-	var left_up := heading.inverse() * left.basis.y
-	var right_up := heading.inverse() * right.basis.y
-	left_up.z = 0.0
-	right_up.z = 0.0
-	if left_up.length() < 0.25 or right_up.length() < 0.25:
-		return HandMode.NEUTRAL
-	left_up = left_up.normalized()
-	right_up = right_up.normalized()
-	var inward := minf(left_up.x, -right_up.x)
+	var left_up := left.basis.y.normalized()
+	var right_up := right.basis.y.normalized()
+	var between := right.origin - left.origin
+	# both controller tops must aim at each other in three dimensions
+	if between.length() >= 0.1:
+		var inward := minf(left_up.dot(between.normalized()), right_up.dot(-between.normalized()))
+		if inward >= (0.8 if previous == HandMode.SWIM else 0.85):
+			return HandMode.SWIM
 	var upright := minf(left_up.dot(Vector3.UP), right_up.dot(Vector3.UP))
-	if inward >= (0.5 if previous == HandMode.SWIM else 0.65):
-		return HandMode.SWIM
 	if upright >= (0.5 if previous == HandMode.ATTACK else 0.65):
 		return HandMode.ATTACK
 	return HandMode.NEUTRAL
