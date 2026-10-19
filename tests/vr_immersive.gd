@@ -131,72 +131,8 @@ func _run() -> void:
 	_capture("hands")
 	VR._head.rotation.x = 0.0
 	var immersion = VR.immersion
-	_expect(immersion.hand_mode == Gestures.HandMode.ATTACK and not immersion.swim_enabled, "upright controllers select attacks")
-	player.set_physics_process(false)
-	var stamina: float = player.stamina
-	for i in range(27):
-		var at := Vector3(-0.3, 1.15, -0.5 - minf(i / 20.0, 1.0) * 0.45)
-		trackers[0].set_pose("grip", Transform3D(Basis.IDENTITY, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-		await get_tree().process_frame
-		immersion.combat(player, 0.02)
-	_expect(player.stamina < stamina and player._water_power_cooldown_timer > 0.0, "tracked hand motion launches attack")
-	player._water_power_cooldown_timer = 0.0
-	stamina = player.stamina
-	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
-	_expect(player.stamina < stamina, "gesture attack spends stamina")
-	player._water_power_cooldown_timer = 0.0
-	immersion.apply_gesture(player, {"kind": "wall"}, player.global_position)
-	stamina = player.stamina
-	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
-	_expect(player.stamina == stamina, "wall gesture blocks attack")
-	immersion.combat(player, 0.02)
-	_expect(player._water_wall_up and player.stamina < stamina, "wall appears and drains stamina")
-	await _orient_hands(true)
-	_expect(immersion.hand_mode == Gestures.HandMode.SWIM and immersion.swim_enabled, "inward rings select swimming")
-	_expect(not player._water_wall_up, "turning controllers inward stops the wall")
-	stamina = player.stamina
-	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
-	immersion.apply_gesture(player, {"kind": "wall"}, player.global_position)
-	_expect(player.stamina == stamina and not player._water_wall_up, "swimming cannot cast attacks")
-	Input.action_press("pad_move_up")
-	player.momentum = 0.0
-	for i in range(200):
-		immersion.swim(player, 0.02)
-	var normal: float = player.momentum
-	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
-	for i in range(200):
-		immersion.swim(player, 0.02)
-	_expect(player.momentum > normal, "arm strokes boost swimming")
-	for ticks in [30, 60, 90]:
-		player.momentum = 0.0
-		immersion.stroke_boost = 1.3
-		for i in range(ticks):
-			immersion.swim(player, 1.0 / ticks)
-		_expect(is_equal_approx(player.momentum, 2.0), "swimming gains only two momentum in the first second")
-		for i in range(ticks * 4):
-			immersion.swim(player, 1.0 / ticks)
-		_expect(is_equal_approx(player.momentum, 10.0), "sustained strokes take five seconds to reach full momentum")
-	var away := Basis(Vector3.BACK, PI / 2.0)
-	trackers[0].set_pose("grip", Transform3D(away, VR._hands[0].position), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-	await get_tree().process_frame
-	await get_tree().process_frame
-	immersion.swim(player, 0.02)
-	_expect(not immersion.swim_enabled and immersion.stroke_boost == 0.0 and player.momentum < 10.0, "turning one controller away stops swim acceleration immediately")
-	await _orient_hands(true)
-	Input.action_release("pad_move_up")
-	Input.action_press("pad_move_down")
-	immersion.swim(player, 0.02)
-	_expect(player.dir.dot(VR._head.global_basis.z) > 0.0, "backstroke moves backwards")
-	Input.action_release("pad_move_down")
-	await _orient_hands(false)
-	_expect(not immersion.swim_enabled and immersion.stroke_boost == 0.0, "upright rings stop swimming boost")
-	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
-	_expect(immersion.stroke_boost == 0.0, "attack posture cannot produce swim strokes")
-	await _test_continuous(player)
-	await _test_stroke_recovery(player)
-	await _test_stroke_recovery(player, true)
-	await _test_stroke_recovery(player, true, true)
-	await _test_tracked_attacks(player)
+	await _test_gesture_controls(player)
+	await _test_swimming(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -213,7 +149,7 @@ func _run() -> void:
 	_expect(player.vr_arms._hands[0].visible, "brief tracking loss keeps the last hand pose")
 	await get_tree().create_timer(0.5).timeout
 	_expect(player.replicated_vr_pose[3] == 0, "lost tracking clears hand mask")
-	_expect(immersion.hand_mode == Gestures.HandMode.NEUTRAL and not immersion.swim_enabled, "tracking loss cancels controller mode")
+	_expect(not immersion.swim_enabled, "tracking loss cancels swimming")
 	_expect(not player.get_node("blockbench_export").visible, "tracking loss keeps own body hidden")
 	Net.enter_spectator_after_faint()
 	await get_tree().create_timer(0.1).timeout
@@ -263,267 +199,198 @@ func _check_model_arms(player) -> void:
 
 
 func _test_gestures() -> void:
-	var left := Transform3D(Basis.IDENTITY, Vector3(-0.3, 0, 0))
-	var right := Transform3D(Basis.IDENTITY, Vector3(0.3, 0, 0))
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.ATTACK, "rings up selects attacks")
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.NEUTRAL, Vector3.RIGHT, Vector3.LEFT) == Gestures.HandMode.ATTACK, "turning upright controllers sideways still selects attacks")
-	left.basis = Basis(Vector3.BACK, -PI / 2.0)
-	right.basis = Basis(Vector3.BACK, PI / 2.0)
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "rings facing each other selects swim")
-	var turn := Transform3D(Basis(Vector3.UP, 1.2), Vector3.ZERO)
-	_expect(Gestures.hand_mode(turn * left, turn * right) == Gestures.HandMode.SWIM, "turning does not change controller mode")
-	left.origin.z = -0.8
-	right.origin.z = 0.4
-	right.origin.y = 0.3
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "inward controllers allow staggered hands at different heights")
-	var between := (right.origin - left.origin).normalized()
-	left.basis = Basis(Quaternion(Vector3.UP, between))
-	right.basis = Basis(Quaternion(Vector3.UP, -between))
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "offset hands swim when they really point at each other")
-	left.origin.z = 0.0
-	right.origin.z = 0.0
-	right.origin.y = 0.0
-	for pitch in [60.0, 90.0, 120.0]:
-		for yaw in [55.0, 90.0, 125.0]:
-			left.basis = Basis(Vector3.UP, -deg_to_rad(yaw)) * Basis(Vector3.RIGHT, -deg_to_rad(pitch))
-			right.basis = Basis(Vector3.UP, deg_to_rad(yaw)) * Basis(Vector3.RIGHT, -deg_to_rad(pitch))
-			_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "tipping down and turning inward allows wrist angle error")
-	left.basis = Basis(Vector3.RIGHT, PI)
-	right.basis = left.basis
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.NEUTRAL, Vector3.RIGHT, Vector3.LEFT) == Gestures.HandMode.SWIM, "runtime pointing directions support different grip axes")
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.SWIM, Vector3.LEFT, Vector3.RIGHT) != Gestures.HandMode.SWIM, "outward pointing controllers cannot retain swimming")
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.SWIM, Vector3.FORWARD, Vector3.FORWARD) != Gestures.HandMode.SWIM, "parallel pointing controllers cannot retain swimming")
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.SWIM) != Gestures.HandMode.SWIM, "missing pointing poses cannot retain swimming")
-	left.basis = Basis(Quaternion(Vector3.UP, Vector3(0.3, 0.05, -0.95).normalized()))
-	right.basis = Basis(Quaternion(Vector3.UP, Vector3(-0.3, 0.05, -0.95).normalized()))
-	_expect(Gestures.hand_mode(left, right) != Gestures.HandMode.SWIM, "forward attack tilts are not flattened into inward controller directions")
-	left.basis = Basis(Vector3.BACK, -PI / 2.0)
-	right.basis = Basis.IDENTITY
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.NEUTRAL, "mixed controller posture is neutral")
-	left.basis = Basis(Vector3.BACK, PI / 2.0)
-	right.basis = Basis(Vector3.BACK, -PI / 2.0)
-	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.NEUTRAL, "outward rings do not swim")
-	left.basis = Basis(Vector3.BACK, -deg_to_rad(70))
-	right.basis = Basis(Vector3.BACK, deg_to_rad(70))
-	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.SWIM) == Gestures.HandMode.SWIM, "small wrist rotations do not flicker modes")
-	var short := _sweep(Vector3.FORWARD * 0.3, 0.0)
-	var long := _sweep(Vector3.FORWARD * 0.8, 0.0)
-	_expect(short.get("kind") == "wave" and long.get("kind") == "wave", "forward sweeps launch waves")
+	var short := _sweep(Vector3.FORWARD * 0.3)
+	var long := _sweep(Vector3.FORWARD * 0.8)
+	_expect(short.get("kind") == "wave" and long.get("kind") == "wave", "forward water sweeps still launch waves")
 	_expect(Gestures.wave_strength(long.get("distance", 0.0)) > Gestures.wave_strength(short.get("distance", 0.0)), "longer sweep travels farther")
-	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0).get("kind") == "wall", "side sweep raises wall")
-	_expect(_sweep(Vector3.LEFT * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "outward sweep swims with inward facing controllers")
-	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "inward sweep swims with inward facing controllers")
-	_expect(_sweep(Vector3(0.24, -0.18, 0.22), 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "diagonal downward rows have no dead direction")
-	_expect(_sweep(Vector3.RIGHT * 0.14, 0.0, true, Gestures.HandMode.SWIM, 1.0).get("kind") == "stroke", "short slow rows work without a fast shove")
-	_expect(_sweep(Vector3.RIGHT * 0.03, 0.0, true, Gestures.HandMode.SWIM).is_empty(), "sideways tracking jitter does not swim")
-	_expect(_sweep(Vector3.UP * 0.4, 0.0, true, Gestures.HandMode.SWIM).is_empty(), "lifting controllers alone does not row")
-	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0, false, Gestures.HandMode.SWIM).is_empty(), "rowing out of water does not propel the player")
-	_expect(_sweep(Vector3.BACK * 0.4, -1.0).get("kind") == "stroke", "forward swimming pull")
-	_expect(_sweep(Vector3.BACK * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "arm strokes work without holding the stick")
-	_expect(_sweep(Vector3.FORWARD * 0.4, 1.0).get("kind") == "stroke", "backstroke swimming push")
-	_expect(_sweep(Vector3.FORWARD * 0.03, 0.0).is_empty(), "jitter ignored")
-	_expect(_sweep(Vector3.FORWARD * 0.4, 0.0, false).is_empty(), "dry movement ignored")
+	for direction in [Vector3.LEFT, Vector3.RIGHT]:
+		_expect(_sweep(direction * 0.4).get("kind") == "stroke", "sideways water sweeps swim")
+		_expect(_sweep(direction * 0.4, false).get("kind") == "wall", "the same sideways sweep in air raises a wall")
+	_expect(_sweep(Vector3.FORWARD * 0.4, false).is_empty(), "forward air sweeps do not launch waves")
+	_expect(_sweep(Vector3.UP * 0.4).is_empty(), "lifting controllers alone does not swim")
+	_expect(_sweep(Vector3.RIGHT * 0.03).is_empty(), "small hand motion does not swim")
+	_expect(_sweep(Vector3.RIGHT * 0.4, true, Basis(Vector3.UP, 1.2)).get("kind") == "stroke", "sideways strokes follow the headset heading")
 	var gestures := Gestures.new()
-	gestures.sample(0, Vector3.ZERO, true, true, 0.0, 0.02)
-	_expect(gestures.sample(0, Vector3.FORWARD * 5.0, true, true, 0.0, 0.02).is_empty(), "tracking jump ignored")
-	_expect(gestures.sample(0, Vector3.FORWARD, true, false, 0.0, 0.02).is_empty(), "tracking loss ignored")
+	gestures.sample(0, Vector3.ZERO, true, true, 0.02)
+	_expect(gestures.sample(0, Vector3.FORWARD * 5.0, true, true, 0.02).is_empty(), "tracking jumps are ignored")
+	_expect(gestures.sample(0, Vector3.FORWARD, true, false, 0.02).is_empty(), "untracked hands cannot gesture")
+	gestures.reset()
+	for i in range(11):
+		var event := gestures.sample(0, Vector3.RIGHT * i * 0.03, i < 6, true, 0.02)
+		_expect(event.is_empty(), "crossing the surface cannot combine a partial swim stroke and wall")
+	_expect(gestures.sample(0, Vector3.RIGHT * 0.4, false, true, 0.02).get("kind") == "wall", "a fresh air sweep works after leaving the water")
 	for ticks in [30, 60, 90]:
 		gestures.reset()
 		var strokes := 0
 		for i in range(ticks * 4):
-			var phase: float = i * PI / ticks
-			var at := Vector3(0.2 * cos(phase), 0.1 * sin(phase), 0.2 * sin(phase))
-			var event := gestures.sample(0, at, true, true, 0.0, 1.0 / ticks, Basis.IDENTITY, Gestures.HandMode.SWIM)
+			var elapsed: float = float(i) / ticks
+			var cycle := int(elapsed)
+			var reach := minf(fmod(elapsed, 1.0) / 0.25, 1.0)
+			var x := 0.3 * (reach if cycle % 2 == 0 else 1.0 - reach)
+			var event := gestures.sample(0, Vector3.RIGHT * x, true, true, 1.0 / ticks)
 			if not event.is_empty():
-				_expect(event.kind == "stroke", "curved rows never become attacks")
+				_expect(event.kind == "stroke", "water strokes never raise walls")
 				strokes += 1
-		_expect(strokes >= 8, "curved rows register through the full push and pull")
+		_expect(strokes == 4, "one sideways stroke per second registers at every frame rate")
 		gestures.reset()
 		for i in range(ticks * 2):
 			var at := Vector3(0.004 * sin(i), 0, 0.004 * cos(i))
-			_expect(gestures.sample(0, at, true, true, 0.0, 1.0 / ticks, Basis.IDENTITY, Gestures.HandMode.SWIM).is_empty(), "small tracking tremor never accumulates into rowing")
+			_expect(gestures.sample(0, at, true, true, 1.0 / ticks).is_empty(), "tracking tremor never accumulates into a stroke")
 
 
-func _sweep(displacement: Vector3, movement: float, wet := true, mode := -1, duration := 0.4) -> Dictionary:
+func _sweep(displacement: Vector3, wet := true, heading := Basis.IDENTITY) -> Dictionary:
 	var gestures := Gestures.new()
 	var result := {}
-	if mode == -1:
-		mode = Gestures.HandMode.SWIM if movement != 0.0 else Gestures.HandMode.ATTACK
-	for i in range(21):
-		var event := gestures.sample(0, displacement * i / 20.0, wet, true, movement, duration / 20.0, Basis.IDENTITY, mode)
-		if not event.is_empty():
-			result = event
-	for i in range(6):
-		var event := gestures.sample(0, displacement, wet, true, movement, 0.02, Basis.IDENTITY, mode)
+	for i in range(27):
+		var at := heading * displacement * minf(i / 20.0, 1.0)
+		var event := gestures.sample(0, at, wet, true, 0.02, heading)
 		if not event.is_empty():
 			result = event
 	return result
 
 
-func _orient_hands(swimming: bool) -> void:
-	var between: Vector3 = (VR._hands[1].position - VR._hands[0].position).normalized()
+func _water_hand_position(x: float, z: float, height: float) -> Vector3:
+	var at := VR._origin.to_global(Vector3(x, 0, z))
+	at.y = VR.immersion.player._ocean.get_height_at(at) + height
+	return VR._origin.to_local(at)
+
+
+func _set_hand(hand: int, at: Vector3, rotation := Basis.IDENTITY) -> void:
+	trackers[hand].set_pose("grip", Transform3D(rotation, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+
+
+func _place_hands(wet: bool) -> void:
 	for i in range(2):
-		if trackers[i].has_pose("aim"):
-			trackers[i].invalidate_pose("aim")
-		var rotation := Basis(Quaternion(Vector3.UP, between if i == 0 else -between)) if swimming else Basis.IDENTITY
-		trackers[i].set_pose("grip", Transform3D(rotation, VR._hands[i].position), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		_set_hand(i, _water_hand_position(-0.3 if i == 0 else 0.3, -0.5, -0.2 if wet else 0.3))
 	await get_tree().process_frame
-	await get_tree().create_timer(0.25).timeout
+	await get_tree().process_frame
+	VR.immersion.gestures.reset()
 
 
-func _test_continuous(player) -> void:
-	var immersion = VR.immersion
-	await _orient_hands(true)
-	player.momentum = 0.0
-	player.stamina = 100.0
-	player.set_physics_process(true)
-	player.freeze = false
-	trackers[0].set_input("primary", Vector2(0, 1))
-	var start: Vector3 = player.position
-	var min_speed := INF
-	var boost_seen := false
-	var elapsed := 0.0
-	while elapsed < 3.0:
+func _tracked_sweep(player, direction: Vector3, wet: bool, rotation := Basis.IDENTITY) -> void:
+	await _place_hands(wet)
+	var start: Vector3 = VR._hands[0].position
+	for i in range(33):
+		_set_hand(0, start + direction * 0.36 * minf(i / 20.0, 1.0), rotation)
 		await get_tree().process_frame
-		elapsed += get_process_delta_time()
-		var positions := [Vector3(-0.3, 1.15, -0.5 + 0.4 * sin(elapsed * 5.0)), Vector3(0.3, 1.15, -0.5 + 0.4 * sin(elapsed * 5.0 + PI))]
-		for i in range(2):
-			var aim: Vector3 = (positions[1 - i] - positions[i]).normalized()
-			var rotation := Basis(Quaternion(Vector3.UP, aim)) * Basis(Vector3.BACK, 0.15 * sin(elapsed * 4.0))
-			trackers[i].set_pose("grip", Transform3D(rotation, positions[i]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-		_expect(immersion.swim_enabled, "alternating strokes keep swimming enabled")
-		_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "hands stay visible during sustained swimming")
-		boost_seen = boost_seen or immersion.stroke_boost > 0.0
-		if elapsed > 1.0:
-			min_speed = minf(min_speed, Vector2(player.linear_velocity.x, player.linear_velocity.z).length())
-	_expect(boost_seen, "real controller strokes produce swimming boost")
-	_expect(min_speed > 0.2 and player.position.distance_to(start) > 1.0, "swimming moves continuously instead of in increments")
-	XRServer.remove_tracker(trackers[0])
-	await get_tree().create_timer(0.1).timeout
-	_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "one occluded controller does not hide both hands")
-	_expect(not immersion.swim_enabled and player.momentum > 0.0, "missing controller stops swim acceleration but preserves coasting")
-	XRServer.add_tracker(trackers[0])
-	trackers[0].set_input("primary", Vector2.ZERO)
-	player.freeze = true
+		VR.immersion.combat(player, 1.0 / 60.0)
+		_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "gestures keep both hands visible")
+
+
+func _test_gesture_controls(player) -> void:
+	var immersion = VR.immersion
 	player.set_physics_process(false)
-	player.linear_velocity = Vector3.ZERO
-	player.position = start
-	player.reset_physics_interpolation()
-	await _orient_hands(false)
+	immersion.cancel_gestures()
+	var at: Vector3 = player.global_position
+	var surface: float = player._ocean.get_height_at(at)
+	at.y = surface - 0.1
+	_expect(immersion.hand_touching_water(0, at), "hands below the actual surface touch water")
+	at.y = surface + 0.1
+	_expect(immersion.hand_touching_water(0, at), "small ripples do not flicker water contact")
+	at.y = surface + 0.3
+	_expect(not immersion.hand_touching_water(0, at), "raised hands are dry even when the player is in water")
+	at.y = surface + 0.1
+	_expect(not immersion.hand_touching_water(0, at), "lowering hands slightly does not flicker water contact")
+	at.y = surface + 0.05
+	_expect(immersion.hand_touching_water(0, at), "hands regain contact near the surface")
+	player.stamina = 100.0
+	player._water_power_cooldown_timer = 0.0
+	await _tracked_sweep(player, Vector3.LEFT, true)
+	_expect(immersion.swim_enabled and not player._water_wall_up, "upright sideways water strokes swim instead of raising a wall")
+	_expect(player.stamina == 100.0 and player._water_power_cooldown_timer == 0.0, "swimming does not cast an attack")
+	_set_hand(0, VR._hands[0].position, Basis(Vector3.BACK, 2.0))
 	await get_tree().process_frame
-	_expect(player.vr_arms._hands[0].global_position.distance_to(VR._hands[0].global_position) < 0.01, "recovered controller resumes exact hand tracking")
+	await get_tree().process_frame
+	_expect(immersion.swim_enabled, "changing wrist direction does not cancel the stroke window")
+	for ticks in [30, 60, 90]:
+		immersion.cancel_gestures()
+		player.momentum = 0.0
+		for i in range(ticks * 5):
+			if i % ticks == 0:
+				immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
+			immersion.combat(player, 1.0 / ticks)
+			immersion.swim(player, 1.0 / ticks)
+			_expect(immersion.swim_enabled, "one stroke per second keeps swimming active between strokes")
+			if i == ticks - 1:
+				_expect(is_equal_approx(player.momentum, 2.0), "swimming still gains only two momentum in the first second")
+		_expect(is_equal_approx(player.momentum, 10.0), "full momentum still takes five seconds")
+	Input.action_press("pad_move_down")
+	immersion.swim(player, 0.02)
+	_expect(player.dir.dot(VR._head.global_basis.z) > 0.0, "the stick can steer a swim stroke backwards")
+	Input.action_release("pad_move_down")
+	await _tracked_sweep(player, Vector3.RIGHT, false, Basis(Vector3.BACK, -PI / 2.0))
+	_expect(player._water_wall_up and not immersion.swim_enabled, "the same stroke above water raises a wall and stops rowing")
+	var stamina: float = player.stamina
+	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
+	_expect(player.stamina == stamina, "a wall still blocks other attacks")
+	await _tracked_sweep(player, Vector3.LEFT, true)
+	_expect(immersion.swim_enabled and not player._water_wall_up, "a water stroke switches from wall back to swimming")
+	await _tracked_sweep(player, Vector3.FORWARD, true, Basis(Vector3.RIGHT, 0.8))
+	_expect(player._water_power_cooldown_timer > 0.0, "forward water sweeps still launch attacks")
+	immersion.cancel_gestures()
+	player._water_power_cooldown_timer = 0.0
+	await _place_hands(false)
+	for i in range(90):
+		immersion.combat(player, 1.0 / 60.0)
+	_expect(not immersion.swim_enabled and not player._water_wall_up, "holding still never triggers swimming or a wall")
 
 
-func _test_stroke_recovery(player, lateral := false, pointing := false) -> void:
+func _test_swimming(player) -> void:
 	var immersion = VR.immersion
 	var start: Vector3 = player.position
+	var previous_fps := Engine.max_fps
+	Engine.max_fps = 30
 	player.position = Vector3(20, 7.5, 0)
 	player.reset_physics_interpolation()
 	trackers[0].set_input("primary", Vector2.ZERO)
-	if lateral:
-		await _orient_hands(false)
-		for i in range(2):
-			_row_pose(i, Vector3(-0.3 if i == 0 else 0.3, 1.15, -0.5), pointing)
-		await get_tree().create_timer(0.2).timeout
-	else:
-		await _orient_hands(true)
-	_expect(immersion.swim_enabled, "tilted inward controllers enter rowing mode")
+	trackers[1].set_input("primary", Vector2.ZERO)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	await _place_hands(true)
+	_set_hand(0, _water_hand_position(-0.65, -0.5, -0.2))
+	await get_tree().process_frame
+	immersion.cancel_gestures()
 	var forward: Vector3 = -Basis(Vector3.UP, VR._head.global_rotation.y).z
 	player.momentum = 0.0
 	player.stamina = 100.0
 	player.set_physics_process(true)
 	player.freeze = false
 	var elapsed := 0.0
-	var least_momentum := INF
 	var least_speed := INF
-	var boost_expired := false
-	while elapsed < 6.0:
+	while elapsed < 4.0:
 		await get_tree().process_frame
 		elapsed += get_process_delta_time()
-		var phase := fmod(elapsed, 2.0 if lateral else 3.0)
-		var reach := minf(phase / 0.5, 1.0) if phase < 2.5 else 1.0 - (phase - 2.5) / 0.5
-		var positions := [Vector3(-0.3, 1.15, -0.75 + 0.4 * reach), Vector3(0.3, 1.15, -0.5)]
-		if lateral:
-			var width := 0.2 + 0.2 * (1.0 - cos(phase * PI))
-			var depth := -0.65 + 0.16 * sin(phase * PI)
-			var height := 1.1 + 0.05 * cos(phase * PI)
-			positions = [Vector3(-width, height, depth), Vector3(width, height + 0.08, depth + 0.12)]
-		for i in range(2):
-			if lateral:
-				_row_pose(i, positions[i], pointing)
-			else:
-				var aim: Vector3 = (positions[1 - i] - positions[i]).normalized()
-				trackers[i].set_pose("grip", Transform3D(Basis(Quaternion(Vector3.UP, aim)), positions[i]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-		_expect(immersion.swim_enabled, "slow strokes retain the facing controller requirement")
-		if elapsed > 1.0:
-			least_momentum = minf(least_momentum, player.momentum)
+		var cycle := int(elapsed)
+		var reach := minf(fmod(elapsed, 1.0) / 0.25, 1.0)
+		var x := -0.65 + 0.3 * (reach if cycle % 2 == 0 else 1.0 - reach)
+		_set_hand(0, _water_hand_position(x, -0.5, -0.2), Basis(Vector3.BACK, cycle * 0.7))
+		if elapsed > 0.5:
+			_expect(immersion.swim_enabled, "one sideways stroke per second sustains real swimming without a stick")
 			least_speed = minf(least_speed, Vector2(player.linear_velocity.x, player.linear_velocity.z).length())
-			boost_expired = boost_expired or immersion.stroke_boost <= 0.0
-	if not lateral:
-		_expect(boost_expired, "stroke recovery test includes gaps with no active boost")
-	else:
-		_expect(not player._water_wall_up and player._water_power_cooldown_timer <= 0.0, "outward and inward swimming never casts water moves")
-	_expect(least_momentum > 0.2 and least_speed > 0.2, "arms only swimming keeps moving between slow strokes")
-	_expect(player.position.distance_to(Vector3(20, 7.5, 0)) > 2.0, "arms only swimming covers distance without the stick")
-	_expect((player.position - Vector3(20, 7.5, 0)).dot(forward) > 2.0, "inward rowing follows the headset forward without a stick press")
+		_expect(not player._water_wall_up and player._water_power_cooldown_timer <= 0.0, "water strokes never cast walls or waves")
+		_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "hands stay visible while swimming")
+	_expect(least_speed > 0.2, "swimming stays smooth through the pause between strokes")
+	_expect((player.position - Vector3(20, 7.5, 0)).dot(forward) > 2.0, "sideways strokes move forward in the headset direction")
+	XRServer.remove_tracker(trackers[0])
+	await get_tree().create_timer(0.1).timeout
+	_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "brief occlusion keeps the last hand pose")
+	XRServer.add_tracker(trackers[0])
+	await get_tree().create_timer(1.5).timeout
+	_expect(not immersion.swim_enabled, "swimming boost expires when strokes stop")
+	var momentum: float = player.momentum
+	await get_tree().create_timer(0.3).timeout
+	_expect(player.momentum < momentum and player.momentum > 0.0, "stopping strokes coasts instead of stopping dead")
 	player.freeze = true
 	player.set_physics_process(false)
 	player.linear_velocity = Vector3.ZERO
-	await _orient_hands(false)
-	var momentum: float = player.momentum
-	for i in range(60):
-		immersion.swim(player, 1.0 / 60.0)
-	_expect(is_equal_approx(player.momentum, maxf(momentum - 0.5, 0.0)), "coasting loses half a momentum per second without accelerating")
 	for i in range(1200):
 		immersion.swim(player, 1.0 / 60.0)
-	_expect(is_zero_approx(player.momentum), "coasting eventually stops without further strokes")
+	_expect(is_zero_approx(player.momentum), "coasting eventually stops")
 	player.position = start
 	player.reset_physics_interpolation()
-	await get_tree().process_frame
-	await _orient_hands(false)
-
-
-func _row_pose(hand: int, at: Vector3, pointing: bool) -> void:
-	# fixed wrist angles never auto aim at the other controller
-	var rotation := Basis(Vector3.UP, deg_to_rad(-70.0 if hand == 0 else 70.0)) * Basis(Vector3.RIGHT, -deg_to_rad(70.0))
-	var grip := rotation
-	if pointing:
-		grip *= Basis(Vector3.RIGHT, -PI / 2.0)
-		var aim := Basis(Quaternion(Vector3.FORWARD, rotation.y))
-		trackers[hand].set_pose("aim", Transform3D(aim, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-	trackers[hand].set_pose("grip", Transform3D(grip, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-
-
-func _test_tracked_attacks(player) -> void:
-	var previous_fps := Engine.max_fps
-	Engine.max_fps = 30
-	player.set_physics_process(true)
-	for sweep in range(3):
-		var rotation := Basis(Vector3.RIGHT, deg_to_rad(50.0))
-		var start := Vector3(-0.3, 1.15, -0.35)
-		trackers[0].set_pose("grip", Transform3D(rotation, start), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-		await get_tree().create_timer(0.2).timeout
-		player.stamina = 100.0
-		player._water_power_cooldown_timer = 0.0
-		VR.immersion.gestures.reset()
-		var elapsed := 0.0
-		while elapsed < 0.8:
-			await get_tree().process_frame
-			elapsed += get_process_delta_time()
-			var direction := Vector3.RIGHT if sweep == 2 else Vector3.FORWARD
-			var at := start + direction * 0.55 * minf(elapsed / 0.55, 1.0)
-			trackers[0].set_pose("grip", Transform3D(rotation, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
-			_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "water moves keep both hands visible")
-			_expect(not VR.immersion.swim_enabled, "attack and wall sweeps do not enable swimming")
-		if sweep == 2:
-			_expect(player._water_wall_up, "tracked sideways sweep raises a wall")
-		else:
-			_expect(player._water_power_cooldown_timer > 0.0, "repeated tracked forward sweeps launch waves")
-	await _orient_hands(true)
-	_expect(not player._water_wall_up, "swimming cancels the tracked wall")
-	player.set_physics_process(false)
-	await _orient_hands(false)
+	immersion.cancel_gestures()
 	Engine.max_fps = previous_fps
+	await get_tree().process_frame
 
 
 func _capture(label: String) -> void:
