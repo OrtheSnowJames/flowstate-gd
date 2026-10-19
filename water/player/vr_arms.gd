@@ -10,6 +10,7 @@ var _hands: Array[MeshInstance3D] = []
 var _rig: Node3D
 var _hidden := false
 var _original_arms: Array[Node3D] = []
+var _body_layers: Dictionary = {}
 
 
 static func valid_pose(value: Array) -> bool:
@@ -55,10 +56,46 @@ func _ready() -> void:
 		add_child(hand)
 		_hands.append(hand)
 	hide()
+	RenderingServer.frame_pre_draw.connect(_sync_body_visibility)
 	_process(0.0)
 
 
+func _exit_tree() -> void:
+	RenderingServer.frame_pre_draw.disconnect(_sync_body_visibility)
+	_restore_body_layers()
+
+
+func _sync_body_visibility() -> void:
+	if get_parent()._is_local() and VR.immersive:
+		_mask_body(get_parent())
+		for geometry in _body_layers.keys():
+			if not is_instance_valid(geometry):
+				_body_layers.erase(geometry)
+	else:
+		_restore_body_layers()
+
+
+func _mask_body(node: Node) -> void:
+	if node == self:
+		return
+	if node is GeometryInstance3D:
+		if not _body_layers.has(node):
+			_body_layers[node] = node.layers
+		# no camera can draw the local body even if an animation shows it
+		node.layers = 0
+	for child in node.get_children():
+		_mask_body(child)
+
+
+func _restore_body_layers() -> void:
+	for geometry in _body_layers:
+		if is_instance_valid(geometry):
+			geometry.layers = _body_layers[geometry]
+	_body_layers.clear()
+
+
 func _process(delta: float) -> void:
+	_sync_body_visibility()
 	var player = get_parent()
 	var local: bool = player._is_local()
 	if local:

@@ -104,6 +104,7 @@ func start(preview := false) -> bool:
 		for hand in ["left_hand", "right_hand"]:
 			var controller := XRController3D.new()
 			controller.tracker = hand
+			controller.pose = &"grip"
 			origin.add_child(controller)
 			_hands.append(controller)
 	active = true
@@ -198,8 +199,6 @@ func _process(delta: float) -> void:
 	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
 	var escape_chord := _update_escape_chord(left_click, right_click, delta)
 	var menus := not ControllerNavigation._controls().is_empty()
-	if immersive:
-		immersion.swim_click(left_click, right_click, escape_chord)
 	for i in range(2):
 		var hand := _hands[i]
 		var tracked := hand.get_is_active()

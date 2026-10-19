@@ -10,14 +10,13 @@ var blur: MeshInstance3D
 var fade: MeshInstance3D
 var player: Node3D
 var swim_enabled := false
+var hand_mode := Gestures.HandMode.NEUTRAL
 var stroke_boost := 0.0
 var _scene: Node
 var _yaw := 0.0
 var _center := Vector3.ZERO
 var _wall_time := 0.0
 var _wall_refresh := 0.0
-var _left_down := false
-var _click_chord := false
 var _was_blocked := true
 var _last_position := Vector3.ZERO
 var _eye: ColorRect
@@ -126,6 +125,7 @@ func _process(delta: float) -> void:
 	if blocked and not _was_blocked:
 		cancel_gestures()
 	_was_blocked = blocked
+	update_hand_mode()
 
 
 func can_gesture() -> bool:
@@ -133,20 +133,18 @@ func can_gesture() -> bool:
 		and not Net.is_spectating() and not Net.input_blocked_by_menu() and not Net.arcade.controls(player) and player._ocean != null
 
 
-func swim_click(left: bool, right: bool, chord: bool) -> void:
-	if right or chord:
-		_click_chord = true
-	if _left_down and not left and not _click_chord and can_gesture():
-		swim_enabled = not swim_enabled
-	_left_down = left
-	if not left and not right:
-		_click_chord = false
+func update_hand_mode() -> void:
+	var next := Gestures.HandMode.NEUTRAL
+	if can_gesture() and VR._hands.size() == 2 and VR._hands[0].get_is_active() and VR._hands[1].get_is_active():
+		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode)
+	if next != hand_mode:
+		cancel_gestures()
+		hand_mode = next
+		swim_enabled = next == Gestures.HandMode.SWIM
 
 
 func hand_transform(hand: XRController3D) -> Transform3D:
-	var pose := hand.global_transform
-	pose.origin.y -= Arms.ARM_DROP
-	return pose
+	return hand.global_transform
 
 
 func body_pose(body) -> Array:
@@ -167,6 +165,9 @@ func combat(body, delta: float) -> void:
 	if body != player or not can_gesture():
 		cancel_gestures()
 		return
+	update_hand_mode()
+	if hand_mode == Gestures.HandMode.NEUTRAL:
+		return
 	stroke_boost = maxf(0.0, stroke_boost - delta)
 	_wall_time = maxf(0.0, _wall_time - delta)
 	_wall_refresh = maxf(0.0, _wall_refresh - delta)
@@ -177,7 +178,7 @@ func combat(body, delta: float) -> void:
 		var hand: XRController3D = VR._hands[i]
 		var at := hand_transform(hand).origin
 		var wet: bool = absf(at.y - body._water_height()) <= 0.45 and body._submersion() > 0.0
-		var event := gestures.sample(i, hand.position, wet, hand.get_is_active(), movement, delta, heading)
+		var event := gestures.sample(i, hand.position, wet, hand.get_is_active(), movement, delta, heading, hand_mode)
 		if not event.is_empty():
 			event["at"] = at
 			events.append(event)
@@ -199,6 +200,12 @@ func combat(body, delta: float) -> void:
 
 
 func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
+	if not can_gesture() or body != player:
+		return
+	if event.kind == "stroke" and hand_mode != Gestures.HandMode.SWIM:
+		return
+	if event.kind != "stroke" and hand_mode != Gestures.HandMode.ATTACK:
+		return
 	match event.kind:
 		"stroke":
 			if body.stamina > 0.0:
@@ -220,6 +227,8 @@ func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
 
 func cancel_gestures() -> void:
 	gestures.reset()
+	hand_mode = Gestures.HandMode.NEUTRAL
+	swim_enabled = false
 	stroke_boost = 0.0
 	_wall_time = 0.0
 	_wall_refresh = 0.0

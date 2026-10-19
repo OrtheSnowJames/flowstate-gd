@@ -1,5 +1,7 @@
 extends RefCounted
 
+enum HandMode { NEUTRAL, ATTACK, SWIM }
+
 const MIN_SWEEP := 0.18
 const MIN_SPEED := 0.25
 var _previous: Array = [null, null]
@@ -17,9 +19,26 @@ func reset() -> void:
 	_cooldown = [0.0, 0.0]
 
 
-func sample(hand: int, position: Vector3, touching_water: bool, tracked: bool, movement: float, delta: float, heading := Basis.IDENTITY) -> Dictionary:
+static func hand_mode(left: Transform3D, right: Transform3D, previous := HandMode.NEUTRAL) -> HandMode:
+	if not left.is_finite() or not right.is_finite():
+		return HandMode.NEUTRAL
+	var between := right.origin - left.origin
+	if between.length() < 0.1:
+		return HandMode.NEUTRAL
+	var left_up := left.basis.y.normalized()
+	var right_up := right.basis.y.normalized()
+	var inward := minf(left_up.dot(between.normalized()), right_up.dot(-between.normalized()))
+	var upright := minf(left_up.dot(Vector3.UP), right_up.dot(Vector3.UP))
+	if inward >= (0.5 if previous == HandMode.SWIM else 0.65):
+		return HandMode.SWIM
+	if upright >= (0.5 if previous == HandMode.ATTACK else 0.65):
+		return HandMode.ATTACK
+	return HandMode.NEUTRAL
+
+
+func sample(hand: int, position: Vector3, touching_water: bool, tracked: bool, movement: float, delta: float, heading := Basis.IDENTITY, mode := HandMode.ATTACK) -> Dictionary:
 	_cooldown[hand] = maxf(0.0, _cooldown[hand] - delta)
-	if not tracked or delta <= 0.0 or delta > 0.15:
+	if not tracked or mode == HandMode.NEUTRAL or delta <= 0.0 or delta > 0.15:
 		_previous[hand] = null
 		_clear(hand)
 		return {}
@@ -35,12 +54,12 @@ func sample(hand: int, position: Vector3, touching_water: bool, tracked: bool, m
 		return _finish(hand)
 	var kind := ""
 	if step.length() / delta >= MIN_SPEED:
-		if absf(step.x) > absf(step.z) * 1.4 and absf(step.x) > absf(step.y):
+		if mode == HandMode.ATTACK and absf(step.x) > absf(step.z) * 1.4 and absf(step.x) > absf(step.y):
 			kind = "wall"
 		elif absf(step.z) > absf(step.x) and absf(step.z) > absf(step.y) * 0.7:
-			if (movement < -0.2 and step.z > 0.0) or (movement > 0.2 and step.z < 0.0):
+			if mode == HandMode.SWIM and ((movement < -0.2 and step.z > 0.0) or (movement > 0.2 and step.z < 0.0)):
 				kind = "stroke"
-			elif step.z < 0.0:
+			elif mode == HandMode.ATTACK and step.z < 0.0:
 				kind = "wave"
 	if kind.is_empty():
 		_idle[hand] += delta

@@ -43,11 +43,12 @@ func _run() -> void:
 		tracker.type = XRServer.TRACKER_CONTROLLER
 		tracker.name = "left_hand" if i == 0 else "right_hand"
 		tracker.hand = XRPositionalTracker.TRACKER_HAND_LEFT if i == 0 else XRPositionalTracker.TRACKER_HAND_RIGHT
-		tracker.set_pose("default", Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 1.15, -0.5)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		tracker.set_pose("grip", Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 0.65, -0.5)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		XRServer.add_tracker(tracker)
 		trackers.append(tracker)
 		var hand := XRController3D.new()
 		hand.tracker = tracker.name
+		hand.pose = &"grip"
 		VR._origin.add_child(hand)
 		VR._hands.append(hand)
 	await get_tree().create_timer(0.3).timeout
@@ -58,7 +59,9 @@ func _run() -> void:
 	_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible, "tracked arms visible")
 	_expect(player.replicated_vr_pose.size() == 4 and player.replicated_vr_pose[3] == 3, "both tracked hands published")
 	var wrist: Transform3D = player.replicated_vr_pose[1]
-	_expect(is_equal_approx(wrist.origin.y, Arms.EYE_HEIGHT - Arms.ARM_DROP - 0.45), "hands lowered below face")
+	_expect((player.global_transform * wrist).is_equal_approx(VR._hands[0].global_transform), "hands match controller grip without an offset")
+	for i in range(2):
+		_expect(player.vr_arms._hands[i].global_transform.is_equal_approx(VR._hands[i].global_transform), "visible hand matches controller grip")
 	_expect((player.global_transform * wrist).origin.is_equal_approx(VR.immersion.hand_transform(VR._hands[0]).origin), "rendered and gesture hands agree")
 	var head_position: Vector3 = VR._head.position
 	VR._head.position.x += 4.0
@@ -82,18 +85,35 @@ func _run() -> void:
 	pose[1].origin.x = 100.0
 	_expect(not Arms.valid_pose(pose), "unreachable pose rejected")
 	_capture("game")
-	VR.immersion.swim_click(true, false, false)
-	VR.immersion.swim_click(false, false, false)
-	_expect(VR.immersion.swim_enabled, "left stick click toggles swim")
-	VR.immersion.swim_click(true, true, true)
-	VR.immersion.swim_click(false, false, false)
-	_expect(VR.immersion.swim_enabled, "escape chord does not toggle swim")
+	var probe := MeshInstance3D.new()
+	probe.mesh = BoxMesh.new()
+	probe.layers = 5
+	var material := StandardMaterial3D.new()
+	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	material.albedo_color = Color.MAGENTA
+	probe.material_override = material
+	player.add_child(probe)
+	probe.position = Vector3(0, Arms.EYE_HEIGHT, -0.35)
+	player.get_node("blockbench_export").show()
+	player.vr_arms._sync_body_visibility()
+	_expect(probe.layers == 0, "new body geometry is excluded from all cameras")
+	for mesh in player._mesh_instances_in(player.get_node("blockbench_export")):
+		mesh.show()
+		_expect(mesh.layers == 0, "visible flags cannot reveal body meshes")
+	_expect(player.vr_arms._hands[0].layers != 0, "controller hands remain renderable")
+	_capture("body-hidden")
+	VR._head.rotation.x = -0.6
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_capture("hands")
+	VR._head.rotation.x = 0.0
 	var immersion = VR.immersion
+	_expect(immersion.hand_mode == Gestures.HandMode.ATTACK and not immersion.swim_enabled, "upright controllers select attacks")
 	player.set_physics_process(false)
 	var stamina: float = player.stamina
 	for i in range(27):
-		var at := Vector3(-0.3, 1.15, -0.5 - minf(i / 20.0, 1.0) * 0.45)
-		trackers[0].set_pose("default", Transform3D(Basis.IDENTITY, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		var at := Vector3(-0.3, 0.65, -0.5 - minf(i / 20.0, 1.0) * 0.45)
+		trackers[0].set_pose("grip", Transform3D(Basis.IDENTITY, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		await get_tree().process_frame
 		immersion.combat(player, 0.02)
 	_expect(player.stamina < stamina and player._water_power_cooldown_timer > 0.0, "tracked hand motion launches attack")
@@ -108,8 +128,13 @@ func _run() -> void:
 	_expect(player.stamina == stamina, "wall gesture blocks attack")
 	immersion.combat(player, 0.02)
 	_expect(player._water_wall_up and player.stamina < stamina, "wall appears and drains stamina")
-	immersion.cancel_gestures()
-	_expect(not player._water_wall_up, "cancelling stops wall")
+	await _orient_hands(true)
+	_expect(immersion.hand_mode == Gestures.HandMode.SWIM and immersion.swim_enabled, "inward rings select swimming")
+	_expect(not player._water_wall_up, "turning controllers inward stops the wall")
+	stamina = player.stamina
+	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
+	immersion.apply_gesture(player, {"kind": "wall"}, player.global_position)
+	_expect(player.stamina == stamina and not player._water_wall_up, "swimming cannot cast attacks")
 	Input.action_press("pad_move_up")
 	player.momentum = 0.0
 	for i in range(200):
@@ -118,12 +143,16 @@ func _run() -> void:
 	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
 	for i in range(200):
 		immersion.swim(player, 0.02)
-	_expect(player.momentum > normal, "arm strokes swim faster than stick click")
+	_expect(player.momentum > normal, "arm strokes boost swimming")
 	Input.action_release("pad_move_up")
 	Input.action_press("pad_move_down")
 	immersion.swim(player, 0.02)
 	_expect(player.dir.dot(VR._head.global_basis.z) > 0.0, "backstroke moves backwards")
 	Input.action_release("pad_move_down")
+	await _orient_hands(false)
+	_expect(not immersion.swim_enabled and immersion.stroke_boost == 0.0, "upright rings stop swimming boost")
+	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
+	_expect(immersion.stroke_boost == 0.0, "attack posture cannot produce swim strokes")
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -138,6 +167,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	_expect(player.replicated_vr_pose[3] == 0, "lost tracking clears hand mask")
+	_expect(immersion.hand_mode == Gestures.HandMode.NEUTRAL and not immersion.swim_enabled, "tracking loss cancels controller mode")
 	_expect(not player.get_node("blockbench_export").visible, "tracking loss keeps own body hidden")
 	Net.enter_spectator_after_faint()
 	await get_tree().create_timer(0.1).timeout
@@ -150,6 +180,7 @@ func _run() -> void:
 	_expect(not get_tree().root.disable_3d and not get_tree().root.transparent_bg, "desktop render restored")
 	_expect(Transition._fade_rect.visible and Transition._blur_rect.visible, "desktop overlays restored")
 	_expect(player.get_node("blockbench_export").visible and not player.vr_arms.visible, "body restored on vr exit")
+	_expect(probe.layers == 5, "body render layers restored on vr exit")
 	VR.start(true)
 	await VR.enter_immersive()
 	Net._leave_current_game_to_menu(true)
@@ -161,6 +192,22 @@ func _run() -> void:
 
 
 func _test_gestures() -> void:
+	var left := Transform3D(Basis.IDENTITY, Vector3(-0.3, 0, 0))
+	var right := Transform3D(Basis.IDENTITY, Vector3(0.3, 0, 0))
+	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.ATTACK, "rings up selects attacks")
+	left.basis = Basis(Vector3.BACK, -PI / 2.0)
+	right.basis = Basis(Vector3.BACK, PI / 2.0)
+	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "rings facing each other selects swim")
+	var turn := Transform3D(Basis(Vector3.UP, 1.2), Vector3.ZERO)
+	_expect(Gestures.hand_mode(turn * left, turn * right) == Gestures.HandMode.SWIM, "turning does not change controller mode")
+	right.basis = Basis.IDENTITY
+	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.NEUTRAL, "mixed controller posture is neutral")
+	left.basis = Basis(Vector3.BACK, PI / 2.0)
+	right.basis = Basis(Vector3.BACK, -PI / 2.0)
+	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.NEUTRAL, "outward rings do not swim")
+	left.basis = Basis(Vector3.BACK, -deg_to_rad(35))
+	right.basis = Basis(Vector3.BACK, deg_to_rad(35))
+	_expect(Gestures.hand_mode(left, right, Gestures.HandMode.SWIM) == Gestures.HandMode.SWIM, "small wrist rotations do not flicker modes")
 	var short := _sweep(Vector3.FORWARD * 0.3, 0.0)
 	var long := _sweep(Vector3.FORWARD * 0.8, 0.0)
 	_expect(short.get("kind") == "wave" and long.get("kind") == "wave", "forward sweeps launch waves")
@@ -179,15 +226,25 @@ func _test_gestures() -> void:
 func _sweep(displacement: Vector3, movement: float, wet := true) -> Dictionary:
 	var gestures := Gestures.new()
 	var result := {}
+	var mode := Gestures.HandMode.SWIM if movement != 0.0 else Gestures.HandMode.ATTACK
 	for i in range(21):
-		var event := gestures.sample(0, displacement * i / 20.0, wet, true, movement, 0.02)
+		var event := gestures.sample(0, displacement * i / 20.0, wet, true, movement, 0.02, Basis.IDENTITY, mode)
 		if not event.is_empty():
 			result = event
 	for i in range(6):
-		var event := gestures.sample(0, displacement, wet, true, movement, 0.02)
+		var event := gestures.sample(0, displacement, wet, true, movement, 0.02, Basis.IDENTITY, mode)
 		if not event.is_empty():
 			result = event
 	return result
+
+
+func _orient_hands(swimming: bool) -> void:
+	for i in range(2):
+		var rotation := Basis(Vector3.BACK, (-PI / 2.0 if i == 0 else PI / 2.0)) if swimming else Basis.IDENTITY
+		trackers[i].set_pose("grip", Transform3D(rotation, VR._hands[i].position), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	VR.immersion.update_hand_mode()
 
 
 func _capture(label: String) -> void:
@@ -201,6 +258,8 @@ func _capture(label: String) -> void:
 	for y in range(0, picture.get_height(), 24):
 		for x in range(0, picture.get_width(), 24):
 			var color := picture.get_pixel(x, y)
+			if label == "body-hidden":
+				_expect(not (color.r > 0.8 and color.b > 0.8 and color.g < 0.2), "hidden body probe does not render")
 			if Vector3(color.r, color.g, color.b).distance_to(Vector3(first.r, first.g, first.b)) > 0.05:
 				different += 1
 	_expect(different > 100, label + " renders nonblank pixels")
