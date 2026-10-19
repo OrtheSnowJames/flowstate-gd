@@ -56,13 +56,20 @@ func _ready() -> void:
 		add_child(hand)
 		_hands.append(hand)
 	hide()
-	RenderingServer.frame_pre_draw.connect(_sync_body_visibility)
+	RenderingServer.frame_pre_draw.connect(_before_draw)
 	_process(0.0)
 
 
 func _exit_tree() -> void:
-	RenderingServer.frame_pre_draw.disconnect(_sync_body_visibility)
+	RenderingServer.frame_pre_draw.disconnect(_before_draw)
 	_restore_body_layers()
+
+
+func _before_draw() -> void:
+	if get_parent()._is_local() and VR.immersive:
+		_process(0.0)
+	else:
+		_sync_body_visibility()
 
 
 func _sync_body_visibility() -> void:
@@ -98,8 +105,11 @@ func _process(delta: float) -> void:
 	_sync_body_visibility()
 	var player = get_parent()
 	var local: bool = player._is_local()
+	var shown := pose
 	if local:
 		pose = VR.body_pose(player)
+		# local tracking is independent of network pose limits
+		shown = VR.immersion.body_pose(player, false) if VR.immersive else []
 	var rig: Node3D = player.get_node_or_null("blockbench_export")
 	if rig != _rig:
 		_rig = rig
@@ -109,7 +119,7 @@ func _process(delta: float) -> void:
 				var arm := rig.find_child(arm_name, true, false) as Node3D
 				if arm:
 					_original_arms.append(arm)
-	var enabled := not pose.is_empty()
+	var enabled := not shown.is_empty()
 	visible = enabled
 	if _rig:
 		if local and VR.immersive:
@@ -124,7 +134,7 @@ func _process(delta: float) -> void:
 		_display.clear()
 		return
 	if local or _display.is_empty():
-		_display = pose.duplicate()
+		_display = shown.duplicate()
 	else:
 		for i in range(3):
 			_display[i] = _display[i].interpolate_with(pose[i], 1.0 - exp(-25.0 * delta))

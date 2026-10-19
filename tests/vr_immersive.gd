@@ -17,6 +17,7 @@ func _run() -> void:
 		get_tree().quit(1))
 	_test_gestures()
 	_expect(VR.start(true), "preview starts")
+	_expect(not VR._origin.is_physics_interpolated(), "tracked rig does not interpolate stale physics poses")
 	await get_tree().create_timer(0.8).timeout
 	VR.enter_immersive()
 	_expect(VR.entering and not VR.immersive, "tv zoom precedes immersive view")
@@ -43,7 +44,7 @@ func _run() -> void:
 		tracker.type = XRServer.TRACKER_CONTROLLER
 		tracker.name = "left_hand" if i == 0 else "right_hand"
 		tracker.hand = XRPositionalTracker.TRACKER_HAND_LEFT if i == 0 else XRPositionalTracker.TRACKER_HAND_RIGHT
-		tracker.set_pose("grip", Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 0.65, -0.5)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		tracker.set_pose("grip", Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 1.15, -0.5)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		XRServer.add_tracker(tracker)
 		trackers.append(tracker)
 		var hand := XRController3D.new()
@@ -68,6 +69,7 @@ func _run() -> void:
 	for i in range(10):
 		await get_tree().process_frame
 		_expect(not player.get_node("blockbench_export").visible, "invalid tracking never reveals own body")
+		_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible, "network pose limits never hide local hands")
 	_expect(player.replicated_vr_pose.is_empty(), "invalid pose reproduces old visibility fallback")
 	VR._head.position = head_position
 	await get_tree().process_frame
@@ -112,7 +114,7 @@ func _run() -> void:
 	player.set_physics_process(false)
 	var stamina: float = player.stamina
 	for i in range(27):
-		var at := Vector3(-0.3, 0.65, -0.5 - minf(i / 20.0, 1.0) * 0.45)
+		var at := Vector3(-0.3, 1.15, -0.5 - minf(i / 20.0, 1.0) * 0.45)
 		trackers[0].set_pose("grip", Transform3D(Basis.IDENTITY, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		await get_tree().process_frame
 		immersion.combat(player, 0.02)
@@ -153,6 +155,8 @@ func _run() -> void:
 	_expect(not immersion.swim_enabled and immersion.stroke_boost == 0.0, "upright rings stop swimming boost")
 	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
 	_expect(immersion.stroke_boost == 0.0, "attack posture cannot produce swim strokes")
+	await _test_continuous(player)
+	await _test_tracked_attacks(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -166,6 +170,8 @@ func _run() -> void:
 		XRServer.remove_tracker(tracker)
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_expect(player.vr_arms._hands[0].visible, "brief tracking loss keeps the last hand pose")
+	await get_tree().create_timer(0.5).timeout
 	_expect(player.replicated_vr_pose[3] == 0, "lost tracking clears hand mask")
 	_expect(immersion.hand_mode == Gestures.HandMode.NEUTRAL and not immersion.swim_enabled, "tracking loss cancels controller mode")
 	_expect(not player.get_node("blockbench_export").visible, "tracking loss keeps own body hidden")
@@ -199,7 +205,10 @@ func _test_gestures() -> void:
 	right.basis = Basis(Vector3.BACK, PI / 2.0)
 	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "rings facing each other selects swim")
 	var turn := Transform3D(Basis(Vector3.UP, 1.2), Vector3.ZERO)
-	_expect(Gestures.hand_mode(turn * left, turn * right) == Gestures.HandMode.SWIM, "turning does not change controller mode")
+	_expect(Gestures.hand_mode(turn * left, turn * right, Gestures.HandMode.NEUTRAL, turn.basis) == Gestures.HandMode.SWIM, "turning does not change controller mode")
+	left.origin.z = -0.8
+	right.origin.z = 0.4
+	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.SWIM, "alternating strokes do not change controller mode")
 	right.basis = Basis.IDENTITY
 	_expect(Gestures.hand_mode(left, right) == Gestures.HandMode.NEUTRAL, "mixed controller posture is neutral")
 	left.basis = Basis(Vector3.BACK, PI / 2.0)
@@ -214,6 +223,7 @@ func _test_gestures() -> void:
 	_expect(Gestures.wave_strength(long.get("distance", 0.0)) > Gestures.wave_strength(short.get("distance", 0.0)), "longer sweep travels farther")
 	_expect(_sweep(Vector3.RIGHT * 0.4, 0.0).get("kind") == "wall", "side sweep raises wall")
 	_expect(_sweep(Vector3.BACK * 0.4, -1.0).get("kind") == "stroke", "forward swimming pull")
+	_expect(_sweep(Vector3.BACK * 0.4, 0.0, true, Gestures.HandMode.SWIM).get("kind") == "stroke", "arm strokes work without holding the stick")
 	_expect(_sweep(Vector3.FORWARD * 0.4, 1.0).get("kind") == "stroke", "backstroke swimming push")
 	_expect(_sweep(Vector3.FORWARD * 0.03, 0.0).is_empty(), "jitter ignored")
 	_expect(_sweep(Vector3.FORWARD * 0.4, 0.0, false).is_empty(), "dry movement ignored")
@@ -223,10 +233,11 @@ func _test_gestures() -> void:
 	_expect(gestures.sample(0, Vector3.FORWARD, true, false, 0.0, 0.02).is_empty(), "tracking loss ignored")
 
 
-func _sweep(displacement: Vector3, movement: float, wet := true) -> Dictionary:
+func _sweep(displacement: Vector3, movement: float, wet := true, mode := -1) -> Dictionary:
 	var gestures := Gestures.new()
 	var result := {}
-	var mode := Gestures.HandMode.SWIM if movement != 0.0 else Gestures.HandMode.ATTACK
+	if mode == -1:
+		mode = Gestures.HandMode.SWIM if movement != 0.0 else Gestures.HandMode.ATTACK
 	for i in range(21):
 		var event := gestures.sample(0, displacement * i / 20.0, wet, true, movement, 0.02, Basis.IDENTITY, mode)
 		if not event.is_empty():
@@ -243,8 +254,81 @@ func _orient_hands(swimming: bool) -> void:
 		var rotation := Basis(Vector3.BACK, (-PI / 2.0 if i == 0 else PI / 2.0)) if swimming else Basis.IDENTITY
 		trackers[i].set_pose("grip", Transform3D(rotation, VR._hands[i].position), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 	await get_tree().process_frame
+	await get_tree().create_timer(0.18).timeout
+
+
+func _test_continuous(player) -> void:
+	var immersion = VR.immersion
+	await _orient_hands(true)
+	player.momentum = 0.0
+	player.stamina = 100.0
+	player.set_physics_process(true)
+	player.freeze = false
+	trackers[0].set_input("primary", Vector2(0, 1))
+	var start: Vector3 = player.position
+	var min_speed := INF
+	var boost_seen := false
+	var elapsed := 0.0
+	while elapsed < 3.0:
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+		for i in range(2):
+			var side := -1.0 if i == 0 else 1.0
+			var roll := side * (PI / 2.0 + 0.3 * sin(elapsed * 4.0))
+			var at := Vector3(side * 0.3, 1.15, -0.5 + 0.4 * sin(elapsed * 5.0 + i * PI))
+			trackers[i].set_pose("grip", Transform3D(Basis(Vector3.BACK, roll), at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		_expect(immersion.swim_enabled, "alternating strokes keep swimming enabled")
+		_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "hands stay visible during sustained swimming")
+		boost_seen = boost_seen or immersion.stroke_boost > 0.0
+		if elapsed > 1.0:
+			min_speed = minf(min_speed, Vector2(player.linear_velocity.x, player.linear_velocity.z).length())
+	_expect(boost_seen, "real controller strokes produce swimming boost")
+	_expect(min_speed > 0.2 and player.position.distance_to(start) > 1.0, "swimming moves continuously instead of in increments")
+	XRServer.remove_tracker(trackers[0])
+	await get_tree().create_timer(0.1).timeout
+	_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "one occluded controller does not hide both hands")
+	_expect(immersion.swim_enabled and player.momentum > 0.0, "brief controller occlusion does not stop swimming")
+	XRServer.add_tracker(trackers[0])
+	trackers[0].set_input("primary", Vector2.ZERO)
+	player.freeze = true
+	player.set_physics_process(false)
+	player.linear_velocity = Vector3.ZERO
+	player.position = start
+	player.reset_physics_interpolation()
+	await _orient_hands(false)
 	await get_tree().process_frame
-	VR.immersion.update_hand_mode()
+	_expect(player.vr_arms._hands[0].global_position.distance_to(VR._hands[0].global_position) < 0.01, "recovered controller resumes exact hand tracking")
+
+
+func _test_tracked_attacks(player) -> void:
+	var previous_fps := Engine.max_fps
+	Engine.max_fps = 30
+	player.set_physics_process(true)
+	for sweep in range(3):
+		var rotation := Basis(Vector3.RIGHT, deg_to_rad(50.0))
+		var start := Vector3(-0.3, 1.15, -0.35)
+		trackers[0].set_pose("grip", Transform3D(rotation, start), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		await get_tree().create_timer(0.2).timeout
+		player.stamina = 100.0
+		player._water_power_cooldown_timer = 0.0
+		VR.immersion.gestures.reset()
+		var elapsed := 0.0
+		while elapsed < 0.8:
+			await get_tree().process_frame
+			elapsed += get_process_delta_time()
+			var direction := Vector3.RIGHT if sweep == 2 else Vector3.FORWARD
+			var at := start + direction * 0.55 * minf(elapsed / 0.55, 1.0)
+			trackers[0].set_pose("grip", Transform3D(rotation, at), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+			_expect(player.vr_arms._hands[0].visible and player.vr_arms._hands[1].visible, "water moves keep both hands visible")
+		if sweep == 2:
+			_expect(player._water_wall_up, "tracked sideways sweep raises a wall")
+		else:
+			_expect(player._water_power_cooldown_timer > 0.0, "repeated tracked forward sweeps launch waves")
+	await _orient_hands(true)
+	_expect(not player._water_wall_up, "swimming cancels the tracked wall")
+	player.set_physics_process(false)
+	await _orient_hands(false)
+	Engine.max_fps = previous_fps
 
 
 func _capture(label: String) -> void:

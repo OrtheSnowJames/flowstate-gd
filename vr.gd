@@ -90,6 +90,8 @@ func start(preview := false) -> bool:
 	light.omni_range = 8
 	room_view.add_child(light)
 	var origin := XROrigin3D.new()
+	# tracking updates every rendered frame rather than on physics ticks
+	origin.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_origin = origin
 	origin.position = Vector3(0, 0, 1.8)
 	room_view.add_child(origin)
@@ -213,7 +215,7 @@ func _process(delta: float) -> void:
 		_action("water_power" if i == 1 else "water_wall", by and not menus and not immersive)
 		var click := tracked and hand.is_button_pressed("primary_click") and not menus and not escape_chord
 		if immersive and i == 0:
-			click = immersion.swim_enabled and immersion.can_gesture() and not escape_chord
+			click = false
 		_action("revive" if i == 1 else "swim_key", click)
 		_action("vr_dodge_right" if i == 1 else "vr_dodge_left", tracked and hand.get_float("grip") > 0.65 and not menus)
 		var trigger := tracked and hand.get_float("trigger") > 0.65 and not menus

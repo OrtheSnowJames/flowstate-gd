@@ -19,15 +19,19 @@ func reset() -> void:
 	_cooldown = [0.0, 0.0]
 
 
-static func hand_mode(left: Transform3D, right: Transform3D, previous := HandMode.NEUTRAL) -> HandMode:
+static func hand_mode(left: Transform3D, right: Transform3D, previous := HandMode.NEUTRAL, heading := Basis.IDENTITY) -> HandMode:
 	if not left.is_finite() or not right.is_finite():
 		return HandMode.NEUTRAL
-	var between := right.origin - left.origin
-	if between.length() < 0.1:
+	# measure wrist roll against the head so alternating strokes keep the same mode
+	var left_up := heading.inverse() * left.basis.y
+	var right_up := heading.inverse() * right.basis.y
+	left_up.z = 0.0
+	right_up.z = 0.0
+	if left_up.length() < 0.25 or right_up.length() < 0.25:
 		return HandMode.NEUTRAL
-	var left_up := left.basis.y.normalized()
-	var right_up := right.basis.y.normalized()
-	var inward := minf(left_up.dot(between.normalized()), right_up.dot(-between.normalized()))
+	left_up = left_up.normalized()
+	right_up = right_up.normalized()
+	var inward := minf(left_up.x, -right_up.x)
 	var upright := minf(left_up.dot(Vector3.UP), right_up.dot(Vector3.UP))
 	if inward >= (0.5 if previous == HandMode.SWIM else 0.65):
 		return HandMode.SWIM
@@ -57,7 +61,7 @@ func sample(hand: int, position: Vector3, touching_water: bool, tracked: bool, m
 		if mode == HandMode.ATTACK and absf(step.x) > absf(step.z) * 1.4 and absf(step.x) > absf(step.y):
 			kind = "wall"
 		elif absf(step.z) > absf(step.x) and absf(step.z) > absf(step.y) * 0.7:
-			if mode == HandMode.SWIM and ((movement < -0.2 and step.z > 0.0) or (movement > 0.2 and step.z < 0.0)):
+			if mode == HandMode.SWIM and ((movement <= 0.2 and step.z > 0.0) or (movement > 0.2 and step.z < 0.0)):
 				kind = "stroke"
 			elif mode == HandMode.ATTACK and step.z < 0.0:
 				kind = "wave"

@@ -23,6 +23,12 @@ var _eye: ColorRect
 var _eye_visible := true
 var _blur_visible := true
 var _fade_visible := true
+var _pending_mode := Gestures.HandMode.NEUTRAL
+var _mode_time := 0.0
+var _tracking_lost := 0.0
+var _tracking_time := 0.0
+var _hand_poses: Array = [null, null]
+var _hand_seen: Array[float] = [-100.0, -100.0]
 
 
 func setup(xr_origin: XROrigin3D, camera: Camera3D) -> void:
@@ -73,6 +79,7 @@ func setup(xr_origin: XROrigin3D, camera: Camera3D) -> void:
 
 
 func _process(delta: float) -> void:
+	_tracking_time += delta
 	var scene := get_tree().current_scene
 	var candidate: Node3D
 	for body in get_tree().get_nodes_in_group("player"):
@@ -85,6 +92,8 @@ func _process(delta: float) -> void:
 			_eye.visible = _eye_visible
 		_scene = scene
 		player = candidate
+		_hand_poses = [null, null]
+		_hand_seen = [-100.0, -100.0]
 		_eye = player._eyelid if player else null
 		if _eye:
 			_eye_visible = _eye.visible
@@ -125,7 +134,7 @@ func _process(delta: float) -> void:
 	if blocked and not _was_blocked:
 		cancel_gestures()
 	_was_blocked = blocked
-	update_hand_mode()
+	update_hand_mode(delta)
 
 
 func can_gesture() -> bool:
@@ -133,11 +142,30 @@ func can_gesture() -> bool:
 		and not Net.is_spectating() and not Net.input_blocked_by_menu() and not Net.arcade.controls(player) and player._ocean != null
 
 
-func update_hand_mode() -> void:
+func update_hand_mode(delta := 0.0) -> void:
+	if not can_gesture():
+		cancel_gestures()
+		return
+	var tracked := false
+	for hand in VR._hands:
+		tracked = tracked or hand.get_is_active()
+	_tracking_lost = 0.0 if tracked else _tracking_lost + delta
+	if _tracking_lost >= 0.4:
+		cancel_gestures()
+		return
 	var next := Gestures.HandMode.NEUTRAL
-	if can_gesture() and VR._hands.size() == 2 and VR._hands[0].get_is_active() and VR._hands[1].get_is_active():
-		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode)
-	if next != hand_mode:
+	if VR._hands.size() == 2 and VR._hands[0].get_is_active() and VR._hands[1].get_is_active():
+		next = Gestures.hand_mode(hand_transform(VR._hands[0]), hand_transform(VR._hands[1]), hand_mode, Basis(Vector3.UP, head.global_rotation.y))
+	# ambiguous wrists and brief occlusion do not cancel an ongoing stroke
+	if next == Gestures.HandMode.NEUTRAL:
+		_pending_mode = next
+		_mode_time = 0.0
+		return
+	if next != _pending_mode:
+		_pending_mode = next
+		_mode_time = 0.0
+	_mode_time += delta
+	if next != hand_mode and _mode_time >= 0.12:
 		cancel_gestures()
 		hand_mode = next
 		swim_enabled = next == Gestures.HandMode.SWIM
@@ -147,28 +175,35 @@ func hand_transform(hand: XRController3D) -> Transform3D:
 	return hand.global_transform
 
 
-func body_pose(body) -> Array:
+func body_pose(body, network := true) -> Array:
 	if body != player or Net.is_spectating():
 		return []
 	var inverse: Transform3D = body.global_transform.affine_inverse()
-	var result: Array = [inverse * head.global_transform, Transform3D.IDENTITY, Transform3D.IDENTITY, 0]
-	for i in range(VR._hands.size()):
-		if VR._hands[i].get_is_active():
-			result[i + 1] = inverse * hand_transform(VR._hands[i])
+	var head_pose := (inverse * head.global_transform).orthonormalized()
+	if not head_pose.is_finite():
+		return []
+	var result: Array = [head_pose, head_pose, head_pose, 0]
+	for i in range(mini(VR._hands.size(), 2)):
+		var hand: XRController3D = VR._hands[i]
+		if hand.get_is_active() and hand.transform.is_finite():
+			_hand_poses[i] = hand.transform.orthonormalized()
+			_hand_seen[i] = _tracking_time
+		if _hand_poses[i] != null and _tracking_time - _hand_seen[i] < 0.4:
+			var wrist: Transform3D = (inverse * origin.global_transform * _hand_poses[i]).orthonormalized()
+			if network and (wrist.origin.length() > 3.0 or wrist.origin.distance_to(head_pose.origin) > 1.8):
+				continue
+			result[i + 1] = wrist
 			result[3] |= 1 << i
-		else:
-			result[i + 1] = result[0]
-	return result if Arms.valid_pose(result) else []
+	return result if not network or Arms.valid_pose(result) else []
 
 
 func combat(body, delta: float) -> void:
 	if body != player or not can_gesture():
 		cancel_gestures()
 		return
-	update_hand_mode()
+	stroke_boost = maxf(0.0, stroke_boost - delta)
 	if hand_mode == Gestures.HandMode.NEUTRAL:
 		return
-	stroke_boost = maxf(0.0, stroke_boost - delta)
 	_wall_time = maxf(0.0, _wall_time - delta)
 	_wall_refresh = maxf(0.0, _wall_refresh - delta)
 	var movement := Input.get_axis("pad_move_up", "pad_move_down")
@@ -177,7 +212,8 @@ func combat(body, delta: float) -> void:
 	for i in range(VR._hands.size()):
 		var hand: XRController3D = VR._hands[i]
 		var at := hand_transform(hand).origin
-		var wet: bool = absf(at.y - body._water_height()) <= 0.45 and body._submersion() > 0.0
+		# gestures use the players water contact instead of a thin controller height band
+		var wet: bool = body._submersion() > 0.0 and at.y <= head.global_position.y + 0.15
 		var event := gestures.sample(i, hand.position, wet, hand.get_is_active(), movement, delta, heading, hand_mode)
 		if not event.is_empty():
 			event["at"] = at
@@ -227,6 +263,8 @@ func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
 
 func cancel_gestures() -> void:
 	gestures.reset()
+	_pending_mode = Gestures.HandMode.NEUTRAL
+	_mode_time = 0.0
 	hand_mode = Gestures.HandMode.NEUTRAL
 	swim_enabled = false
 	stroke_boost = 0.0
@@ -246,9 +284,16 @@ func restore_overlays() -> void:
 func swim(body, delta: float) -> void:
 	var input := Input.get_vector("pad_move_left", "pad_move_right", "pad_move_up", "pad_move_down")
 	body.can_move = true
-	body.dir = Basis(Vector3.UP, head.global_rotation.y) * Vector3(input.x, 0, input.y)
+	if input.is_zero_approx() and stroke_boost > 0.0 and swim_enabled:
+		input = Vector2.UP
 	var moving := input.length() > 0.1
-	var target: float = body.max_momentum * (1.0 if stroke_boost > 0.0 else 0.45) if moving else 0.0
-	body.momentum = move_toward(body.momentum, target, body.SWIM_GAIN * delta * 2.0)
-	body.movement_state = body.MovementState.SWIM if moving else body.MovementState.TREAD
+	if moving:
+		body.dir = Basis(Vector3.UP, head.global_rotation.y) * Vector3(input.x, 0, input.y)
+	var target: float = body.max_momentum * (1.0 if stroke_boost > 0.0 else 0.45) if moving and swim_enabled else 0.0
+	var gain: float = body.SWIM_GAIN * (2.0 if target > body.momentum else 0.5)
+	body.momentum = move_toward(body.momentum, target, gain * delta)
+	body.movement_state = body.MovementState.SWIM if moving and swim_enabled else body.MovementState.GLIDE
+	if body.momentum <= 0.0:
+		body.movement_state = body.MovementState.TREAD
+		body.dir = Vector3.ZERO
 	body._apply_swim_motion(body.dir, body.momentum / body.max_momentum)
