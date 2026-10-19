@@ -104,9 +104,16 @@ static func _update_camera_pitch(player) -> void:
 
 
 static func _mouse_aim_direction_3d(player, origin: Vector3) -> Vector3:
-	var mouse: Vector2 = player.Controller.aim_position(player)
-	var ray_origin = player._camera.project_ray_origin(mouse)
-	var ray_direction = player._camera.project_ray_normal(mouse)
+	var ray_origin: Vector3
+	var ray_direction: Vector3
+	if VR.immersive and player._is_local():
+		var camera: Camera3D = VR.view_camera(player._camera)
+		ray_origin = camera.global_position
+		ray_direction = -camera.global_basis.z
+	else:
+		var mouse: Vector2 = player.Controller.aim_position(player)
+		ray_origin = player._camera.project_ray_origin(mouse)
+		ray_direction = player._camera.project_ray_normal(mouse)
 	var end = ray_origin + ray_direction * 100.0
 	var query = PhysicsRayQueryParameters3D.create(ray_origin, end, 1, [player.get_rid()])
 	var hit = player.get_world_3d().direct_space_state.intersect_ray(query)

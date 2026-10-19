@@ -122,6 +122,8 @@ static func _water_power_strength(player) -> float:
 static func process_input(player, delta: float, submersion: float) -> void:
 	if VR.immersive and player._is_local():
 		VR.immersion.combat(player, delta)
+		if not Net.arcade.controls(player) and Input.is_action_just_pressed("water_pelt"):
+			player._try_water_pelt()
 		return
 	if Net.arcade.controls(player):
 		return

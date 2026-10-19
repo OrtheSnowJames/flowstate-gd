@@ -133,6 +133,7 @@ func _run() -> void:
 	var immersion = VR.immersion
 	await _test_gesture_controls(player)
 	await _test_swimming(player)
+	await _test_pelts(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -141,7 +142,7 @@ func _run() -> void:
 	await get_tree().process_frame
 	Input.flush_buffered_events()
 	_expect(is_zero_approx(float(VR._axes.get(3, 0.0))), "right stick pitch disabled")
-	_expect(not Input.is_action_pressed("water_power") and not Input.is_action_pressed("water_counter") and not Input.is_action_pressed("water_attack"), "vr attack buttons disabled")
+	_expect(not Input.is_action_pressed("water_power") and not Input.is_action_pressed("water_counter") and not Input.is_action_pressed("water_attack"), "other vr attack buttons stay disabled")
 	for tracker in trackers:
 		XRServer.remove_tracker(tracker)
 	await get_tree().process_frame
@@ -391,6 +392,65 @@ func _test_swimming(player) -> void:
 	immersion.cancel_gestures()
 	Engine.max_fps = previous_fps
 	await get_tree().process_frame
+
+
+func _trigger(hand: int, pressed: bool) -> void:
+	trackers[hand].set_input("trigger", 1.0 if pressed else 0.0)
+	await get_tree().create_timer(0.08).timeout
+
+
+func _test_pelts(player) -> void:
+	var previous_fps := Engine.max_fps
+	Engine.max_fps = 30
+	await _place_hands(false)
+	VR.immersion.cancel_gestures()
+	player.stamina = 100.0
+	player._water_pelt_cooldown_timer = 0.0
+	player.set_physics_process(true)
+	VR._head.rotation.x = 0.35
+	var sequence: int = player._pelt_sequence
+	await _trigger(0, true)
+	_expect(player._pelt_sequence == sequence + 1, "left vr trigger fires a normal pelt")
+	_expect(player.stamina < 100.0 and player._water_pelt_cooldown_timer > 0.0, "vr pelts use normal stamina and cooldown")
+	var beam = player._ocean._active_pelts.get("%s_%d" % [player.name, player._pelt_sequence])
+	_expect(is_instance_valid(beam), "vr trigger spawns the normal bubble beam")
+	if is_instance_valid(beam):
+		_expect(beam.direction.y > 0.1, "vr pelt follows the headset upward instead of the desktop camera")
+	await get_tree().create_timer(player.water_pelt_cooldown + 0.1).timeout
+	_expect(player._pelt_sequence == sequence + 1, "holding a trigger does not repeatedly fire")
+	await _trigger(1, true)
+	_expect(player._pelt_sequence == sequence + 2, "right trigger fires while the left trigger is held")
+	await _trigger(0, false)
+	await _trigger(0, true)
+	_expect(player._pelt_sequence == sequence + 2, "alternating triggers cannot bypass the shared cooldown")
+	await _trigger(0, false)
+	await _trigger(1, false)
+	var pelt_cost: float = player.water_pelt_stamina_cost
+	player.water_pelt_stamina_cost = 20.0
+	player.stamina = 10.0
+	player._water_pelt_cooldown_timer = 0.0
+	await _trigger(0, true)
+	_expect(player._pelt_sequence == sequence + 2, "insufficient stamina blocks vr pelts")
+	player.water_pelt_stamina_cost = pelt_cost
+	await _trigger(0, false)
+	player.stamina = 100.0
+	VR.immersion.apply_gesture(player, {"kind": "wall"}, player.global_position)
+	await _trigger(1, true)
+	_expect(player._water_wall_up and player._pelt_sequence == sequence + 2, "water walls block trigger pelts")
+	await _trigger(1, false)
+	VR.immersion.cancel_gestures()
+	player.movement_locked = true
+	await _trigger(0, true)
+	_expect(player._pelt_sequence == sequence + 2, "movement lock blocks trigger pelts")
+	player.movement_locked = false
+	await _trigger(0, false)
+	player._water_pelt_cooldown_timer = 0.0
+	await _trigger(1, true)
+	_expect(player._pelt_sequence == sequence + 3, "right trigger works independently after releasing both hands")
+	await _trigger(1, false)
+	VR._head.rotation.x = 0.0
+	player.set_physics_process(false)
+	Engine.max_fps = previous_fps
 
 
 func _capture(label: String) -> void:

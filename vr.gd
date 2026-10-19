@@ -15,6 +15,7 @@ var _hands: Array[XRController3D] = []
 var _buttons: Dictionary = {}
 var _axes: Dictionary = {}
 var _actions: Dictionary = {}
+var _pelt_triggers: Array[bool] = [false, false]
 var _escape_hold := 0.0
 var _escape_engaged := false
 var _escape_fired := false
@@ -180,6 +181,7 @@ func stop() -> void:
 	_escape_hold = 0.0
 	_escape_engaged = false
 	_escape_fired = false
+	_pelt_triggers = [false, false]
 	for action in _actions.keys():
 		_action(action, false)
 	for button in _buttons.keys():
@@ -201,6 +203,7 @@ func _process(delta: float) -> void:
 	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
 	var escape_chord := _update_escape_chord(left_click, right_click, delta)
 	var menus := not ControllerNavigation._controls().is_empty()
+	var pelt_pressed := false
 	for i in range(2):
 		var hand := _hands[i]
 		var tracked := hand.get_is_active()
@@ -218,10 +221,16 @@ func _process(delta: float) -> void:
 			click = false
 		_action("revive" if i == 1 else "swim_key", click)
 		_action("vr_dodge_right" if i == 1 else "vr_dodge_left", tracked and hand.get_float("grip") > 0.65 and not menus)
-		var trigger := tracked and hand.get_float("trigger") > 0.65 and not menus
+		var trigger := tracked and hand.get_float("trigger") > 0.65
 		var arcade := Net.game_mode == Net.GameMode.ARCADE
-		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade)
-		_action("water_pelt" if i == 1 else "water_counter", trigger and not arcade and not immersive)
+		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade and not menus)
+		pelt_pressed = pelt_pressed or (trigger and not _pelt_triggers[i] and not arcade and not menus)
+		_pelt_triggers[i] = trigger
+	# each trigger press works even while the other trigger is held
+	_action("water_pelt", false)
+	if pelt_pressed:
+		_action("water_pelt", true)
+	_action("water_counter", false)
 
 
 func _update_escape_chord(left: bool, right: bool, delta: float) -> bool:
