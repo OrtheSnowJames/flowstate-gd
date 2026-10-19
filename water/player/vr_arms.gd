@@ -1,13 +1,12 @@
 extends Node3D
 
 const EYE_HEIGHT := 1.05
-const ARM_DROP := EYE_HEIGHT * 0.5
 
 var pose: Array = []
 var _display: Array = []
-var _segments: Array[MeshInstance3D] = []
-var _hands: Array[MeshInstance3D] = []
+var _hands: Array[Node3D] = []
 var _rig: Node3D
+var _team := -1
 var _hidden := false
 var _original_arms: Array[Node3D] = []
 var _body_layers: Dictionary = {}
@@ -33,26 +32,9 @@ static func valid_pose(value: Array) -> bool:
 
 func _ready() -> void:
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	var material := StandardMaterial3D.new()
-	material.albedo_color = Color(0.78, 0.57, 0.43)
-	material.roughness = 0.85
-	for i in range(4):
-		var segment := MeshInstance3D.new()
-		var mesh := CylinderMesh.new()
-		mesh.top_radius = 0.055
-		mesh.bottom_radius = 0.075
-		mesh.height = 1.0
-		mesh.radial_segments = 8
-		segment.mesh = mesh
-		segment.material_override = material
-		add_child(segment)
-		_segments.append(segment)
 	for i in range(2):
-		var hand := MeshInstance3D.new()
-		var mesh := BoxMesh.new()
-		mesh.size = Vector3(0.13, 0.08, 0.18)
-		hand.mesh = mesh
-		hand.material_override = material
+		var hand := Node3D.new()
+		hand.name = "LeftHand" if i == 0 else "RightHand"
 		add_child(hand)
 		_hands.append(hand)
 	hide()
@@ -63,6 +45,37 @@ func _ready() -> void:
 func _exit_tree() -> void:
 	RenderingServer.frame_pre_draw.disconnect(_before_draw)
 	_restore_body_layers()
+
+
+func _rebuild_arms() -> void:
+	_original_arms.clear()
+	for i in range(2):
+		for child in _hands[i].get_children():
+			_hands[i].remove_child(child)
+			child.queue_free()
+		if not _rig:
+			continue
+		var source := _rig.find_child("larm" if i == 0 else "rarm", true, false) as Node3D
+		if not source:
+			continue
+		_original_arms.append(source)
+		var arm := source.duplicate(0) as Node3D
+		arm.name = "Arm"
+		_hands[i].add_child(arm)
+		arm.show()
+		var bounds := AABB()
+		var first := true
+		for mesh in get_parent()._mesh_instances_in(source):
+			var copy := arm.get_node(source.get_path_to(mesh)) as MeshInstance3D
+			copy.layers = _body_layers.get(mesh, mesh.layers)
+			copy.show()
+			var box: AABB = (source.global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
+			bounds = box if first else bounds.merge(box)
+			first = false
+		# anchor the end of the original arm at the controller grip
+		var tip := Vector3(bounds.get_center().x, bounds.position.y, bounds.get_center().z)
+		var basis := Basis(Vector3.RIGHT, PI / 2.0).scaled(_rig.scale)
+		arm.transform = Transform3D(basis, -(basis * tip))
 
 
 func _before_draw() -> void:
@@ -111,14 +124,10 @@ func _process(delta: float) -> void:
 		# local tracking is independent of network pose limits
 		shown = VR.immersion.body_pose(player, false) if VR.immersive else []
 	var rig: Node3D = player.get_node_or_null("blockbench_export")
-	if rig != _rig:
+	if rig != _rig or player.team != _team:
 		_rig = rig
-		_original_arms.clear()
-		if rig:
-			for arm_name in ["larm", "rarm"]:
-				var arm := rig.find_child(arm_name, true, false) as Node3D
-				if arm:
-					_original_arms.append(arm)
+		_team = player.team
+		_rebuild_arms()
 	var enabled := not shown.is_empty()
 	visible = enabled
 	if _rig:
@@ -139,26 +148,10 @@ func _process(delta: float) -> void:
 		for i in range(3):
 			_display[i] = _display[i].interpolate_with(pose[i], 1.0 - exp(-25.0 * delta))
 		_display[3] = pose[3]
-	var head: Transform3D = _display[0]
-	var yaw := Basis(Vector3.UP, head.basis.get_euler().y)
 	for i in range(2):
 		var tracked: bool = (_display[3] & (1 << i)) != 0
 		_hands[i].visible = tracked
-		_segments[i * 2].visible = tracked
-		_segments[i * 2 + 1].visible = tracked
 		if not tracked:
 			continue
-		var side := -1.0 if i == 0 else 1.0
 		var wrist: Transform3D = _display[i + 1]
-		var shoulder := head.origin + yaw * Vector3(side * 0.22, -ARM_DROP, 0.04)
-		var elbow := shoulder.lerp(wrist.origin, 0.5) + yaw * Vector3(side * 0.12, -0.18, 0.06)
-		_segment(_segments[i * 2], shoulder, elbow)
-		_segment(_segments[i * 2 + 1], elbow, wrist.origin)
 		_hands[i].transform = wrist
-
-
-func _segment(mesh: MeshInstance3D, start: Vector3, end: Vector3) -> void:
-	var direction := end - start
-	var length := maxf(direction.length(), 0.001)
-	mesh.transform = Transform3D(Basis(Quaternion(Vector3.UP, direction / length)), (start + end) * 0.5)
-	mesh.scale.y = length

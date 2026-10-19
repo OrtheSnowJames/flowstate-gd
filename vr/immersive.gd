@@ -3,6 +3,8 @@ extends Node
 const Gestures := preload("res://vr/gestures.gd")
 const Arms := preload("res://water/player/vr_arms.gd")
 const SWIM_MOMENTUM_GAIN := 2.0
+const SWIM_MOMENTUM_LOSS := 0.5
+const STROKE_RECOVERY_TIME := 1.3
 var gestures := Gestures.new()
 var origin: XROrigin3D
 var head: Camera3D
@@ -250,7 +252,8 @@ func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
 	match event.kind:
 		"stroke":
 			if body.stamina > 0.0:
-				stroke_boost = minf(stroke_boost + 0.65, 1.3)
+				# leave time to return the arm for the next stroke
+				stroke_boost = STROKE_RECOVERY_TIME
 		"wall":
 			if body.stamina > 0.0:
 				_wall_time = 0.65
@@ -296,7 +299,7 @@ func swim(body, delta: float) -> void:
 	if moving:
 		body.dir = Basis(Vector3.UP, head.global_rotation.y) * Vector3(input.x, 0, input.y)
 	var target: float = body.max_momentum * (1.0 if stroke_boost > 0.0 else 0.45) if moving and swim_enabled else 0.0
-	var gain: float = SWIM_MOMENTUM_GAIN if target > body.momentum else body.SWIM_GAIN * 0.5
+	var gain: float = SWIM_MOMENTUM_GAIN if target > body.momentum else SWIM_MOMENTUM_LOSS
 	body.momentum = move_toward(body.momentum, target, gain * delta)
 	body.movement_state = body.MovementState.SWIM if moving and swim_enabled else body.MovementState.GLIDE
 	if body.momentum <= 0.0:

@@ -79,7 +79,27 @@ func _run() -> void:
 	_expect(not player.get_node("blockbench_export").visible, "replacement body is hidden immediately")
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_check_model_arms(player)
+	VR._head.rotation.x = -0.6
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_capture("lifeguard-arms" if player.is_lifeguard else "normal-arms")
+	VR._head.rotation.x = 0.0
 	player.is_lifeguard = lifeguard
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check_model_arms(player)
+	VR._head.rotation.x = -0.6
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_capture("lifeguard-arms" if player.is_lifeguard else "normal-arms")
+	VR._head.rotation.x = 0.0
+	var team: int = player.team
+	player.team = 1 if team == 0 else 0
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check_model_arms(player)
+	player.team = team
 	await get_tree().process_frame
 	await get_tree().process_frame
 	var pose: Array = player.replicated_vr_pose.duplicate()
@@ -102,7 +122,8 @@ func _run() -> void:
 	for mesh in player._mesh_instances_in(player.get_node("blockbench_export")):
 		mesh.show()
 		_expect(mesh.layers == 0, "visible flags cannot reveal body meshes")
-	_expect(player.vr_arms._hands[0].layers != 0, "controller hands remain renderable")
+	for mesh in player._mesh_instances_in(player.vr_arms):
+		_expect(mesh.layers != 0, "controller arms remain renderable")
 	_capture("body-hidden")
 	VR._head.rotation.x = -0.6
 	await get_tree().process_frame
@@ -172,6 +193,7 @@ func _run() -> void:
 	immersion.apply_gesture(player, {"kind": "stroke"}, player.global_position)
 	_expect(immersion.stroke_boost == 0.0, "attack posture cannot produce swim strokes")
 	await _test_continuous(player)
+	await _test_stroke_recovery(player)
 	await _test_tracked_attacks(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
@@ -211,6 +233,23 @@ func _run() -> void:
 	VR.stop()
 	print("FAIL immersive vr" if failed else "PASS immersive vr")
 	get_tree().quit(1 if failed else 0)
+
+
+func _check_model_arms(player) -> void:
+	for i in range(2):
+		var source: Node3D = player.vr_arms._original_arms[i]
+		var arm: Node3D = player.vr_arms._hands[i].get_node("Arm")
+		var originals: Array = player._mesh_instances_in(source)
+		var copies: Array = player._mesh_instances_in(arm)
+		_expect(not copies.is_empty() and copies.size() == originals.size(), "vr uses every mesh from the current player arm")
+		for mesh in originals:
+			var copy: MeshInstance3D = arm.get_node(source.get_path_to(mesh))
+			_expect(copy.mesh == mesh.mesh, "vr uses the actual normal or lifeguard arm geometry")
+			_expect(copy.layers != 0 and copy.is_visible_in_tree(), "copied arm is visible while the body stays hidden")
+			for surface in range(mesh.mesh.get_surface_count()):
+				_expect(copy.get_active_material(surface) == mesh.get_active_material(surface), "vr arm keeps the model texture and team colors")
+		_expect(arm.scale.is_equal_approx(player.get_node("blockbench_export").scale), "vr arm keeps the player model scale")
+	_expect(not player.get_node("blockbench_export").visible, "model arm swap never reveals the body")
 
 
 func _test_gestures() -> void:
@@ -325,6 +364,55 @@ func _test_continuous(player) -> void:
 	await _orient_hands(false)
 	await get_tree().process_frame
 	_expect(player.vr_arms._hands[0].global_position.distance_to(VR._hands[0].global_position) < 0.01, "recovered controller resumes exact hand tracking")
+
+
+func _test_stroke_recovery(player) -> void:
+	var immersion = VR.immersion
+	var start: Vector3 = player.position
+	player.position = Vector3(20, 7.5, 0)
+	player.reset_physics_interpolation()
+	trackers[0].set_input("primary", Vector2.ZERO)
+	await _orient_hands(true)
+	player.momentum = 0.0
+	player.stamina = 100.0
+	player.set_physics_process(true)
+	player.freeze = false
+	var elapsed := 0.0
+	var least_momentum := INF
+	var least_speed := INF
+	var boost_expired := false
+	while elapsed < 6.0:
+		await get_tree().process_frame
+		elapsed += get_process_delta_time()
+		var phase := fmod(elapsed, 2.0)
+		var reach := minf(phase / 0.5, 1.0) if phase < 1.5 else 1.0 - (phase - 1.5) / 0.5
+		var positions := [Vector3(-0.3, 1.15, -0.75 + 0.4 * reach), Vector3(0.3, 1.15, -0.5)]
+		for i in range(2):
+			var aim: Vector3 = (positions[1 - i] - positions[i]).normalized()
+			trackers[i].set_pose("grip", Transform3D(Basis(Quaternion(Vector3.UP, aim)), positions[i]), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		_expect(immersion.swim_enabled, "slow strokes retain the facing controller requirement")
+		if elapsed > 1.0:
+			least_momentum = minf(least_momentum, player.momentum)
+			least_speed = minf(least_speed, Vector2(player.linear_velocity.x, player.linear_velocity.z).length())
+			boost_expired = boost_expired or immersion.stroke_boost <= 0.0
+	_expect(boost_expired, "stroke recovery test includes gaps with no active boost")
+	_expect(least_momentum > 0.2 and least_speed > 0.2, "arms only swimming keeps moving between slow strokes")
+	_expect(player.position.distance_to(Vector3(20, 7.5, 0)) > 2.0, "arms only swimming covers distance without the stick")
+	player.freeze = true
+	player.set_physics_process(false)
+	player.linear_velocity = Vector3.ZERO
+	await _orient_hands(false)
+	var momentum: float = player.momentum
+	for i in range(60):
+		immersion.swim(player, 1.0 / 60.0)
+	_expect(is_equal_approx(player.momentum, maxf(momentum - 0.5, 0.0)), "coasting loses half a momentum per second without accelerating")
+	for i in range(1200):
+		immersion.swim(player, 1.0 / 60.0)
+	_expect(is_zero_approx(player.momentum), "coasting eventually stops without further strokes")
+	player.position = start
+	player.reset_physics_interpolation()
+	await get_tree().process_frame
+	await _orient_hands(false)
 
 
 func _test_tracked_attacks(player) -> void:

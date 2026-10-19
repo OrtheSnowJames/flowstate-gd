@@ -86,6 +86,12 @@ func verify(client_id: int, offset: float, stage: String) -> void:
 	_expect(not host.vr_arms._original_arms.is_empty(), "original arm meshes found")
 	for arm in host.vr_arms._original_arms:
 		_expect(not arm.visible, "original arms replaced")
+	for i in range(2):
+		var original: Node3D = host.vr_arms._original_arms[i]
+		var copy: Node3D = host.vr_arms._hands[i].get_node("Arm")
+		for mesh in host._mesh_instances_in(original):
+			var tracked_mesh: MeshInstance3D = copy.get_node(original.get_path_to(mesh))
+			_expect(tracked_mesh.mesh == mesh.mesh and tracked_mesh.is_visible_in_tree(), "remote tracked arms use the player model")
 	_expect(host.vr_arms._hands[0].position.distance_to(_pose(offset)[1].origin) < 0.02, "rendered hands converge on transmitted position")
 	_expect(Net.arcade._body(client_id).replicated_vr_pose == _pose(0.2), stage + " client poses replicate")
 	rpc_id(1, "checked", stage)
