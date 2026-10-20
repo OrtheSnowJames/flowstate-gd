@@ -92,9 +92,39 @@ func verify(client_id: int, offset: float, stage: String) -> void:
 		for mesh in host._mesh_instances_in(original):
 			var tracked_mesh: MeshInstance3D = copy.get_node(original.get_path_to(mesh))
 			_expect(tracked_mesh.mesh == mesh.mesh and tracked_mesh.is_visible_in_tree(), "remote tracked arms use the player model")
-	_expect(host.vr_arms._hands[0].position.distance_to(_pose(offset)[1].origin) < 0.02, "rendered hands converge on transmitted position")
+	for i in range(2):
+		var transmitted: Transform3D = _pose(offset)[i + 1]
+		var displayed: Transform3D = host.vr_arms._hands[i].transform
+		_expect(displayed.origin.distance_to(transmitted.origin + Vector3(0, 0.1, -0.6)) < 0.02, "remote arms sit forward and above the tracked pose")
+		_expect(displayed.basis.is_equal_approx(transmitted.basis), "remote offset preserves hand orientation")
+	_verify_lowered_arms(host)
 	_expect(Net.arcade._body(client_id).replicated_vr_pose == _pose(0.2), stage + " client poses replicate")
 	rpc_id(1, "checked", stage)
+
+
+func _verify_lowered_arms(body) -> void:
+	var arms = body.vr_arms
+	var saved_pose: Array = arms.pose
+	var saved_display: Array = arms._display
+	var saved_transform: Transform3D = body.transform
+	for yaw in [0.0, PI / 2.0, PI, -PI / 2.0]:
+		body.rotation = Vector3(0, yaw, 0)
+		for wrist_angle in [-PI / 2.0, 0.0, PI / 2.0]:
+			arms.pose = [Transform3D(Basis.IDENTITY, Vector3(0, 0.55, 0)),
+				Transform3D(Basis(Vector3.RIGHT, wrist_angle), Vector3(-0.3, -0.2, 0)),
+				Transform3D(Basis(Vector3.RIGHT, wrist_angle), Vector3(0.3, -0.2, 0)), 3]
+			arms._display = []
+			arms._process(0.0)
+			for i in range(2):
+				var tracked: Vector3 = body.global_transform * arms.pose[i + 1].origin
+				var shift: Vector3 = arms._hands[i].global_position - tracked
+				var forward: Vector3 = -body.global_basis.z.normalized()
+				_expect(shift.distance_to(forward * 0.6 + Vector3.UP * 0.1) < 0.001,
+					"lowered arms shift along player facing regardless of wrist angle")
+	body.transform = saved_transform
+	arms.pose = saved_pose
+	arms._display = saved_display
+	arms._process(0.0)
 
 
 @rpc("authority", "reliable")

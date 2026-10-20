@@ -1,6 +1,7 @@
 extends Node3D
 
 const EYE_HEIGHT := 1.05
+const REMOTE_ARM_OFFSET := Vector3(0, 0.1, -0.6)
 
 var pose: Array = []
 var _display: Array = []
@@ -155,4 +156,7 @@ func _process(delta: float) -> void:
 		if not tracked:
 			continue
 		var wrist: Transform3D = _display[i + 1]
+		if not local:
+			# body local forward keeps lowered arms in front of the player
+			wrist.origin += REMOTE_ARM_OFFSET
 		_hands[i].transform = wrist
