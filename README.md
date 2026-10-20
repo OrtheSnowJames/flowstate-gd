@@ -54,6 +54,20 @@ Press the key with the number to fire it.
 4. Water Counter - Water Walls and Water Powers, but takes 50 stamina.
 5. Water Pelt - Shoots some bubbles of water that do little damage unless the opponent is on a cube.
 
+## Arcade Mode
+
+Arcade mode is a more arcadey mode. The controls are weirder and the physics isn't realistic.
+You have 200 max stamina, and the mechanic is jumping.
+
+The main controls are Q and E.
+
+Jump up and dash at your opponent with Q.
+
+If you dash at each other, you get into a fist fight where you both have to press Q and E.
+
+If you fail to press them repeatedly in the same order fast enough, you fall and are vulnerable.
+Otherwise, you can either mantle up to gain more height or dash back to where you were (Q to dash back.)
+
 ## Death and Spectating
 
 When your stamina reaches zero, you unfortunately drown/faint. Don't worry!
@@ -81,6 +95,8 @@ Normal Controls (sorta):
 - Jump Cancelling got removed also for balancing purposes. Now you can swim really fast in VR.
 
 What I think is really cool is people can see your hand positions. Yeah.
+
+In arcade mode, Left and Right trigger replace Q and E.
 
 ## Matchmaking
 
