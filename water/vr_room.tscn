@@ -53,6 +53,9 @@ size = Vector3(0.1, 0.1, 0.1)
 
 [node name="VrRoom" type="Node3D" unique_id=1136494264]
 
+[node name="SeatEye" type="Marker3D" parent="."]
+position = Vector3(0, 0.53333336, 0.6)
+
 [node name="MeshInstance3D" type="MeshInstance3D" parent="." unique_id=1642508563]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, 0, 0, 0)
 material_override = SubResource("StandardMaterial3D_m6sa2")

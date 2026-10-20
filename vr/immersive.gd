@@ -2,11 +2,14 @@ extends Node
 
 const Gestures := preload("res://vr/gestures.gd")
 const Arms := preload("res://water/player/vr_arms.gd")
+const HandPush := preload("res://vr/hand_push.gd")
+const HAND_TIP_OFFSET := Vector3(0, 0, -0.045)
 const SWIM_MOMENTUM_GAIN := 2.0
 const SWIM_MOMENTUM_LOSS := 0.5
 # one stroke per second with a little room for timing error
 const STROKE_RECOVERY_TIME := 1.3
 var gestures := Gestures.new()
+var hand_push := HandPush.new()
 var origin: XROrigin3D
 var head: Camera3D
 var panel: MeshInstance3D
@@ -15,13 +18,14 @@ var fade: MeshInstance3D
 var player: Node3D
 var swim_enabled: bool:
 	get:
-		return stroke_boost > 0.0
+		return stroke_boost > 0.0 and not VR.wall_triggers_held()
 var stroke_boost := 0.0
 var _scene: Node
 var _yaw := 0.0
 var _center := Vector3.ZERO
 var _wall_time := 0.0
 var _wall_refresh := 0.0
+var _wall_armed := false
 var _was_blocked := true
 var _last_position := Vector3.ZERO
 var _eye: ColorRect
@@ -57,7 +61,8 @@ func setup(xr_origin: XROrigin3D, camera: Camera3D) -> void:
 	blur.mesh = QuadMesh.new()
 	blur.mesh.size = Vector2(100, 100)
 	var blur_material := ShaderMaterial.new()
-	blur_material.shader = preload("res://vr/menu_blur.gdshader")
+	# quest multiview cannot reliably copy the screen for the blur shader
+	blur_material.shader = preload("res://vr/menu_dim.gdshader") if VR.quest_standalone else preload("res://vr/menu_blur.gdshader")
 	blur_material.render_priority = 90
 	blur.material_override = blur_material
 	blur.position.z = -2.1
@@ -80,6 +85,11 @@ func setup(xr_origin: XROrigin3D, camera: Camera3D) -> void:
 	_fade_visible = Transition._fade_rect.visible
 	Transition._blur_rect.hide()
 	Transition._fade_rect.hide()
+
+func clear_immersive() -> void:
+	Transition._blur_rect.visible = _blur_visible
+	Transition._fade_rect.visible = _fade_visible
+
 
 
 func _process(delta: float) -> void:
@@ -140,7 +150,7 @@ func _process(delta: float) -> void:
 
 
 func can_gesture() -> bool:
-	return is_instance_valid(player) and not player._unconscious and not player.movement_locked \
+	return not VR.exiting and is_instance_valid(player) and not player._unconscious and not player.movement_locked \
 		and not Net.is_spectating() and not Net.input_blocked_by_menu() and not Net.arcade.controls(player) and player._ocean != null
 
 
@@ -158,6 +168,15 @@ func _update_tracking(delta: float) -> void:
 
 func hand_transform(hand: XRController3D) -> Transform3D:
 	return hand.global_transform
+
+
+func hand_tip_transform(hand: XRController3D) -> Transform3D:
+	var tracker := XRServer.get_tracker(hand.tracker) as XRPositionalTracker
+	var aim := tracker.get_pose("aim") if tracker else null
+	var pose := hand.global_transform
+	if aim and aim.has_tracking_data:
+		pose = origin.global_transform * aim.get_adjusted_transform()
+	return pose.translated_local(HAND_TIP_OFFSET)
 
 
 func hand_touching_water(hand: int, at: Vector3) -> bool:
@@ -178,7 +197,7 @@ func body_pose(body, network := true) -> Array:
 	for i in range(mini(VR._hands.size(), 2)):
 		var hand: XRController3D = VR._hands[i]
 		if hand.get_is_active() and hand.transform.is_finite():
-			_hand_poses[i] = hand.transform.orthonormalized()
+			_hand_poses[i] = (origin.global_transform.affine_inverse() * hand_tip_transform(hand)).orthonormalized()
 			_hand_seen[i] = _tracking_time
 		if _hand_poses[i] != null and _tracking_time - _hand_seen[i] < 0.4:
 			var wrist: Transform3D = (inverse * origin.global_transform * _hand_poses[i]).orthonormalized()
@@ -193,21 +212,34 @@ func combat(body, delta: float) -> void:
 	if body != player or not can_gesture():
 		cancel_gestures()
 		return
+	var wall_armed: bool = VR.wall_triggers_held()
+	if wall_armed != _wall_armed:
+		gestures.reset()
+		_wall_armed = wall_armed
+	if wall_armed:
+		stroke_boost = 0.0
+	else:
+		_wall_time = 0.0
+		_wall_refresh = 0.0
 	stroke_boost = maxf(0.0, stroke_boost - delta)
 	_wall_time = maxf(0.0, _wall_time - delta)
 	_wall_refresh = maxf(0.0, _wall_refresh - delta)
 	var heading := Basis(Vector3.UP, head.rotation.y)
 	var events: Array[Dictionary] = []
+	var cube := get_tree().current_scene.get_node_or_null("PushCube")
 	for i in range(VR._hands.size()):
 		var hand: XRController3D = VR._hands[i]
 		var at := hand_transform(hand).origin
+		var tip := hand_tip_transform(hand).origin
+		var tracked := hand.get_is_active() and tip.distance_to(body.global_position) <= 3.0
+		var pushing := hand_push.sample(cube, i, tip, tracked)
 		var wet := hand_touching_water(i, at)
-		var event := gestures.sample(i, hand.position, wet, hand.get_is_active(), delta, heading)
+		var event := gestures.sample(i, hand.position, wet, hand.get_is_active() and not pushing, delta, heading)
 		if not event.is_empty():
 			event["at"] = at
 			events.append(event)
-	# wet strokes win when the hands finish different gestures together
-	for kind in ["stroke", "wall", "wave"]:
+	# only collect wall motions while both triggers are held
+	for kind in (["wall"] if wall_armed else ["stroke", "wave"]):
 		var found := false
 		for event in events:
 			if event.kind == kind:
@@ -232,18 +264,18 @@ func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
 		return
 	match event.kind:
 		"stroke":
-			if body.stamina > 0.0:
+			if body.stamina > 0.0 and not VR.wall_triggers_held():
 				_wall_time = 0.0
 				_wall_refresh = 0.0
 				if body._water_wall_up:
 					body._cast_water_wall_stop()
 				stroke_boost = STROKE_RECOVERY_TIME
 		"wall":
-			if body.stamina > 0.0:
+			if body.stamina > 0.0 and VR.wall_triggers_held():
 				stroke_boost = 0.0
 				_wall_time = 0.65
 		"wave":
-			if _wall_time > 0.0 or body._water_wall_up or body._water_power_cooldown_timer > 0.0 \
+			if VR.wall_triggers_held() or _wall_time > 0.0 or body._water_wall_up or body._water_power_cooldown_timer > 0.0 \
 					or body.stamina < body.water_power_stamina_cost:
 				return
 			var aim: Vector3 = Basis(Vector3.UP, head.global_rotation.y) * event.direction
@@ -256,6 +288,8 @@ func apply_gesture(body, event: Dictionary, at: Vector3) -> void:
 
 func cancel_gestures() -> void:
 	gestures.reset()
+	_wall_armed = false
+	hand_push.reset()
 	_hand_wet = [false, false]
 	stroke_boost = 0.0
 	_wall_time = 0.0
@@ -271,7 +305,23 @@ func restore_overlays() -> void:
 		_eye.visible = _eye_visible
 
 
+func teardown() -> void:
+	set_process(false)
+	cancel_gestures()
+	restore_overlays()
+	panel.queue_free()
+	blur.queue_free()
+	fade.queue_free()
+
+
 func swim(body, delta: float) -> void:
+	if VR.wall_triggers_held():
+		stroke_boost = 0.0
+		body.can_move = false
+		body.momentum = 0.0
+		body.dir = Vector3.ZERO
+		body.movement_state = body.MovementState.TREAD
+		return
 	var input := Input.get_vector("pad_move_left", "pad_move_right", "pad_move_up", "pad_move_down")
 	body.can_move = true
 	if input.is_zero_approx() and swim_enabled:

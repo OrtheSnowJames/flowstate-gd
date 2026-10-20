@@ -59,6 +59,10 @@ func _activate() -> void:
 		return
 	if get_viewport().gui_get_focus_owner() not in controls:
 		controls[0].grab_focus()
+	var focused := get_viewport().gui_get_focus_owner()
+	if focused is LineEdit:
+		focused.edit()
+		return
 	# use native activation so toggles and option menus work too
 	for pressed in [true, false]:
 		var action := InputEventAction.new()

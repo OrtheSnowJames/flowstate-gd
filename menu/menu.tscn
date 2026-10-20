@@ -21,6 +21,7 @@ take_over_camera = false
 
 [node name="Camera3D" type="Camera3D" parent="." unique_id=1585582499]
 transform = Transform3D(0.3092244, 0.07972919, -0.9476411, -0.024732945, 0.9968166, 0.07579595, 0.95066744, 0, 0.31021193, -67.14825, 23.90173, 13.267788)
+current = true
 
 [node name="UI" type="CanvasLayer" parent="." unique_id=425421991]
 

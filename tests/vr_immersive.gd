@@ -60,10 +60,11 @@ func _run() -> void:
 	_expect(player.vr_arms.visible and player.vr_arms._hands[0].visible, "tracked arms visible")
 	_expect(player.replicated_vr_pose.size() == 4 and player.replicated_vr_pose[3] == 3, "both tracked hands published")
 	var wrist: Transform3D = player.replicated_vr_pose[1]
-	_expect((player.global_transform * wrist).is_equal_approx(VR._hands[0].global_transform), "hands match controller grip without an offset")
+	var hand_offset := Vector3(0, 0, -0.045)
+	_expect((player.global_transform * wrist).is_equal_approx(VR._hands[0].global_transform.translated_local(hand_offset)), "fallback hands sit slightly ahead of controller grip")
 	for i in range(2):
-		_expect(player.vr_arms._hands[i].global_transform.is_equal_approx(VR._hands[i].global_transform), "visible hand matches controller grip")
-	_expect((player.global_transform * wrist).origin.is_equal_approx(VR.immersion.hand_transform(VR._hands[0]).origin), "rendered and gesture hands agree")
+		_expect(player.vr_arms._hands[i].global_transform.is_equal_approx(VR._hands[i].global_transform.translated_local(hand_offset)), "visible hand uses grip offset")
+	_expect(VR.immersion.hand_transform(VR._hands[0]).is_equal_approx(VR._hands[0].global_transform), "fallback gestures retain grip tracking")
 	var head_position: Vector3 = VR._head.position
 	VR._head.position.x += 4.0
 	for i in range(10):
@@ -102,6 +103,21 @@ func _run() -> void:
 	player.team = team
 	await get_tree().process_frame
 	await get_tree().process_frame
+	var aim: Transform3D = trackers[0].get_pose("grip").transform
+	aim.origin += Vector3(0, 0.03, -0.12)
+	aim.basis = Basis(Vector3.RIGHT, -0.2)
+	trackers[0].set_pose("aim", aim, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	_check_model_arms(player)
+	var tip_pose: Transform3D = VR._origin.global_transform * trackers[0].get_pose("aim").get_adjusted_transform()
+	tip_pose = tip_pose.translated_local(hand_offset)
+	_expect(player.vr_arms._hands[0].global_transform.is_equal_approx(tip_pose), "arm follows controller aim pose")
+	_expect((player.global_transform * player.replicated_vr_pose[1]).is_equal_approx(tip_pose), "controller tip pose is replicated")
+	_expect(VR.immersion.hand_transform(VR._hands[0]).is_equal_approx(VR._hands[0].global_transform), "gestures retain grip tracking")
+	trackers[0].invalidate_pose("aim")
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var pose: Array = player.replicated_vr_pose.duplicate()
 	_expect(Arms.valid_pose(pose), "pose validates")
 	pose[1].origin.x = 100.0
@@ -134,6 +150,7 @@ func _run() -> void:
 	await _test_gesture_controls(player)
 	await _test_swimming(player)
 	await _test_pelts(player)
+	await _test_cube_hands(player)
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -157,13 +174,15 @@ func _run() -> void:
 	_expect(player.replicated_vr_pose.is_empty(), "spectators stop publishing their arms")
 	_expect(VR._head.global_position.distance_to(Net._spectator_camera.global_position) < 2.0, "spectator view follows spectator camera")
 	Net.exit_spectator_mode()
-	VR.stop()
+	await VR.exit_immersive()
 	await get_tree().process_frame
 	await get_tree().process_frame
+	_expect(VR.active and not VR.immersive and VR._room.is_inside_tree(), "leaving immersive keeps xr active in the room")
 	_expect(not get_tree().root.disable_3d and not get_tree().root.transparent_bg, "desktop render restored")
 	_expect(Transition._fade_rect.visible and Transition._blur_rect.visible, "desktop overlays restored")
 	_expect(player.get_node("blockbench_export").visible and not player.vr_arms.visible, "body restored on vr exit")
 	_expect(probe.layers == 5, "body render layers restored on vr exit")
+	VR.stop()
 	VR.start(true)
 	await VR.enter_immersive()
 	Net._leave_current_game_to_menu(true)
@@ -187,7 +206,9 @@ func _check_model_arms(player) -> void:
 			var box: AABB = (arm.global_transform.affine_inverse() * mesh.global_transform) * mesh.get_aabb()
 			bounds = box if first else bounds.merge(box)
 			first = false
-		_expect((arm.global_transform * bounds.get_center()).distance_to(VR._hands[i].global_position) < 0.001, "controller sits at the middle of the model arm")
+		var tip := bounds.get_center()
+		tip.y = bounds.end.y
+		_expect((arm.global_transform * tip).distance_to(VR.immersion.hand_tip_transform(VR._hands[i]).origin) < 0.001, "arm tip matches controller tip")
 		_expect(arm.basis.y.normalized().dot(Vector3.FORWARD) > 0.999, "model arm orientation is reversed from the old backwards mount")
 		for mesh in originals:
 			var copy: MeshInstance3D = arm.get_node(source.get_path_to(mesh))
@@ -320,10 +341,25 @@ func _test_gesture_controls(player) -> void:
 	_expect(player.dir.dot(VR._head.global_basis.z) > 0.0, "the stick can steer a swim stroke backwards")
 	Input.action_release("pad_move_down")
 	await _tracked_sweep(player, Vector3.RIGHT, false, Basis(Vector3.BACK, -PI / 2.0))
-	_expect(player._water_wall_up and not immersion.swim_enabled, "the same stroke above water raises a wall and stops rowing")
+	_expect(not player._water_wall_up, "dry sideways motion without triggers never raises a wall")
+	await _trigger(0, true)
+	await _tracked_sweep(player, Vector3.LEFT, false)
+	_expect(not player._water_wall_up, "one trigger cannot arm a wall")
+	await _trigger(1, true)
+	immersion.combat(player, 1.0 / 60.0)
+	_expect(not player._water_wall_up and not immersion.swim_enabled, "both triggers stop rowing but require a fresh wall motion")
+	await _tracked_sweep(player, Vector3.RIGHT, false)
+	_expect(player._water_wall_up and not immersion.swim_enabled, "both triggers and a dry sideways motion raise a wall")
 	var stamina: float = player.stamina
 	immersion.apply_gesture(player, {"kind": "wave", "direction": Vector3.FORWARD, "distance": 0.5}, player.global_position)
 	_expect(player.stamina == stamina, "a wall still blocks other attacks")
+	await _tracked_sweep(player, Vector3.LEFT, true)
+	immersion.swim(player, 0.02)
+	_expect(not immersion.swim_enabled and not player.can_move and player.dir.is_zero_approx(), "both triggers block wet strokes and swimming thrust")
+	await _trigger(0, false)
+	immersion.combat(player, 1.0 / 60.0)
+	_expect(not player._water_wall_up and not immersion.swim_enabled, "releasing either trigger drops the wall without resuming an old swim stroke")
+	await _trigger(1, false)
 	await _tracked_sweep(player, Vector3.LEFT, true)
 	_expect(immersion.swim_enabled and not player._water_wall_up, "a water stroke switches from wall back to swimming")
 	await _tracked_sweep(player, Vector3.FORWARD, true, Basis(Vector3.RIGHT, 0.8))
@@ -396,7 +432,7 @@ func _test_swimming(player) -> void:
 
 func _trigger(hand: int, pressed: bool) -> void:
 	trackers[hand].set_input("trigger", 1.0 if pressed else 0.0)
-	await get_tree().create_timer(0.08).timeout
+	await get_tree().create_timer(0.2 if pressed else 0.04).timeout
 
 
 func _test_pelts(player) -> void:
@@ -408,6 +444,13 @@ func _test_pelts(player) -> void:
 	player._water_pelt_cooldown_timer = 0.0
 	player.set_physics_process(true)
 	VR._head.rotation.x = 0.35
+	var left_aim: Transform3D = trackers[0].get_pose("grip").transform
+	left_aim.basis = Basis(Vector3.UP, 0.4) * Basis(Vector3.RIGHT, 0.2)
+	left_aim.origin.z -= 0.12
+	trackers[0].set_pose("aim", left_aim, Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+	_set_hand(1, VR._hands[1].position, Basis(Vector3.UP, -0.4))
+	await get_tree().process_frame
+	await get_tree().process_frame
 	var sequence: int = player._pelt_sequence
 	await _trigger(0, true)
 	_expect(player._pelt_sequence == sequence + 1, "left vr trigger fires a normal pelt")
@@ -415,12 +458,21 @@ func _test_pelts(player) -> void:
 	var beam = player._ocean._active_pelts.get("%s_%d" % [player.name, player._pelt_sequence])
 	_expect(is_instance_valid(beam), "vr trigger spawns the normal bubble beam")
 	if is_instance_valid(beam):
-		_expect(beam.direction.y > 0.1, "vr pelt follows the headset upward instead of the desktop camera")
+		var pose: Transform3D = VR.immersion.hand_tip_transform(VR._hands[0])
+		_expect(beam.origin.distance_to(pose.origin) < 0.001, "left trigger pelt starts at the left hand tip")
+		_expect(beam.direction.is_equal_approx(-pose.basis.z.normalized()), "left trigger pelt follows controller aim instead of the headset")
 	await get_tree().create_timer(player.water_pelt_cooldown + 0.1).timeout
 	_expect(player._pelt_sequence == sequence + 1, "holding a trigger does not repeatedly fire")
-	await _trigger(1, true)
-	_expect(player._pelt_sequence == sequence + 2, "right trigger fires while the left trigger is held")
 	await _trigger(0, false)
+	await _trigger(1, true)
+	_expect(player._pelt_sequence == sequence + 2, "right trigger fires its own pelt")
+	beam = player._ocean._active_pelts.get("%s_%d" % [player.name, player._pelt_sequence])
+	_expect(is_instance_valid(beam), "right trigger spawns a beam")
+	if is_instance_valid(beam):
+		var pose: Transform3D = VR.immersion.hand_tip_transform(VR._hands[1])
+		_expect(beam.origin.distance_to(pose.origin) < 0.001, "right trigger pelt starts at the right hand tip")
+		_expect(beam.direction.is_equal_approx(-pose.basis.z.normalized()), "right trigger pelt follows grip when aim tracking is unavailable")
+	await _trigger(1, false)
 	await _trigger(0, true)
 	_expect(player._pelt_sequence == sequence + 2, "alternating triggers cannot bypass the shared cooldown")
 	await _trigger(0, false)
@@ -434,11 +486,26 @@ func _test_pelts(player) -> void:
 	player.water_pelt_stamina_cost = pelt_cost
 	await _trigger(0, false)
 	player.stamina = 100.0
+	trackers[0].set_input("trigger", 1.0)
+	trackers[1].set_input("trigger", 1.0)
+	await get_tree().create_timer(0.25).timeout
+	_expect(player._pelt_sequence == sequence + 2 and not player._water_wall_up, "both triggers alone arm the wall without firing a pelt")
+	_expect(not player._try_water_pelt(0), "an armed wall also blocks queued pelt attempts")
 	VR.immersion.apply_gesture(player, {"kind": "wall"}, player.global_position)
-	await _trigger(1, true)
+	await get_tree().create_timer(0.1).timeout
 	_expect(player._water_wall_up and player._pelt_sequence == sequence + 2, "water walls block trigger pelts")
 	await _trigger(1, false)
+	await _trigger(0, false)
 	VR.immersion.cancel_gestures()
+	trackers[0].set_input("trigger", 1.0)
+	await get_tree().create_timer(0.04).timeout
+	trackers[1].set_input("trigger", 1.0)
+	await get_tree().create_timer(0.25).timeout
+	_expect(player._pelt_sequence == sequence + 2, "slightly staggered trigger presses cancel the pending pelt")
+	await _trigger(0, false)
+	await _trigger(1, false)
+	await get_tree().create_timer(0.2).timeout
+	_expect(player._pelt_sequence == sequence + 2, "releasing the wall chord does not fire a delayed pelt")
 	player.movement_locked = true
 	await _trigger(0, true)
 	_expect(player._pelt_sequence == sequence + 2, "movement lock blocks trigger pelts")
@@ -449,8 +516,37 @@ func _test_pelts(player) -> void:
 	_expect(player._pelt_sequence == sequence + 3, "right trigger works independently after releasing both hands")
 	await _trigger(1, false)
 	VR._head.rotation.x = 0.0
+	trackers[0].invalidate_pose("aim")
 	player.set_physics_process(false)
 	Engine.max_fps = previous_fps
+
+
+func _test_cube_hands(player) -> void:
+	var cube := get_tree().current_scene.get_node("PushCube") as RigidBody3D
+	cube.get_node("Buoyancy").set_physics_process(false)
+	cube.get_node("KingOfCube").set_physics_process(false)
+	cube.gravity_scale = 0.0
+	cube.global_position = player.global_position + Vector3(1.8, 0.7, 0)
+	cube.rotation = Vector3.ZERO
+	cube.linear_velocity = Vector3.ZERO
+	cube.angular_velocity = Vector3.ZERO
+	await get_tree().physics_frame
+	await get_tree().physics_frame
+	var start := cube.global_position
+	VR.immersion.cancel_gestures()
+	for offset in [-1.05, -0.8]:
+		var tip: Vector3 = VR._origin.to_local(start + Vector3(offset, 0, 0))
+		_set_hand(0, tip + Vector3(0, 0, 0.12))
+		trackers[0].set_pose("aim", Transform3D(Basis.IDENTITY, tip), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
+		await get_tree().process_frame
+		await get_tree().process_frame
+		VR.immersion.combat(player, 1.0 / 60.0)
+	await get_tree().create_timer(0.2).timeout
+	_expect(cube.global_position.x > start.x + 0.1, "tracked controller tip physically pushes the cube")
+	trackers[0].invalidate_pose("aim")
+	VR.immersion.cancel_gestures()
+	cube.freeze = true
+	await _place_hands(false)
 
 
 func _capture(label: String) -> void:

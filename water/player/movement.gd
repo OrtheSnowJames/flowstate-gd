@@ -446,7 +446,7 @@ static func update(player, delta: float, submersion: float, shallow: bool) -> vo
 	var vr_swim: bool = immersive and VR.immersion.swim_enabled
 	wants_swim = wants_swim or vr_swim
 
-	if immersive and (vr_swim or not shallow) and submersion > 0.0:
+	if immersive and (vr_swim or VR.wall_triggers_held() or not shallow) and submersion > 0.0:
 		VR.immersion.swim(player, delta)
 	elif wants_swim and (shallow or submersion > 0.25):
 		player._swim(delta)

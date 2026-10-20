@@ -1,6 +1,8 @@
 # persisted player tunable settings camera height angle and a d turning feel applied to
 extends Node
 
+signal performance_mode_changed
+
 const _SAVE_PATH := "user://settings.cfg"
 const _SECTION := "camera"
 const _GRAPHICS_SECTION := "graphics"
@@ -20,17 +22,34 @@ var turn_speed: float = 2.5
 var exponential_turn_sensitivity: bool = false
 # lowers water cost for weaker machines
 var _performance_mode := false
+var _quest_test_quality := false
 var performance_mode: bool:
 	get:
-		return _performance_mode or VR.quest_standalone
+		return not _quest_test_quality if VR.quest_standalone else _performance_mode
 	set(value):
+		var previous := performance_mode
 		_performance_mode = value
+		if previous != performance_mode:
+			performance_mode_changed.emit()
 # unix time until online connect is allowed again
 var online_penalty_until_unix: int = 0
 
 
 func _ready() -> void:
 	load_settings()
+
+
+func toggle_quest_test_performance() -> void:
+	if not VR.quest_standalone or not VR.active or VR.immersive or VR.entering:
+		return
+	_quest_test_quality = not _quest_test_quality
+	performance_mode_changed.emit()
+
+
+func reset_quest_test_performance() -> void:
+	if _quest_test_quality:
+		_quest_test_quality = false
+		performance_mode_changed.emit()
 
 
 func load_settings() -> void:

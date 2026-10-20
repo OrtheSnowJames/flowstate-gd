@@ -7,7 +7,11 @@ var _last_push: Dictionary = {}
 
 
 func queue_contact_push(impulse: Vector3) -> void:
-	if impulse.is_finite() and not is_multiplayer_authority():
+	if not impulse.is_finite():
+		return
+	if not Net.is_online() or is_multiplayer_authority():
+		apply_central_impulse(impulse.limit_length(30.0))
+	else:
 		_pending_push += impulse
 
 

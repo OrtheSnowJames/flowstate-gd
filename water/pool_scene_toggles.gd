@@ -65,6 +65,9 @@ func _ready() -> void:
 	_apply_deletion(players_path, delete_players)
 	_apply_deletion(spawner_path, delete_players)
 	if not Engine.is_editor_hint():
+		var settings := get_node_or_null("/root/Settings")
+		if settings:
+			settings.connect("performance_mode_changed", _apply_performance_mode)
 		_apply_performance_mode()
 
 
@@ -73,8 +76,7 @@ func _apply_performance_mode() -> void:
 	var water := get_node_or_null(water_path)
 	if water:
 		var config := _PERFORMANCE_WATER if performance_mode else _QUALITY_WATER
-		for key in config:
-			water.set(key, config[key])
+		water.apply_quality(config)
 
 	var world_environment := get_node_or_null("WorldEnvironment")
 	if world_environment and world_environment.environment:

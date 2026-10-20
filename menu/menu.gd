@@ -19,10 +19,15 @@ func _show_root() -> void:
 	var choices := [
 		{"label": "Play", "on_press": _show_play},
 		{"label": "Settings", "on_press": _show_settings},
-		{"label": "Exit VR" if VR.active else "Enter VR", "on_press": _toggle_vr},
 	]
-	if VR.active and not VR.immersive:
-		choices.insert(2, {"label": "Real VR", "on_press": VR.enter_immersive})
+	if VR.immersive:
+		choices.append({"label": "Exit VR", "on_press": VR.exit_immersive})
+	else:
+		if VR.active:
+			choices.append({"label": "Real VR", "on_press": VR.enter_immersive})
+		else:
+			choices.append({"label": "Enter VR", "on_press": _toggle_vr})
+		choices.append({"label": "Quit", "on_press": _quit})
 	_menu_screen.show_buttons(choices, "FLOWSTATE")
 
 
@@ -51,13 +56,15 @@ func _show_custom_server() -> void:
 
 
 func _toggle_vr() -> void:
-	if VR.active:
-		VR.stop()
-	elif not VR.start():
+	if not VR.start():
 		await Transition.show_status("OpenXR unavailable. Launch with --xr-mode on and your VR runtime running.")
 		await get_tree().create_timer(2.0).timeout
 		await Transition.hide_status()
 	_show_root()
+
+
+func _quit() -> void:
+	get_tree().quit()
 
 
 func _open_server_prompt(hosting: bool) -> void:
@@ -86,7 +93,7 @@ func _open_code_prompt() -> void:
 
 
 func _show_settings() -> void:
-	_menu_screen.show_buttons([
+	var buttons := [
 		{"label": "Name: %s" % Settings.player_name, "on_press": _on_edit_name},
 		{"type": "stepper", "label": "Camera Height", "value": "%.1fm" % Settings.camera_hover_height,
 			"on_left": _dec_camera_height, "on_right": _inc_camera_height},
@@ -97,10 +104,13 @@ func _show_settings() -> void:
 		{"label": "Exponential Sensitivity: %s" % (
 			"On" if Settings.exponential_turn_sensitivity else "Off"),
 			"on_press": _toggle_exponential_sensitivity},
-		{"label": "Performance Mode: %s" % ("On" if Settings.performance_mode else "Off"),
-			"on_press": _toggle_performance_mode},
-		{"label": "Back", "on_press": _show_root},
-	])
+	]
+	var show_performance: bool = (not VR.quest_standalone) or Settings._quest_test_quality
+	if show_performance:
+		buttons.append({"label": "Performance Mode: %s" % ("On" if Settings.performance_mode else "Off"),
+			"on_press": _toggle_performance_mode})
+	buttons.append({"label": "Back", "on_press": _show_root})
+	_menu_screen.show_buttons(buttons)
 
 
 # opens the same modal the lobbys first join prompt uses pre filled with the

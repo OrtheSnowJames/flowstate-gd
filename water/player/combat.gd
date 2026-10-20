@@ -70,13 +70,23 @@ static func _update_water_counter(player, delta: float) -> void:
 		player._cast_water_wall_stop()
 
 
-static func _try_water_pelt(player) -> bool:
+static func _try_water_pelt(player, hand := -1) -> bool:
 	if not player._is_local() or player._unconscious or player.movement_locked or player._water_wall_up or Net.is_spectating() \
 			or Net.input_blocked_by_menu() or player._ocean == null \
-			or player.stamina < player.water_pelt_stamina_cost or player._water_pelt_cooldown_timer > 0.0:
+			or player.stamina < player.water_pelt_stamina_cost or player._water_pelt_cooldown_timer > 0.0 \
+			or VR.wall_triggers_held():
 		return false
 	var origin = player.global_position + Vector3.UP * 0.35
-	player._cast_water_move(WaterMove.PELT, origin, player._mouse_aim_direction_3d(origin), 1.0)
+	var aim = player._mouse_aim_direction_3d(origin)
+	if VR.immersive and hand >= 0:
+		if hand >= VR._hands.size() or not VR._hands[hand].get_is_active():
+			return false
+		var pose: Transform3D = VR.immersion.hand_tip_transform(VR._hands[hand])
+		if not pose.is_finite():
+			return false
+		origin = pose.origin
+		aim = -pose.basis.z.normalized()
+	player._cast_water_move(WaterMove.PELT, origin, aim, 1.0)
 	player.stamina -= player.water_pelt_stamina_cost
 	player._water_pelt_cooldown_timer = player.water_pelt_cooldown
 	return true
@@ -123,7 +133,9 @@ static func process_input(player, delta: float, submersion: float) -> void:
 	if VR.immersive and player._is_local():
 		VR.immersion.combat(player, delta)
 		if not Net.arcade.controls(player) and Input.is_action_just_pressed("water_pelt"):
-			player._try_water_pelt()
+			var hand := VR._pelt_hand
+			VR._pelt_hand = -1
+			player._try_water_pelt(hand)
 		return
 	if Net.arcade.controls(player):
 		return

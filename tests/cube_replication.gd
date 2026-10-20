@@ -100,6 +100,22 @@ func _host() -> void:
 	rpc("verify_push")
 	await _until(func() -> bool: return checks.get("push visible", []).size() == 2)
 	print("PASS client cube push")
+	_body(client).collision_layer = 0
+	_body(client).collision_mask = 0
+	cube.position = Vector3(12, 14, 0)
+	cube.rotation = Vector3.ZERO
+	cube.angular_velocity = Vector3.ZERO
+	cube.linear_velocity = Vector3.ZERO
+	cube._last_push.erase(client)
+	checks.erase("push visible")
+	await get_tree().create_timer(0.3).timeout
+	rpc_id(client, "push_cube_with_hands")
+	await _until(func() -> bool: return checks.has("hands pushed"))
+	_expect(cube.position.x > 12.2, "client vr hands move the host cube")
+	_expect(cube._last_push.has(client), "host receives vr hand impulses")
+	rpc("verify_push")
+	await _until(func() -> bool: return checks.get("push visible", []).size() == 2)
+	print("PASS client vr hand push")
 	Net._round_red_score = 99
 	Net.award_cube_point(0)
 	await _until(func() -> bool: return Net.round_state == Net.RoundState.LOBBY)
@@ -153,6 +169,25 @@ func push_cube() -> void:
 		await get_tree().physics_frame
 	local.freeze = true
 	rpc_id(1, "checked", "pushed")
+
+
+@rpc("authority", "reliable")
+func push_cube_with_hands() -> void:
+	var local := _body(multiplayer.get_unique_id())
+	var cube := get_tree().current_scene.get_node("PushCube")
+	local.freeze = true
+	local.collision_layer = 0
+	local.collision_mask = 0
+	local.position = cube.position + Vector3(-1.7, 0, 0)
+	await get_tree().create_timer(0.3).timeout
+	var hands := preload("res://vr/hand_push.gd").new()
+	for i in range(4):
+		hands.reset()
+		hands.sample(cube, i % 2, cube.to_global(Vector3(-1.05, 0, 0)), true)
+		_expect(hands.sample(cube, i % 2, cube.to_global(Vector3(-0.8, 0, 0)), true), "vr hand touches client cube")
+		await get_tree().create_timer(0.1).timeout
+	await get_tree().create_timer(0.2).timeout
+	rpc_id(1, "checked", "hands pushed")
 
 
 @rpc("authority", "reliable")

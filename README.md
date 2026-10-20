@@ -76,6 +76,25 @@ You just share the IP and port with your friends and they can connect.
 
 If you just want to play alone, there's always solo play. It doesn't require internet.
 
+## VR Builds
+
+On Windows, `./start_vr.ps1` starts PCVR without generating Quest texture formats.
+Use `pwsh -File ./build_quest.ps1` on Windows, macOS or Linux to export a standalone Quest debug APK to `build/flowstate-quest.apk`.
+Windows PowerShell also supports `./build_quest.ps1` directly; macOS and Linux require PowerShell 7.
+Both scripts accept `-Godot "C:\path\to\Godot.exe"`; the build script also accepts `-Output` and `-Release`.
+On macOS, for example: `pwsh -File ./build_quest.ps1 -Godot "/Applications/Godot_mono.app/Contents/MacOS/Godot"`.
+On Linux, use `pwsh -File ./build_quest.ps1 -Godot /path/to/godot` or omit `-Godot` when it is on your PATH.
+Install matching Godot 4.6+ export templates and configure the Android SDK, JDK 17 and debug keystore in Godot first.
+The Quest preset uses Gradle and the bundled official OpenXR Vendors 5.1.0 plugin to include the Meta runtime loader and VR manifest entries.
+The build script installs the Android Gradle template in the staging folder automatically; its first build needs internet access for Gradle dependencies.
+Release exports additionally need release signing configured in the Meta Quest export preset.
+Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache; the first Quest export imports assets once.
+
+For standalone Quest testing only, stay in couch mode and press A, A, B, B, then move either thumbstick left, right, left, right.
+Keep each input within three seconds of the previous one. Held inputs count once; repeat the sequence to toggle back.
+This silently toggles performance mode without saving it or adding a Quest settings control.
+Entering immersive VR, stopping VR or restarting the app restores performance mode; PCVR is unaffected.
+
 ## TODO:
 Done: Add matchmaking/lobbies
 

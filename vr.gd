@@ -4,9 +4,11 @@ signal mode_changed
 
 const DEVICE := 15
 const ESCAPE_HOLD_SECONDS := 0.6
+const TRIGGER_CHORD_SECONDS := 0.12
 var active := false
 var immersive := false
 var entering := false
+var exiting := false
 var immersion: Node
 var quest_standalone := false
 var room_view: SubViewport
@@ -16,6 +18,9 @@ var _buttons: Dictionary = {}
 var _axes: Dictionary = {}
 var _actions: Dictionary = {}
 var _pelt_triggers: Array[bool] = [false, false]
+var _pelt_hand := -1
+var _pending_pelt_hand := -1
+var _pelt_wait := 0.0
 var _escape_hold := 0.0
 var _escape_engaged := false
 var _escape_fired := false
@@ -23,16 +28,23 @@ var _origin: XROrigin3D
 var _head: Camera3D
 var _room: Node3D
 var _environment: WorldEnvironment
+var _room_environment: Environment
 var _light: OmniLight3D
 var _zoom: Tween
 var _saved_transparent := false
 var _saved_disable_3d := false
+var _room_needs_center := false
+var _quest_test_code := preload("res://vr/quest_test_code.gd").new()
 
 
 func _ready() -> void:
 	_interface = XRServer.find_interface("OpenXR")
+	if _interface is OpenXRInterface:
+		_interface.pose_recentered.connect(_request_room_center)
 	var info := str(_interface.get_system_info()) if _interface and _interface.is_initialized() else ""
 	quest_standalone = is_standalone_quest(OS.get_name(), OS.get_model_name(), info, OS.has_feature("quest"))
+	Settings.performance_mode_changed.connect(_apply_quest_fps_limit)
+	_apply_quest_fps_limit()
 	if "--vr-preview" in OS.get_cmdline_user_args():
 		call_deferred("start", true)
 	elif _interface and _interface.is_initialized():
@@ -46,7 +58,12 @@ static func is_standalone_quest(platform: String, model: String, runtime: String
 	return quest_export or "quest" in identity or "oculus" in identity or "meta" in identity
 
 
-func start(preview := false) -> bool:
+func _apply_quest_fps_limit() -> void:
+	if quest_standalone:
+		Engine.max_fps = 60 if Settings.performance_mode else 40
+
+# split up start into start_init and ready_room
+func start_init(preview := false) -> bool:
 	if active:
 		return true
 	if not preview and (_interface == null or (not _interface.is_initialized() and not _interface.initialize())):
@@ -54,6 +71,19 @@ func start(preview := false) -> bool:
 	if not preview:
 		_interface.interface_is_primary = true
 		quest_standalone = is_standalone_quest(OS.get_name(), OS.get_model_name(), str(_interface.get_system_info()), OS.has_feature("quest"))
+	_apply_quest_fps_limit()
+	return true
+
+func start(preview := false) -> bool:
+	if not start_init(preview):
+		return false
+	if not ready_room(preview):
+		return false
+	return true
+
+func ready_room(preview := false) -> bool:
+	if room_view != null:
+		return true
 	room_view = SubViewport.new()
 	room_view.name = "VRRoomView"
 	room_view.own_world_3d = true
@@ -79,6 +109,7 @@ func start(preview := false) -> bool:
 	var environment := WorldEnvironment.new()
 	_environment = environment
 	environment.environment = Environment.new()
+	_room_environment = environment.environment
 	environment.environment.background_mode = Environment.BG_COLOR
 	environment.environment.background_color = Color(0.08, 0.09, 0.1)
 	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
@@ -111,22 +142,56 @@ func start(preview := false) -> bool:
 			origin.add_child(controller)
 			_hands.append(controller)
 	active = true
+	_room_needs_center = not preview
 	mode_changed.emit()
 	return true
 
 
-func enter_immersive() -> void:
-	if not active or immersive or entering:
+func _request_room_center() -> void:
+	if active and not immersive and not entering and not exiting:
+		_room_needs_center = true
+
+
+func _center_room_from_tracking() -> void:
+	var tracker := XRServer.get_tracker("head") as XRPositionalTracker
+	if tracker == null:
 		return
+	var pose := tracker.get_pose("default")
+	if pose == null or not pose.has_tracking_data:
+		return
+	_place_in_room(pose.get_adjusted_transform())
+	_room_needs_center = false
+
+
+func _place_in_room(head_pose: Transform3D) -> void:
+	var seat: Transform3D = _room.get_node("SeatEye").global_transform.orthonormalized()
+	var forward := -head_pose.basis.z
+	forward.y = 0.0
+	if forward.length_squared() < 0.001:
+		forward = Vector3.UP.cross(head_pose.basis.x)
+	var facing := -seat.basis.z
+	facing.y = 0.0
+	var yaw := forward.signed_angle_to(facing, Vector3.UP)
+	var orientation := Basis(Vector3.UP, yaw)
+	# offset the tracking space once so leaning and walking still work
+	_origin.global_transform = Transform3D(orientation, seat.origin - orientation * head_pose.origin)
+
+
+func enter_immersive() -> void:
+	if not active or immersive or entering or exiting:
+		return
+	_quest_test_code.reset()
+	Settings.reset_quest_test_performance()
 	entering = true
-	var target := Vector3(-0.087, 1.23, -0.78) - _head.position
+	_release_controls()
+	_room_needs_center = false
+	var target := Vector3(-0.087, 1.23, -0.78) - _origin.basis * _head.position
 	_zoom = create_tween()
 	_zoom.tween_property(_origin, "position", target, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await _zoom.finished
 	if not active:
 		return
 	room_view.remove_child(_room)
-	_room.queue_free()
 	_light.hide()
 	_environment.environment = null
 	# keep the old world alive until the viewport releases its render scenario
@@ -148,6 +213,73 @@ func enter_immersive() -> void:
 	mode_changed.emit()
 
 
+func exit_immersive() -> void:
+	if not active or not immersive or entering or exiting:
+		return
+	exiting = true
+	_release_controls()
+	_quest_test_code.reset()
+	immersion.cancel_gestures()
+	immersion.set_process(false)
+	var cover: MeshInstance3D = immersion.fade
+	cover.show()
+	_zoom = create_tween()
+	_zoom.tween_property(cover.material_override, "albedo_color:a", 1.0, 0.18)
+	await _zoom.finished
+	if not active:
+		return
+	immersion.restore_overlays()
+	immersion.panel.hide()
+	immersion.blur.hide()
+	get_tree().root.disable_3d = _saved_disable_3d
+	get_tree().root.transparent_bg = _saved_transparent
+	immersive = false
+	# return the headset to a separate room while the game goes back onto the tv
+	room_view.world_3d = null
+	room_view.own_world_3d = true
+	room_view.add_child(_room)
+	_environment.environment = _room_environment
+	_light.show()
+	_place_in_room(_head.transform)
+	var seat := _origin.position
+	_origin.position = Vector3(-0.087, 1.23, -0.78) - _origin.basis * _head.position
+	mode_changed.emit()
+	_zoom = create_tween().set_parallel(true)
+	_zoom.tween_property(_origin, "position", seat, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_zoom.tween_property(cover.material_override, "albedo_color:a", 0.0, 0.25)
+	await _zoom.finished
+	if not active:
+		return
+	_clear_immersion()
+	exiting = false
+
+
+func _clear_immersion() -> void:
+	if not is_instance_valid(immersion):
+		return
+	immersion.teardown()
+	immersion.queue_free()
+	immersion = null
+	get_tree().root.disable_3d = _saved_disable_3d
+	get_tree().root.transparent_bg = _saved_transparent
+
+
+func _release_controls() -> void:
+	_escape_hold = 0.0
+	_escape_engaged = false
+	_escape_fired = false
+	_pelt_triggers = [false, false]
+	_pelt_hand = -1
+	_pending_pelt_hand = -1
+	_pelt_wait = 0.0
+	for action in _actions.keys():
+		_action(action, false)
+	for button in _buttons.keys():
+		_button(button, false)
+	for axis in _axes.keys():
+		_axis(axis, 0.0)
+
+
 func body_pose(player) -> Array:
 	return immersion.body_pose(player) if immersive and is_instance_valid(immersion) else []
 
@@ -165,45 +297,49 @@ func project_ui_position(world: Vector3, fallback: Camera3D) -> Vector2:
 
 
 func stop() -> void:
+	_quest_test_code.reset()
+	Settings.reset_quest_test_performance()
 	if _zoom and _zoom.is_running():
 		_zoom.kill()
-	if immersive:
-		immersion.cancel_gestures()
-		immersion.restore_overlays()
-		immersion.panel.queue_free()
-		immersion.blur.queue_free()
-		immersion.fade.queue_free()
-		immersion.queue_free()
-		get_tree().root.disable_3d = _saved_disable_3d
-		get_tree().root.transparent_bg = _saved_transparent
+	_clear_immersion()
 	immersive = false
 	entering = false
-	_escape_hold = 0.0
-	_escape_engaged = false
-	_escape_fired = false
-	_pelt_triggers = [false, false]
-	for action in _actions.keys():
-		_action(action, false)
-	for button in _buttons.keys():
-		_button(button, false)
-	for axis in _axes.keys():
-		_axis(axis, 0.0)
+	exiting = false
+	_room_needs_center = false
+	_release_controls()
 	_hands.clear()
+	if is_instance_valid(_room) and _room.get_parent() == null:
+		_room.queue_free()
 	if is_instance_valid(room_view):
 		room_view.use_xr = false
 		room_view.queue_free()
+	room_view = null
+	_room = null
+	_room_environment = null
 	active = false
 	mode_changed.emit()
 
 
 func _process(delta: float) -> void:
-	if not active or _hands.size() != 2:
+	if entering or exiting:
 		return
+	if active and _room_needs_center and not immersive and not entering:
+		_center_room_from_tracking()
+	if not active or _hands.size() != 2:
+		_quest_test_code.reset()
+		return
+	var both_tracked := _hands[0].get_is_active() and _hands[1].get_is_active()
+	if quest_standalone and not immersive and not entering and both_tracked:
+		_update_quest_test_code(_hands[1].is_button_pressed("ax_button"),
+			_hands[1].is_button_pressed("by_button"), _hands[0].get_vector2("primary").x,
+			_hands[1].get_vector2("primary").x, delta)
+	else:
+		_quest_test_code.reset()
 	var left_click := _hands[0].get_is_active() and _hands[0].is_button_pressed("primary_click")
 	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
 	var escape_chord := _update_escape_chord(left_click, right_click, delta)
 	var menus := not ControllerNavigation._controls().is_empty()
-	var pelt_pressed := false
+	var pelt_hand := -1
 	for i in range(2):
 		var hand := _hands[i]
 		var tracked := hand.get_is_active()
@@ -224,13 +360,43 @@ func _process(delta: float) -> void:
 		var trigger := tracked and hand.get_float("trigger") > 0.65
 		var arcade := Net.game_mode == Net.GameMode.ARCADE
 		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade and not menus)
-		pelt_pressed = pelt_pressed or (trigger and not _pelt_triggers[i] and not arcade and not menus)
+		if pelt_hand < 0 and trigger and not _pelt_triggers[i] and not arcade and not menus:
+			pelt_hand = i
 		_pelt_triggers[i] = trigger
-	# each trigger press works even while the other trigger is held
 	_action("water_pelt", false)
-	if pelt_pressed:
+	if menus or Net.game_mode == Net.GameMode.ARCADE or wall_triggers_held():
+		_pending_pelt_hand = -1
+		_pelt_hand = -1
+		_pelt_wait = 0.0
+		pelt_hand = -1
+	elif immersive:
+		if pelt_hand >= 0:
+			_pending_pelt_hand = pelt_hand
+			_pelt_wait = TRIGGER_CHORD_SECONDS
+			pelt_hand = -1
+		elif _pending_pelt_hand >= 0:
+			_pelt_wait -= delta
+			if _pelt_wait <= 0.0:
+				pelt_hand = _pending_pelt_hand
+				_pending_pelt_hand = -1
+	if pelt_hand >= 0:
+		_pelt_hand = pelt_hand
 		_action("water_pelt", true)
 	_action("water_counter", false)
+
+
+func wall_triggers_held() -> bool:
+	return immersive and _hands.size() == 2 and Net.game_mode != Net.GameMode.ARCADE \
+		and _hands[0].get_is_active() and _hands[1].get_is_active() \
+		and _hands[0].get_float("trigger") > 0.65 and _hands[1].get_float("trigger") > 0.65
+
+
+func _update_quest_test_code(a: bool, b: bool, left_x: float, right_x: float, delta: float) -> void:
+	if not quest_standalone or not active or immersive or entering:
+		_quest_test_code.reset()
+		return
+	if _quest_test_code.update(a, b, left_x, right_x, delta):
+		Settings.toggle_quest_test_performance()
 
 
 func _update_escape_chord(left: bool, right: bool, delta: float) -> bool:

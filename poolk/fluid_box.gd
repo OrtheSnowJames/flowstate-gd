@@ -78,6 +78,29 @@ func _ready() -> void:
 	_build_splash_pool()
 
 
+func apply_quality(config: Dictionary) -> void:
+	var changed := false
+	for key in config:
+		changed = changed or get(key) != config[key]
+		set(key, config[key])
+	if not changed or not is_node_ready():
+		return
+	# rebuild visual water without disturbing swimmers or collision
+	_mesh.hide()
+	_mesh.queue_free()
+	_vp_a.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp_b.render_target_update_mode = SubViewport.UPDATE_DISABLED
+	_vp_a.queue_free()
+	_vp_b.queue_free()
+	_flip = false
+	_reset_frames = 3
+	_sim_accum = 0.0
+	_readback_img = null
+	_readback_countdown = 0
+	_build_sim()
+	_build_surface()
+
+
 # construction
 func _build_collision() -> void:
 	var cs := CollisionShape3D.new()

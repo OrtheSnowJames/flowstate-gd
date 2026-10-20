@@ -578,8 +578,8 @@ func _update_water_counter(delta: float) -> void:
 	Combat._update_water_counter(self, delta)
 
 
-func _try_water_pelt() -> bool:
-	return Combat._try_water_pelt(self)
+func _try_water_pelt(hand := -1) -> bool:
+	return Combat._try_water_pelt(self, hand)
 
 func _cast_water_wall(origin: Vector3, aim: Vector3, strength: float) -> void:
 	Combat._cast_water_wall(self, origin, aim, strength)
