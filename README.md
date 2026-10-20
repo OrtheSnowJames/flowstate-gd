@@ -47,9 +47,12 @@ Now let's talk Momentum. It decides how hard your attacks hit and how high you c
 3. Attack while swimming and you'll dump your entire momentum bar into the hit. This can more than double your attack power.
 
 What you've all been waiting for, finally, the moves.
+Press the key with the number to fire it.
 1. Water Power - Launches a long range wave that hits harder the farther away the enemy is.
 2. Water Attack - Shoots a burst of short range water that hits harder the closer the enemy is.
-3. Water Wall - Halves incoming damage while it's up, no matter which direction it comes from.
+3. Water Wall - Halves incoming damage while it's up.
+4. Water Counter - Water Walls and Water Powers, but takes 50 stamina.
+5. Water Pelt - Shoots some bubbles of water that do little damage unless the opponent is on a cube.
 
 ## Death and Spectating
 
@@ -59,6 +62,25 @@ This drone allows you to spectate the lifeguard while you're fainted, until the 
 If the lifeguard dies, you can only see an overhead view of the pool. All hope is lost.
 
 If a game just started, you can still spectate! When you join, press the spectate button.
+
+## VR Controls (very weird at first)
+
+In a real pool, you swim very realistically. In VR, you flap your hands and go zoom.
+
+To swim, put your hands in the water and imitate a very bad swimming stroke.
+It doesn't really matter how bad, as long as the hands touch the water.
+
+To attack, put one hand in the water and swing it forward. The harder, the stronger the attack.
+
+Normal Controls (sorta):
+- To jump, press A (as usual.)
+- To dodge, use the grip buttons.
+- To water pelt, press either of the triggers.
+- To water wall, hold both triggers and flail your hands back and forth.
+- Water counter got removed for balancing purposes.
+- Jump Cancelling got removed also for balancing purposes. Now you can swim really fast in VR.
+
+What I think is really cool is people can see your hand positions. Yeah.
 
 ## Matchmaking
 
@@ -78,22 +100,27 @@ If you just want to play alone, there's always solo play. It doesn't require int
 
 ## VR Builds
 
-On Windows, `./start_vr.ps1` starts PCVR without generating Quest texture formats.
-Use `pwsh -File ./build_quest.ps1` on Windows, macOS or Linux to export a standalone Quest debug APK to `build/flowstate-quest.apk`.
-Windows PowerShell also supports `./build_quest.ps1` directly; macOS and Linux require PowerShell 7.
-Both scripts accept `-Godot "C:\path\to\Godot.exe"`; the build script also accepts `-Output` and `-Release`.
-On macOS, for example: `pwsh -File ./build_quest.ps1 -Godot "/Applications/Godot_mono.app/Contents/MacOS/Godot"`.
-On Linux, use `pwsh -File ./build_quest.ps1 -Godot /path/to/godot` or omit `-Godot` when it is on your PATH.
-Install matching Godot 4.6+ export templates and configure the Android SDK, JDK 17 and debug keystore in Godot first.
-The Quest preset uses Gradle and the bundled official OpenXR Vendors 5.1.0 plugin to include the Meta runtime loader and VR manifest entries.
-The build script installs the Android Gradle template in the staging folder automatically; its first build needs internet access for Gradle dependencies.
+Forgive me. I used powershell. I know. But I had to because of windows.
+
+### How to Build
+On Windows, `.\start_vr.ps1` starts PCVR without generating Quest texture formats.
+Use `pwsh -File ./build_quest.ps1` on Windows (just use `.\build_quest.ps1`), macOS or Linux to export a standalone Quest debug APK at `build/flowstate-quest.apk`.
+Both scripts accept `-Godot "C:\path\to\Godot.exe"`; the build script also accepts `-Output` and/or `-Release`.
+
+### Prerequisites
+- Godot 4.6+ export templates
+- Android SDK, JDK 17 and debug keystore configured in Godot
+- Internet access for Gradle dependencies (first build only)
+
+### Other Notes
+AS (ante-script): This setup takes a while as android is pretty annoying. I could probably just make a release of the .apk...
 Release exports additionally need release signing configured in the Meta Quest export preset.
 Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache; the first Quest export imports assets once.
 
-For standalone Quest testing only, stay in couch mode and press A, A, B, B, then move either thumbstick left, right, left, right.
-Keep each input within three seconds of the previous one. Held inputs count once; repeat the sequence to toggle back.
-This silently toggles performance mode without saving it or adding a Quest settings control.
-Entering immersive VR, stopping VR or restarting the app restores performance mode; PCVR is unaffected.
+### Override Performance Mode
+For standalone Quest testing only, stay in the TV Room and press A, A, B, B, then move either thumbstick left, right, left, right.
+This is the only way to toggle performance mode (on by default).
+Entering immersive VR, stopping VR or restarting the app restores performance mode.
 
 ## TODO:
 Done: Add matchmaking/lobbies

@@ -9,6 +9,7 @@ func _ready() -> void:
 
 func _run() -> void:
 	reparent(get_tree().root)
+	_verify_room_scene()
 	_expect(VR.is_standalone_quest("Android", "Quest 3", ""), "quest detection")
 	_expect(not VR.is_standalone_quest("Windows", "Quest 3", "Oculus"), "quest link is unrestricted pcvr")
 	_expect(not VR.is_standalone_quest("Android", "Pixel", ""), "other android devices unrestricted")
@@ -54,8 +55,14 @@ func _run() -> void:
 	XRServer.remove_tracker(tracker)
 	VR._head.transform = original_head
 	VR._origin.transform = original_origin
-	var screen = VR.room_view.get_node("VrRoom/GameScreen")
+	var screen = VR._room.get_node("GameScreen")
 	_expect(screen.material_override.albedo_texture == get_tree().root.get_texture(), "tv uses live game viewport")
+	_expect(screen.global_position.distance_to(Vector3(-0.08691, 1.2303, -1.077)) < 0.001, "scene preserves the tv placement")
+	_expect(seat.distance_to(Vector3(0, 1.6, 1.8)) < 0.001, "scene preserves the couch eye height")
+	_expect(VR._head == VR._origin.get_node("PreviewCamera"), "preview uses the scene camera")
+	_expect(VR._environment == VR._room_root.get_node("WorldEnvironment"), "room uses the scene environment")
+	_expect(VR._light == VR._room_root.get_node("RoomLight"), "room uses the scene light")
+	_expect(not VR._origin.is_physics_interpolated(), "scene rig preserves frame tracking")
 	await get_tree().create_timer(1.5).timeout
 	if DisplayServer.get_name() != "headless":
 		RenderingServer.force_draw()
@@ -76,6 +83,29 @@ func _run() -> void:
 	_expect(not VR.active, "vr stops cleanly")
 	print("FAIL vr room" if failed else "PASS vr room")
 	get_tree().quit(1 if failed else 0)
+
+
+func _verify_room_scene() -> void:
+	var packed := preload("res://water/vr_room.tscn")
+	var room := packed.instantiate()
+	var other := packed.instantiate()
+	var screen: MeshInstance3D = room.get_node("Room/GameScreen")
+	_expect(screen.mesh.size == Vector2(0.684, 0.385), "tv size is authored in the scene")
+	_expect(screen.material_override.shading_mode == BaseMaterial3D.SHADING_MODE_UNSHADED, "tv is unshaded")
+	_expect(screen.has_node("ImmersiveEntry"), "zoom destination is editable with the tv")
+	_expect(room.has_node("Room/SeatEye"), "seat is editable with the room")
+	_expect(room.get_node("Room").scale == Vector3.ONE * 3.0, "room scale is visible in the editor")
+	_expect(room.get_node("XROrigin3D/XRCamera3D") is XRCamera3D, "xr camera is authored in the scene")
+	for hand in ["LeftHand", "RightHand"]:
+		var controller: XRController3D = room.get_node("XROrigin3D/" + hand)
+		_expect(controller.tracker == (&"left_hand" if hand == "LeftHand" else &"right_hand"), "scene controller uses its tracker")
+		_expect(controller.pose == &"grip", "scene controller uses grip tracking")
+	var environment: Environment = room.get_node("WorldEnvironment").environment
+	_expect(environment.ambient_light_source == Environment.AMBIENT_SOURCE_COLOR, "scene preserves ambient lighting")
+	_expect(environment != other.get_node("WorldEnvironment").environment, "room environments are independent")
+	_expect(screen.material_override != other.get_node("Room/GameScreen").material_override, "live tv materials are independent")
+	room.free()
+	other.free()
 
 
 func _expect(condition: bool, message: String) -> void:

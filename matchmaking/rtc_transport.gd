@@ -2,6 +2,8 @@ extends Node
 
 const SIGNAL_INTERVAL := 2.0
 const CONNECT_TIMEOUT := 35.0
+# channel one carries arcade movement snapshots
+const CHANNELS := [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED]
 
 var peer: WebRTCMultiplayerPeer
 var _code := ""
@@ -44,7 +46,7 @@ func start_client(session: Dictionary) -> Error:
 		return ERR_ALREADY_IN_USE
 	peer = WebRTCMultiplayerPeer.new()
 	_id = int(session.peer_id)
-	var err := peer.create_client(_id)
+	var err := peer.create_client(_id, CHANNELS)
 	if err != OK:
 		return err
 	_code = session.code

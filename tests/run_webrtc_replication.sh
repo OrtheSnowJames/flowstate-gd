@@ -12,7 +12,7 @@ directory_pid=$!
 trap 'kill "$directory_pid" 2>/dev/null || true; wait "$directory_pid" 2>/dev/null || true' EXIT
 for ((attempt = 0; attempt < 100; attempt++)); do
     if rg -q 'local matchmaking at' "$log_file"; then
-        bash tests/run_match_replication.sh
+        bash "${1:-tests/run_match_replication.sh}"
         exit $?
     fi
     if ! kill -0 "$directory_pid" 2>/dev/null; then

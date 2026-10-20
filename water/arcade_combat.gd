@@ -18,6 +18,7 @@ var _puppets: Dictionary = {}
 var _cooldowns: Dictionary = {}
 var _last_targets: Dictionary = {}
 var _releases: Dictionary = {}
+var _release_pending := false
 var _clock := 0.0
 var _snapshot_time := 0.0
 var _version := 0
@@ -78,7 +79,8 @@ func pick_target(player) -> int:
 		return 0
 	var camera: Camera3D = VR.view_camera(player._camera)
 	var mouse: Vector2 = player.Controller.aim_position(player)
-	var best := 160.0
+	var controller_aim: bool = VR.active or player.using_controller
+	var best := 1.0 - cos(deg_to_rad(25.0)) if controller_aim else 160.0
 	var target := 0
 	var id := str(player.name).to_int()
 	for other in Net._players_root().get_children():
@@ -88,10 +90,39 @@ func pick_target(player) -> int:
 		if player.global_position.distance_to(other.global_position) > DASH_RANGE:
 			continue
 		var distance := VR.project_ui_position(other.global_position, camera).distance_to(mouse)
+		if controller_aim:
+			var direction := camera.global_position.direction_to(other.global_position)
+			distance = 1.0 - (-camera.global_basis.z).dot(direction)
 		if distance < best and _clear_path(player.global_position, other.global_position):
 			best = distance
 			target = other_id
 	return target
+
+
+func pick_pound_target(player) -> int:
+	if not active():
+		return 0
+	var id := str(player.name).to_int()
+	var target := 0
+	var best := INF
+	for other in Net._players_root().get_children():
+		var other_id := str(other.name).to_int()
+		if not _can_pound_target(id, other_id):
+			continue
+		var offset := _position(other_id) - _position(id)
+		var distance := Vector2(offset.x, offset.z).length_squared()
+		if distance < best:
+			best = distance
+			target = other_id
+	return target
+
+
+func _can_pound_target(id: int, target: int) -> bool:
+	if not _enemies(id, target):
+		return false
+	var offset := _position(target) - _position(id)
+	return offset.y <= -0.5 and Vector2(offset.x, offset.z).length() <= 12.0 \
+		and _clear_path(_position(id), _position(target))
 
 
 func handle_input(player, event: InputEvent) -> bool:
@@ -108,7 +139,7 @@ func handle_input(player, event: InputEvent) -> bool:
 		return true
 	if (event.is_action_pressed("jump") and Input.is_action_pressed("swim_key")) \
 			or (event.is_action_pressed("swim_key") and Input.is_action_pressed("jump")):
-		request_action(Action.POUND, pick_target(player), int(view.get(id, {}).get("fight", 0)))
+		request_action(Action.POUND, pick_pound_target(player), int(view.get(id, {}).get("fight", 0)))
 		return true
 	return controls(player)
 
@@ -191,10 +222,7 @@ func _start_pound(id: int, target: int) -> void:
 		target = state.target
 	elif target == 0:
 		target = int(_last_targets.get(id, 0))
-	if not _enemies(id, target) or _body(id)._water_wall_up or not airborne(_body(id)):
-		return
-	var offset := _position(target) - _position(id)
-	if offset.y > -0.5 or Vector2(offset.x, offset.z).length() > 12.0:
+	if not _can_pound_target(id, target) or _body(id)._water_wall_up or not airborne(_body(id)):
 		return
 	states[id] = _state(id, target, Phase.POUND, 1.5)
 	_releases.erase(id)
@@ -253,6 +281,7 @@ func _release(id: int) -> void:
 	if states.has(id):
 		_releases[id] = {"position": states[id].position, "velocity": states[id].velocity}
 		states.erase(id)
+		_release_pending = true
 
 
 func _physics_process(delta: float) -> void:
@@ -268,6 +297,7 @@ func _physics_process(delta: float) -> void:
 		_cooldowns.clear()
 		_last_targets.clear()
 		_releases.clear()
+		_release_pending = false
 		return
 	if not _host():
 		return
@@ -401,6 +431,8 @@ func net_pound_hit(id: int) -> void:
 
 
 func _publish(reliable: bool) -> void:
+	reliable = reliable or _release_pending
+	_release_pending = false
 	_version += 1
 	var snapshot := states.duplicate(true)
 	if Net.is_online():

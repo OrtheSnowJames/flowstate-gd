@@ -40,14 +40,20 @@ func _process(_delta: float) -> void:
 		return
 	var state: Dictionary = controller.view.get(id, {})
 	var phase: int = state.get("phase", -1)
+	var q := "Left Trigger" if VR.active else "Q"
+	var e := "Right Trigger" if VR.active else "E"
+	var pound := "Left Stick Click + A" if VR.active else "Shift + Space"
+	var moves := "%s  Dash     %s  Ground Pound" % [q, pound]
+	if VR.active:
+		moves = "%s  Dash\n%s  Ground Pound" % [q, pound]
 	match phase:
 		controller.Phase.CLASH:
 			var rival: Dictionary = controller.view.get(state.target, {})
-			prompt.text = "%s\n%d : %d   |   %.1fs" % ["Q" if state.next == 0 else "E", state.score, rival.get("score", 0), maxf(state.time, 0)]
+			prompt.text = "%s\n%d : %d   |   %.1fs" % [q if state.next == 0 else e, state.score, rival.get("score", 0), maxf(state.time, 0)]
 		controller.Phase.CHOICE:
-			prompt.text = "Q  Retreat     E  Vault"
+			prompt.text = ("%s  Retreat\n%s  Vault" if VR.active else "%s  Retreat     %s  Vault") % [q, e]
 		controller.Phase.OPEN:
-			prompt.text = "Q  Dash     Shift + Space  Ground Pound"
+			prompt.text = moves
 		controller.Phase.DASH:
 			prompt.text = "Dash"
 		controller.Phase.SLAM:
@@ -57,9 +63,9 @@ func _process(_delta: float) -> void:
 		_:
 			if not controller.airborne(player):
 				return
-			prompt.text = "Q  Dash     Shift + Space  Ground Pound"
+			prompt.text = moves
 	prompt.show()
 	var target: int = controller.pick_target(player)
 	if target != 0:
-		marker.position = player._camera.unproject_position(controller._body(target).global_position) - Vector2(10, 20)
+		marker.position = VR.project_ui_position(controller._body(target).global_position, player._camera) - Vector2(10, 20)
 		marker.show()

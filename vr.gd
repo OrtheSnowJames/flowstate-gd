@@ -26,6 +26,7 @@ var _escape_engaged := false
 var _escape_fired := false
 var _origin: XROrigin3D
 var _head: Camera3D
+var _room_root: Node3D
 var _room: Node3D
 var _environment: WorldEnvironment
 var _room_environment: Environment
@@ -91,56 +92,22 @@ func ready_room(preview := false) -> bool:
 	room_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	room_view.use_xr = not preview
 	add_child(room_view)
-	var room: Node3D = load("res://water/vr_room.tscn").instantiate()
-	_room = room
-	room.scale = Vector3.ONE * 3.0
-	room_view.add_child(room)
-	var screen := MeshInstance3D.new()
-	screen.name = "GameScreen"
-	var quad := QuadMesh.new()
-	quad.size = Vector2(0.684, 0.385)
-	screen.mesh = quad
-	screen.position = Vector3(-0.02897, 0.4101, -0.359)
-	var material := StandardMaterial3D.new()
-	material.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-	material.albedo_texture = get_tree().root.get_texture()
-	screen.material_override = material
-	room.add_child(screen)
-	var environment := WorldEnvironment.new()
-	_environment = environment
-	environment.environment = Environment.new()
-	_room_environment = environment.environment
-	environment.environment.background_mode = Environment.BG_COLOR
-	environment.environment.background_color = Color(0.08, 0.09, 0.1)
-	environment.environment.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	environment.environment.ambient_light_color = Color.WHITE
-	environment.environment.ambient_light_energy = 0.8
-	room_view.add_child(environment)
-	var light := OmniLight3D.new()
-	_light = light
-	light.position = Vector3(0, 2.1, 0)
-	light.omni_range = 8
-	room_view.add_child(light)
-	var origin := XROrigin3D.new()
-	# tracking updates every rendered frame rather than on physics ticks
-	origin.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
-	_origin = origin
-	origin.position = Vector3(0, 0, 1.8)
-	room_view.add_child(origin)
-	var camera: Camera3D = Camera3D.new() if preview else XRCamera3D.new()
-	_head = camera
-	origin.add_child(camera)
-	camera.current = true
+	_room_root = load("res://water/vr_room.tscn").instantiate()
+	room_view.add_child(_room_root)
+	_room = _room_root.get_node("Room")
+	var screen: MeshInstance3D = _room.get_node("GameScreen")
+	screen.material_override.albedo_texture = get_tree().root.get_texture()
+	_environment = _room_root.get_node("WorldEnvironment")
+	_room_environment = _environment.environment
+	_light = _room_root.get_node("RoomLight")
+	_origin = _room_root.get_node("XROrigin3D")
+	_head = _origin.get_node("PreviewCamera" if preview else "XRCamera3D")
+	_head.make_current()
 	if preview:
-		camera.position.y = 1.6
-		camera.look_at(Vector3(-0.087, 1.23, -1.1))
+		_origin.get_node("XRCamera3D").free()
 	else:
-		for hand in ["left_hand", "right_hand"]:
-			var controller := XRController3D.new()
-			controller.tracker = hand
-			controller.pose = &"grip"
-			origin.add_child(controller)
-			_hands.append(controller)
+		_origin.get_node("PreviewCamera").free()
+		_hands.assign([_origin.get_node("LeftHand"), _origin.get_node("RightHand")])
 	active = true
 	_room_needs_center = not preview
 	mode_changed.emit()
@@ -185,13 +152,13 @@ func enter_immersive() -> void:
 	entering = true
 	_release_controls()
 	_room_needs_center = false
-	var target := Vector3(-0.087, 1.23, -0.78) - _origin.basis * _head.position
+	var target: Vector3 = _room.get_node("GameScreen/ImmersiveEntry").global_position - _origin.global_basis * _head.position
 	_zoom = create_tween()
-	_zoom.tween_property(_origin, "position", target, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_zoom.tween_property(_origin, "global_position", target, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	await _zoom.finished
 	if not active:
 		return
-	room_view.remove_child(_room)
+	_room_root.remove_child(_room)
 	_light.hide()
 	_environment.environment = null
 	# keep the old world alive until the viewport releases its render scenario
@@ -237,15 +204,15 @@ func exit_immersive() -> void:
 	# return the headset to a separate room while the game goes back onto the tv
 	room_view.world_3d = null
 	room_view.own_world_3d = true
-	room_view.add_child(_room)
+	_room_root.add_child(_room)
 	_environment.environment = _room_environment
-	_light.show()
+	_room_root.apply_lighting()
 	_place_in_room(_head.transform)
-	var seat := _origin.position
-	_origin.position = Vector3(-0.087, 1.23, -0.78) - _origin.basis * _head.position
+	var seat := _origin.global_position
+	_origin.global_position = _room.get_node("GameScreen/ImmersiveEntry").global_position - _origin.global_basis * _head.position
 	mode_changed.emit()
 	_zoom = create_tween().set_parallel(true)
-	_zoom.tween_property(_origin, "position", seat, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
+	_zoom.tween_property(_origin, "global_position", seat, 0.7).set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_IN_OUT)
 	_zoom.tween_property(cover.material_override, "albedo_color:a", 0.0, 0.25)
 	await _zoom.finished
 	if not active:
@@ -265,6 +232,8 @@ func _clear_immersion() -> void:
 
 
 func _release_controls() -> void:
+	if is_instance_valid(_room_root):
+		_room_root.reset_pointers()
 	_escape_hold = 0.0
 	_escape_engaged = false
 	_escape_fired = false
@@ -314,6 +283,7 @@ func stop() -> void:
 		room_view.use_xr = false
 		room_view.queue_free()
 	room_view = null
+	_room_root = null
 	_room = null
 	_room_environment = null
 	active = false
@@ -339,28 +309,34 @@ func _process(delta: float) -> void:
 	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
 	var escape_chord := _update_escape_chord(left_click, right_click, delta)
 	var menus := not ControllerNavigation._controls().is_empty()
+	if not immersive:
+		_room_root.update_pointers(delta, menus)
+		if entering or exiting or not active:
+			return
+	var pointer_menu := menus and not immersive
+	var arcade := Net.game_mode == Net.GameMode.ARCADE
 	var pelt_hand := -1
 	for i in range(2):
 		var hand := _hands[i]
 		var tracked := hand.get_is_active()
 		var stick := hand.get_vector2("primary") if tracked else Vector2.ZERO
-		_axis(i * 2, stick.x)
-		_axis(i * 2 + 1, 0.0 if immersive and i == 1 else -stick.y)
+		_axis(i * 2, 0.0 if pointer_menu else stick.x)
+		_axis(i * 2 + 1, 0.0 if pointer_menu or (immersive and i == 1) else -stick.y)
 		var ax := tracked and hand.is_button_pressed("ax_button")
 		var by := tracked and hand.is_button_pressed("by_button")
-		_button(JOY_BUTTON_A if i == 1 else JOY_BUTTON_X, ax if menus else false)
-		_button(JOY_BUTTON_B if i == 1 else JOY_BUTTON_Y, by if menus else false)
+		_button(JOY_BUTTON_A if i == 1 else JOY_BUTTON_X, ax if menus and not pointer_menu else false)
+		_button(JOY_BUTTON_B if i == 1 else JOY_BUTTON_Y, by if menus and not pointer_menu else false)
 		_action("jump" if i == 1 else "water_attack", ax and not menus and (not immersive or i == 1))
 		_action("water_power" if i == 1 else "water_wall", by and not menus and not immersive)
 		var click := tracked and hand.is_button_pressed("primary_click") and not menus and not escape_chord
-		if immersive and i == 0:
+		if immersive and i == 0 and not arcade:
 			click = false
 		_action("revive" if i == 1 else "swim_key", click)
 		_action("vr_dodge_right" if i == 1 else "vr_dodge_left", tracked and hand.get_float("grip") > 0.65 and not menus)
 		var trigger := tracked and hand.get_float("trigger") > 0.65
-		var arcade := Net.game_mode == Net.GameMode.ARCADE
-		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade and not menus)
-		if pelt_hand < 0 and trigger and not _pelt_triggers[i] and not arcade and not menus:
+		var pointing: bool = not immersive and _room_root.pointer_captured(i)
+		_action("arcade_e" if i == 1 else "arcade_q", trigger and arcade and not menus and not pointing)
+		if pelt_hand < 0 and trigger and not _pelt_triggers[i] and not arcade and not menus and not pointing:
 			pelt_hand = i
 		_pelt_triggers[i] = trigger
 	_action("water_pelt", false)

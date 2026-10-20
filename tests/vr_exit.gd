@@ -27,6 +27,7 @@ func _run() -> void:
 		_button("Real VR").pressed.emit()
 		await get_tree().create_timer(1.3).timeout
 		_expect(VR.immersive and not VR.entering, "real vr button enters immersive view")
+		_expect(VR._room.get_parent() == null and VR._origin.is_inside_tree(), "room detaches without removing the scene tracking rig")
 		_expect(_button("Exit VR") != null and _button("Quit") == null, "immersive menu offers return to room")
 		VR._head.transform = Transform3D(Basis(Vector3.UP, 0.5), Vector3(3, 1.7, -2))
 		_button("Exit VR").pressed.emit()
@@ -42,6 +43,7 @@ func _run() -> void:
 		_expect(VR.active and not VR.immersive and not VR.exiting, "return finishes in couch mode")
 		_expect(VR.room_view.get_instance_id() == viewport_id and VR._head.get_instance_id() == head_id, "headset and viewport persist across transitions")
 		_expect(VR._room.get_instance_id() == room_id and VR._room.is_inside_tree(), "living room is reused")
+		_expect(VR._room.get_parent() == VR._room_root, "room returns to its authored parent")
 		_expect(VR.room_view.own_world_3d and VR.room_view.find_world_3d() != get_tree().root.world_3d, "room does not share the pool world")
 		_expect(VR._environment.environment != null and VR._light.visible, "room lighting returns")
 		_expect(VR._head.global_position.distance_to(VR._room.get_node("SeatEye").global_position) < 0.001, "offset headset returns to the couch seat")

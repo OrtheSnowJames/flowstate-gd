@@ -7,14 +7,24 @@ pids=()
 trap 'for pid in "${pids[@]}"; do kill "$pid" 2>/dev/null || true; done' EXIT
 "$godot_bin" --headless --path "$project_dir" --log-file "$logs/host.godot.log" res://tests/arcade_replication.tscn >"$logs/host.log" 2>&1 &
 pids+=("$!")
-sleep 1
+if [[ "${FLOWSTATE_TEST_WEBRTC:-0}" == 1 ]]; then
+    for ((attempt = 0; attempt < 400; attempt++)); do
+        if rg -q RTC_HOST_READY "$logs/host.log"; then break; fi
+        if ! kill -0 "${pids[0]}" 2>/dev/null; then cat "$logs/host.log"; exit 1; fi
+        sleep 0.1
+    done
+    export FLOWSTATE_TEST_CODE="$(sed -n 's/^RTC_HOST_READY //p' "$logs/host.log" | head -1)"
+    if [[ -z "$FLOWSTATE_TEST_CODE" ]]; then cat "$logs/host.log"; exit 1; fi
+else
+    sleep 1
+fi
 "$godot_bin" --headless --path "$project_dir" --log-file "$logs/client.godot.log" res://tests/arcade_replication.tscn -- --client >"$logs/client.log" 2>&1 &
 pids+=("$!")
 result=0
 for pid in "${pids[@]}"; do wait "$pid" || result=1; done
 for role in host client; do
-    rg 'PASS|FAIL|SCRIPT ERROR' "$logs/$role.log" || true
-    if ! rg -q "PASS arcade replication $role" "$logs/$role.log" || rg -q 'FAIL|SCRIPT ERROR' "$logs/$role.log"; then result=1; fi
+    rg 'PASS|FAIL|SCRIPT ERROR|ERROR:' "$logs/$role.log" || true
+    if ! rg -q "PASS arcade replication $role" "$logs/$role.log" || rg -q 'FAIL|SCRIPT ERROR|ERROR:' "$logs/$role.log"; then result=1; fi
 done
 printf 'logs: %s\n' "$logs"
 exit "$result"

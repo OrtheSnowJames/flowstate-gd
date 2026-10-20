@@ -334,7 +334,7 @@ func host_game(port := PORT, use_webrtc := false, mode: int = GameMode.NORMAL) -
 	var err: Error
 	if use_webrtc:
 		var rtc := WebRTCMultiplayerPeer.new()
-		err = rtc.create_server()
+		err = rtc.create_server(Matchmaking.rtc.CHANNELS)
 		peer = rtc
 	else:
 		var enet := ENetMultiplayerPeer.new()

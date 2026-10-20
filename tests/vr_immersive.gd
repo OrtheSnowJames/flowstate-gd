@@ -47,10 +47,7 @@ func _run() -> void:
 		tracker.set_pose("grip", Transform3D(Basis.IDENTITY, Vector3(-0.3 if i == 0 else 0.3, 1.15, -0.5)), Vector3.ZERO, Vector3.ZERO, XRPose.XR_TRACKING_CONFIDENCE_HIGH)
 		XRServer.add_tracker(tracker)
 		trackers.append(tracker)
-		var hand := XRController3D.new()
-		hand.tracker = tracker.name
-		hand.pose = &"grip"
-		VR._origin.add_child(hand)
+		var hand: XRController3D = VR._origin.get_node("LeftHand" if i == 0 else "RightHand")
 		VR._hands.append(hand)
 	await get_tree().create_timer(0.3).timeout
 	_expect(not VR.immersion.blur.visible, "gameplay is sharp")
@@ -151,6 +148,7 @@ func _run() -> void:
 	await _test_swimming(player)
 	await _test_pelts(player)
 	await _test_cube_hands(player)
+	await _test_ground_pound_controls()
 	trackers[0].set_input("primary", Vector2(0.5, 0.8))
 	trackers[1].set_input("primary", Vector2(0.5, 0.8))
 	trackers[0].set_input("ax_button", true)
@@ -547,6 +545,38 @@ func _test_cube_hands(player) -> void:
 	VR.immersion.cancel_gestures()
 	cube.freeze = true
 	await _place_hands(false)
+
+
+func _test_ground_pound_controls() -> void:
+	var previous_mode := Net.game_mode
+	Net.game_mode = Net.GameMode.ARCADE
+	trackers[0].set_input("primary_click", true)
+	trackers[1].set_input("ax_button", true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.flush_buffered_events()
+	_expect(Input.is_action_pressed("swim_key") and Input.is_action_pressed("jump"),
+		"immersive arcade supports the couch ground pound combo")
+	trackers[1].set_input("primary_click", true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.flush_buffered_events()
+	_expect(not Input.is_action_pressed("swim_key"), "escape chord suppresses ground pound")
+	trackers[0].set_input("primary_click", false)
+	trackers[1].set_input("primary_click", false)
+	trackers[1].set_input("ax_button", false)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Net.game_mode = Net.GameMode.NORMAL
+	trackers[0].set_input("primary_click", true)
+	await get_tree().process_frame
+	await get_tree().process_frame
+	Input.flush_buffered_events()
+	_expect(not Input.is_action_pressed("swim_key"), "normal immersive swimming stays gesture controlled")
+	trackers[0].set_input("primary_click", false)
+	Net.game_mode = previous_mode
+	await get_tree().process_frame
+	await get_tree().process_frame
 
 
 func _capture(label: String) -> void:
