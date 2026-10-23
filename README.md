@@ -129,7 +129,7 @@ Both scripts accept `-Godot "C:\path\to\Godot.exe"`; the build script also accep
 - Internet access for Gradle dependencies (first build only)
 
 ### Other Notes
-AS (ante-script): This setup takes a while as android is pretty annoying. I could probably just make a release of the .apk...
+AS (ante-script): This setup takes a while as android is pretty annoying. I could probably just make a [release](https://github.com/OrtheSnowJames/orthesnowjames.github.io/releases/tag/flowstate-latest) of the .apk...
 Release exports additionally need release signing configured in the Meta Quest export preset.
 Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache; the first Quest export imports assets once.
 
