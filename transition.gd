@@ -37,14 +37,29 @@ func _ready() -> void:
 	add_child(_fade_rect)
 
 	_status_label = Label.new()
-	_status_label.set_anchors_preset(Control.PRESET_CENTER)
+	_status_label.anchor_left = 0.08
+	_status_label.anchor_right = 0.92
+	_status_label.anchor_top = 0.08
+	_status_label.anchor_bottom = 0.92
 	_status_label.grow_horizontal = Control.GROW_DIRECTION_BOTH
 	_status_label.grow_vertical = Control.GROW_DIRECTION_BOTH
 	_status_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	_status_label.add_theme_font_size_override("font_size", 32)
+	_status_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_status_label.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+	_status_label.add_theme_font_size_override("font_size", 28)
 	_status_label.modulate.a = 0.0
 	_status_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(_status_label)
+	_status_label.resized.connect(_fit_status)
+	get_viewport().size_changed.connect(_fit_status)
+	_fit_status()
+
+
+func _fit_status() -> void:
+	var available := get_viewport().get_visible_rect().size * 0.84
+	_status_label.pivot_offset = _status_label.size * 0.5
+	var fit := minf(1.0, minf(available.x / maxf(_status_label.size.x, 1.0), available.y / maxf(_status_label.size.y, 1.0)))
+	_status_label.scale = Vector2.ONE * fit
 
 
 func _process(_delta: float) -> void:

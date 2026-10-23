@@ -39,7 +39,7 @@ function Invoke-Stage([string]$Name, [string[]]$Arguments) {
     return $text
 }
 
-Write-Host "Checking PCVR assets with VR disabled (mobile texture imports disabled in project settings)..."
+Write-Host "Checking assets with VR disabled (desktop and Quest texture formats are cached for editor exports)..."
 $null = Invoke-Stage "import" @("--headless", "--xr-mode", "off", "--path", $project, "--import")
 Write-Host "Checking meshes and scenes..."
 $validation = Invoke-Stage "validate" @("--headless", "--xr-mode", "off", "--path", $project, "--script", "res://tests/validate_resources.gd")

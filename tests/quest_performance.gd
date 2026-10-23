@@ -91,7 +91,20 @@ func _run() -> void:
 	Engine.max_fps = saved_fps
 	var desktop := ConfigFile.new()
 	desktop.load("res://project.godot")
-	_expect(not desktop.get_value("rendering", "textures/vram_compression/import_etc2_astc"), "desktop skips mobile imports")
+	_expect(desktop.get_value("rendering", "textures/vram_compression/import_etc2_astc"), "editor imports textures for native quest exports")
+	_expect(desktop.get_value("rendering", "renderer/rendering_method.mobile") == "gl_compatibility", "native quest export uses compatibility")
+	_expect(desktop.get_value("xr", "openxr/enabled.android"), "native quest export enables openxr")
+	var presets := ConfigFile.new()
+	presets.load("res://export_presets.cfg")
+	var found := false
+	for section in presets.get_sections():
+		if presets.get_value(section, "name", "") != "Meta Quest":
+			continue
+		found = true
+		_expect("connect_to_url.txt" in presets.get_value(section, "include_filter", ""), "native quest export includes matchmaking configuration")
+		for key in ["gradle_build/use_gradle_build", "xr_features/enable_meta_plugin", "meta_xr_features/use_overlay_keyboard", "permissions/internet"]:
+			_expect(presets.get_value(section + ".options", key, false), "native quest export enables " + key)
+	_expect(found, "quest export preset exists")
 	var quest := ConfigFile.new()
 	quest.load("res://quest_import.cfg")
 	_expect(quest.get_value("rendering", "textures/vram_compression/import_etc2_astc"), "quest enables mobile imports")

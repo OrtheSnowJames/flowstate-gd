@@ -754,7 +754,7 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 8.75, -27)
 shape = SubResource("BoxShape3D_concrete_floor_3")
 
 [node name="Bathroom" parent="." unique_id=1134696406 instance=ExtResource("16_mvkr7")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 9, -5)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -32, 9.004986, -5)
 
 [node name="Scoreboard" parent="." unique_id=2009443230 instance=ExtResource("24_614yo")]
 transform = Transform3D(6.38, 0, 0, 0, 6.9, 0, 0, 0, 1, -6, 15, -30)

@@ -82,7 +82,23 @@ func _test_moves(mode: String) -> void:
 	combat._hud._process(0.0)
 	_expect(combat._hud.prompt.text.contains("Left Trigger"), mode + " hud names the dash button")
 	_expect(combat._hud.marker.position.is_equal_approx(
-		VR.project_ui_position(enemy.position, player._camera) - Vector2(10, 20)), mode + " target marker uses the active view")
+		VR.project_ui_position(enemy.position, player._camera) - combat._hud.marker.size * 0.5), mode + " target marker uses the active view")
+	_expect(combat._hud.marker.visible and not combat._hud.lock_status.visible, mode + " locked target hides the warning")
+	_expect(combat._hud.marker.get_theme_font_size("font_size") == 48, mode + " crosshair is larger")
+	_expect(combat._hud.marker.get_theme_color("font_color").r == 1.0, mode + " crosshair is red")
+	_capture(mode + "-locked")
+	enemy.team = player.team
+	combat._hud._process(0.0)
+	_expect(combat._hud.marker.visible and combat._hud.lock_status.visible, mode + " missing target shows crosshair and warning")
+	_expect(combat._hud.lock_status.text == "Not locked on", mode + " missing target names its state")
+	_expect(combat._hud.marker.position.is_equal_approx(player.Controller.aim_position(player) - combat._hud.marker.size * 0.5), mode + " unlocked crosshair follows aim")
+	_expect(not combat._hud.marker.get_rect().intersects(combat._hud.lock_status.get_rect()), mode + " lock status does not overlap crosshair")
+	_capture(mode + "-unlocked")
+	player._unconscious = true
+	combat._hud._process(0.0)
+	_expect(not combat._hud.marker.visible and not combat._hud.lock_status.visible, mode + " fainted player has no targeting ui")
+	player._unconscious = false
+	enemy.team = 1
 	trackers[0].set_input("trigger", 1.0)
 	await _frames()
 	_expect(combat.states.get(1, {}).get("phase", -1) == combat.Phase.DASH, mode + " trigger starts dash")
@@ -145,6 +161,13 @@ func _frames() -> void:
 	await get_tree().process_frame
 	await get_tree().process_frame
 	Input.flush_buffered_events()
+
+
+func _capture(label: String) -> void:
+	if DisplayServer.get_name() == "headless":
+		return
+	RenderingServer.force_draw()
+	get_viewport().get_texture().get_image().save_png("/tmp/flowstate-arcade-" + label + ".png")
 
 
 func _expect(condition: bool, message: String) -> void:
