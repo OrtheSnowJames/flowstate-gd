@@ -94,7 +94,7 @@ func _open_code_prompt() -> void:
 
 func _show_settings() -> void:
 	var buttons := [
-		{"label": "Name: %s" % Settings.player_name, "on_press": _on_edit_name},
+		{"label": "Name and Voice Chat", "on_press": _on_edit_name},
 		{"type": "stepper", "label": "Camera Height", "value": "%.1fm" % Settings.camera_hover_height,
 			"on_left": _dec_camera_height, "on_right": _inc_camera_height},
 		{"type": "stepper", "label": "Angle", "value": "%d°" % int(Settings.camera_pitch_deg),

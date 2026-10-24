@@ -175,3 +175,4 @@ Entering immersive VR, stopping VR or restarting the app restores performance mo
 
 ## TODO:
 Diving board
+Voice chat

@@ -7,7 +7,8 @@ var target: Node3D = null
 var _camera: Camera3D = null
 
 @onready var _box: PanelContainer = $Box
-@onready var _label: Label = $Box/Label
+@onready var _label: Label = $Box/Row/Label
+@onready var _mic: TextureRect = $Box/Row/Mic
 
 
 func _ready() -> void:
@@ -32,5 +33,6 @@ func _process(_delta: float) -> void:
 		_box.visible = false
 		return
 	_box.visible = true
+	_mic.modulate.a = 1.0 if VoiceChat.is_speaking(str(target.name).to_int()) else 0.0
 	var screen := VR.project_ui_position(world, _camera)
 	_box.position = screen - Vector2(_box.size.x * 0.5, _box.size.y)

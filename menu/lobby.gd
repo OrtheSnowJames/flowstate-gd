@@ -1,7 +1,6 @@
 # the waiting room everyone who connects sits here with no body in the pool
 extends Node3D
 
-const NAME_PROMPT := preload("res://menu/name_prompt.tscn")
 const PLAYER_LIST := preload("res://menu/player_list.tscn")
 
 @onready var _menu_screen: Control = $UI/MenuScreen
@@ -14,17 +13,7 @@ func _ready() -> void:
 	Net.round_loading.connect(_on_round_loading)
 	_refresh()
 
-	# first time anyones ever landed in a lobby on this install settings has no
-	if Settings.player_name.is_empty():
-		var prompt := NAME_PROMPT.instantiate()
-		$UI.add_child(prompt)
-		prompt.open("", "Enter your name", _on_name_chosen)
-
-
-func _on_name_chosen(new_name: String) -> void:
-	Settings.player_name = new_name
-	Settings.save_settings()
-	Net.update_my_name()
+	VoiceChat.prompt_setup($UI)
 
 
 func _exit_tree() -> void:

@@ -378,6 +378,7 @@ func join_game(ip := "", port := PORT) -> Error:
 
 
 func leave_game() -> void:
+	VoiceChat.reset_session()
 	_session_generation += 1
 	_awaiting_connection = false
 	_connect_flow_active = false
@@ -1354,6 +1355,7 @@ func _start_spectating_current_round() -> void:
 	if is_online():
 		rpc_id(1, "net_spectator_ready")
 	await Transition.blur_out()
+	VoiceChat.prompt_setup(Transition)
 
 
 func _leave_game_in_progress_to_menu() -> void:

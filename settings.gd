@@ -11,6 +11,9 @@ const _PROFILE_SECTION := "profile"
 
 # display name shown to other players the lobbys player list everyone and a floating
 var player_name: String = ""
+var voice_configured := false
+var voice_enabled := false
+var voice_device := "Default"
 
 # campivots height above the player camera arc in the settings screen see water player
 var camera_hover_height: float = 3.2
@@ -66,6 +69,9 @@ func load_settings() -> void:
 	online_penalty_until_unix = cfg.get_value(
 		_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	player_name = cfg.get_value(_PROFILE_SECTION, "player_name", player_name)
+	voice_configured = cfg.get_value("voice", "configured", false)
+	voice_enabled = cfg.get_value("voice", "enabled", false)
+	voice_device = cfg.get_value("voice", "device", "Default")
 
 
 func save_settings() -> void:
@@ -77,6 +83,9 @@ func save_settings() -> void:
 	cfg.set_value(_GRAPHICS_SECTION, "performance_mode", _performance_mode)
 	cfg.set_value(_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	cfg.set_value(_PROFILE_SECTION, "player_name", player_name)
+	cfg.set_value("voice", "configured", voice_configured)
+	cfg.set_value("voice", "enabled", voice_enabled)
+	cfg.set_value("voice", "device", voice_device)
 	var err := cfg.save(_SAVE_PATH)
 	if err != OK:
 		push_error("Settings: couldn't save %s (error %d)" % [_SAVE_PATH, err])

@@ -41,6 +41,7 @@ config/icon="res://icon.svg"
 
 [audio]
 
+driver/enable_input=true
 buses/default_bus_layout="uid://cndx0ruoe7yhk"
 
 [autoload]
@@ -52,6 +53,7 @@ Matchmaking="*res://matchmaking/matchmaking.gd"
 SimpleGrass="*uid://bfq0snth8sj3h"
 ControllerNavigation="*res://menu/controller_navigation.gd"
 VR="*res://vr.gd"
+VoiceChat="*res://voice/voice_chat.gd"
 
 [display]
 
@@ -66,6 +68,11 @@ project/assembly_name="flowstate"
 enabled=PackedStringArray("res://addons/simplegrasstextured/plugin.cfg")
 
 [input]
+
+voice_toggle={
+"deadzone": 0.5,
+"events": [Object(InputEventKey,"physical_keycode":67), Object(InputEventJoypadButton,"device":-1,"button_index":4)]
+}
 
 vr_dodge_left={
 "deadzone": 0.2,

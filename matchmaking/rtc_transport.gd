@@ -2,8 +2,8 @@ extends Node
 
 const SIGNAL_INTERVAL := 2.0
 const CONNECT_TIMEOUT := 35.0
-# channel one carries arcade movement snapshots
-const CHANNELS := [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED]
+# separate channels for arcade snapshots and voice
+const CHANNELS := [MultiplayerPeer.TRANSFER_MODE_UNRELIABLE_ORDERED, MultiplayerPeer.TRANSFER_MODE_UNRELIABLE]
 
 var peer: WebRTCMultiplayerPeer
 var _code := ""

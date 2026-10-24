@@ -2,6 +2,7 @@
 
 [ext_resource type="Script" path="res://water/nameplate.gd" id="1_nameplate"]
 [ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="2_font"]
+[ext_resource type="Texture2D" path="res://voice/mic.svg" id="3_mic"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_pill"]
 content_margin_left = 10.0
@@ -27,7 +28,12 @@ offset_bottom = 30.0
 mouse_filter = 2
 theme_override_styles/panel = SubResource("StyleBoxFlat_pill")
 
-[node name="Label" type="Label" parent="Box"]
+[node name="Row" type="HBoxContainer" parent="Box"]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 6
+
+[node name="Label" type="Label" parent="Box/Row"]
 layout_mode = 2
 mouse_filter = 2
 theme_override_colors/font_color = Color(1, 1, 1, 0.95)
@@ -35,3 +41,12 @@ theme_override_fonts/font = ExtResource("2_font")
 theme_override_font_sizes/font_size = 14
 text = "Name"
 horizontal_alignment = 1
+
+[node name="Mic" type="TextureRect" parent="Box/Row"]
+modulate = Color(0.5, 1, 0.65, 0)
+custom_minimum_size = Vector2(18, 18)
+layout_mode = 2
+mouse_filter = 2
+texture = ExtResource("3_mic")
+expand_mode = 1
+stretch_mode = 5
