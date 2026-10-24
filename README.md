@@ -3,6 +3,8 @@
 After going to the pool, have you ever wanted to do your crazy water fights online?
 Well now you can! Introducing Flowstate! (I hastily made this name up)
 
+Download here: [goto](https://github.com/OrtheSnowJames/orthesnowjames.github.io/releases/tag/flowstate-latest)
+
 ## Movement
 
 Getting around the pool isn't just holding W. Here's the rundown.
@@ -14,13 +16,13 @@ Getting around the pool isn't just holding W. Here's the rundown.
 5. Backstroke flip - Tap forward right after letting go of back and you'll spin 180° on the spot without losing momentum, instead of coasting to a stop first.
 6. Dodge - Double-tap A or D to dodge sideways. Only works in the shallow end or on dry land, since there's nothing to push off of in open water. Costs stamina and has its own cooldown.
 7. Jump - Same shallow-end-or-dry-land rule as the dodge. A jump spends your ENTIRE momentum bar on the way up - the more you had, the higher you go, but you land with none of it left.
-8. Scoreboard - Press F to pan the camera to the scoreboard. The scoreboard measures how many times your team has fainted an enemy. First to the goal wins!
+8. Scoreboard - Press F to pan the camera to the scoreboard. The scoreboard measures how many times your team has drowned an enemy. First to the goal wins!
 
 ## Combat
 
 There are a few combat features we made. First, there are 2 roles.
 1. Normal - Just a normal dude.
-2. Lifeguard - Chosen randomly. Expends less stamina, goes faster, and can revive fainted teammates.
+2. Lifeguard - Chosen randomly. Expends less stamina, goes faster, and can revive drowned teammates.
 
 Next, we need to cover stamina. You can't just swim forever!
 You only have 100 points of stamina.
@@ -29,12 +31,12 @@ You only have 100 points of stamina.
 3. When you swim or tread, you lose stamina.
 4. Standing in the shallow end is the only way to recover stamina.
 
-If you lose all your stamina, you faint. Here's what that actually means.
+If you lose all your stamina, you drown/faint. Here's what that actually means.
 1. You go limp and just drift with the water - no more input until someone brings you back.
 2. Your screen fades to black and your ears start ringing. It's unsettling on purpose.
 3. Any lifeguard on your team can swim up next to you and revive you, handing back half your stamina and snapping your screen right back open.
-4. If the lifeguard faints, the whole team can't revive anymore - not even to save the lifeguard themself.
-5. If your whole team faints, the round's over and the other team wins. Everyone gets revived automatically so nobody's left staring at black, then it's back to the lobby for a rematch.
+4. If the lifeguard drowns, the whole team can't revive anymore - not even to save the lifeguard themself.
+5. If your whole team drowns, the round's over and the other team wins. Everyone gets revived automatically so nobody's left staring at black, then it's back to the lobby for a rematch.
 
 Don't worry! That's why we made the lifeguard an absolute unit.
 1. The lifeguard can block most of an attack's damage, since it's holding a kickboard.
@@ -54,6 +56,19 @@ Press the key with the number to fire it.
 4. Water Counter - Water Walls and Water Powers, but takes 50 stamina.
 5. Water Pelt - Shoots some bubbles of water that do little damage unless the opponent is on a cube.
 
+# King of the Cube
+
+King of the cube is a mode where you secure victory by standing on the cube for a minute and a half.
+
+When you stand on the cube, you gain 1 point per second. The first team to 120 points wins.
+
+Tactics:
+- Get a lifeguard on the cube
+- Surround the lifeguard with expendable players below the cube surrounding it
+- Put the cube in a corner so it's easier to defend
+- Move the cube to your half so the other team respawns further away from the cube
+- Have the lifeguard firing water pelts and the players firing water attacks/powers or even run walls
+
 ## Arcade Mode
 
 Arcade mode is a more arcadey mode. The controls are weirder and the physics isn't realistic.
@@ -70,9 +85,9 @@ Otherwise, you can either mantle up to gain more height or dash back to where yo
 
 ## Death and Spectating
 
-When your stamina reaches zero, you unfortunately drown/faint. Don't worry!
+When your stamina reaches zero, you unfortunately drown. Don't worry!
 You can still look at your team! There's a gray guy on the sidelines who flies a drone.
-This drone allows you to spectate the lifeguard while you're fainted, until the lifeguard revives you.
+This drone allows you to spectate the lifeguard while you're drowned, until the lifeguard revives you.
 If the lifeguard dies, you can only see an overhead view of the pool. All hope is lost.
 
 If a game just started, you can still spectate! When you join, press the spectate button.
@@ -159,6 +174,4 @@ This is the only way to toggle performance mode (on by default).
 Entering immersive VR, stopping VR or restarting the app restores performance mode.
 
 ## TODO:
-Done: Add matchmaking/lobbies
-
-Done: King of the Hill/Cube
+Diving board
