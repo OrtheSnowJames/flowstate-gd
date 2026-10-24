@@ -5,9 +5,12 @@ Well now you can! Introducing Flowstate! (I hastily made this name up)
 
 Download here: [goto](https://github.com/OrtheSnowJames/orthesnowjames.github.io/releases/tag/flowstate-latest)
 
+An example of King of the Cube:
+![strategy?](product_images/king_of_the_cube.png)
+
 ## Movement
 
-Getting around the pool isn't just holding W. Here's the rundown.
+Getting around the pool isn't just holding W. 
 
 1. Walking - On dry land or in the shallow end, forward/back gets you moving up to a capped walking speed. Let go and it fades right back out.
 2. Swimming - Hold the swim key and forward/back to actually get going. There's a short wind-up before you hit full speed, and backstrokes wind up faster than forward strokes.
@@ -176,3 +179,4 @@ Entering immersive VR, stopping VR or restarting the app restores performance mo
 ## TODO:
 Diving board
 Voice chat
+Solo Play Sandbox
