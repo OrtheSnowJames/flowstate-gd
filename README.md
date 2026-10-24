@@ -94,9 +94,29 @@ Normal Controls (sorta):
 - Water counter got removed for balancing purposes.
 - Jump Cancelling got removed also for balancing purposes. Now you can swim really fast in VR.
 
+Hold both joysticks to exit a game.
 What I think is really cool is people can see your hand positions. Yeah.
 
 In arcade mode, Left and Right trigger replace Q and E.
+
+## Controller settings
+
+Similar to VR controls, but with more options.
+
+In controller mode, press the +/Options button to exit.
+
+- Cross/Bottom button to Jump
+- Circle/Right button to Water Power
+- Square/Left button to Water Attack
+- Triangle/Top button to Water Wall
+- In solo play, press L on keyboard or D-pad down to toggle lifeguard.
+- D-pad right to revive
+- D-pad up to look at the scoreboard (F on keyboard)
+- D-pad left in solo play to change mode (Normal, KOTC, Arcade)
+- D-pad left or right to dodge also.
+- L2/R2 for arcade Q or E
+- Click the stick in to swim
+- R2/RT to Water Pelt
 
 ## Matchmaking
 
