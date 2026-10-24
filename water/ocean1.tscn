@@ -25,6 +25,7 @@
 [ext_resource type="PackedScene" uid="uid://cejd1ij7ylci0" path="res://mesh/character.glb" id="27_2euab"]
 [ext_resource type="ArrayMesh" path="res://mesh/grass_clump.res" id="27_oalkl"]
 [ext_resource type="PackedScene" uid="uid://dyr5uukucdgrp" path="res://mesh/character_gray.tscn" id="28_2euab"]
+[ext_resource type="PackedScene" uid="uid://3306dkiwtl72" path="res://addons/simplegrasstextured/shaders/wooden_fences__low_poly.glb" id="28_oalkl"]
 [ext_resource type="PackedScene" uid="uid://b8e3x60f5saj5" path="res://mesh/banana.glb" id="29_oalkl"]
 [ext_resource type="Script" uid="uid://bs3u8l4groj4f" path="res://water/king_of_cube.gd" id="30_cube_mode"]
 
@@ -726,7 +727,7 @@ shape = SubResource("ConcavePolygonShape3D_1ixhq")
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -40, 8.75, 1)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="concrete_floor" unique_id=1391441311]
-transform = Transform3D(0.6, 0, 0, 0, 1, 0, 0, 0, 1, 4, 0.25, 0)
+transform = Transform3D(1.0103548, 0, 0, 0, 1, 0, 0, 0, 1, -0.04566145, 0.25, 0)
 material_override = SubResource("StandardMaterial3D_uhase")
 mesh = SubResource("PlaneMesh_tpo3s")
 
@@ -754,7 +755,7 @@ shape = SubResource("BoxShape3D_concrete_floor_2")
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -36, 9, -33)
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D3" unique_id=965425312]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.88000005, -5.999996, 0, 29.000011)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 0.93766314, -5.999996, 0, 25.876385)
 material_override = SubResource("StandardMaterial3D_vyau6")
 mesh = SubResource("PlaneMesh_vuobg")
 
@@ -851,7 +852,7 @@ transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -26.
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="Sketchfab_Scene" parent="." unique_id=2006442429 instance=ExtResource("29_oalkl")]
-transform = Transform3D(-200, 7.816117e-06, -2.9170149e-05, 0, 193.18517, 51.76381, 3.019916e-05, 51.76381, -193.18517, 32, 16, -2)
+transform = Transform3D(-200, 7.816117e-06, -2.9170149e-05, 0, 193.18517, 51.76381, 3.019916e-05, 51.76381, -193.18517, 32, 24.590946, 0.30193686)
 
 [node name="grass1" type="Node3D" parent="." unique_id=85678382]
 
@@ -898,3 +899,17 @@ multimesh = SubResource("MultiMesh_vx1s3")
 [node name="GrassBatch11" type="MultiMeshInstance3D" parent="grass1" unique_id=1947042974]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -64, 0, -48)
 multimesh = SubResource("MultiMesh_wcq21")
+
+[node name="fence" type="Node3D" parent="." unique_id=1142125015]
+
+[node name="Sketchfab_Scene2" parent="fence" unique_id=1198194189 instance=ExtResource("28_oalkl")]
+transform = Transform3D(13.688133, 0, 0, 0, 5, 0, 0, 0, 5, 9.35391, 9.058636, -50.138603)
+
+[node name="Sketchfab_Scene5" parent="fence" unique_id=447498896 instance=ExtResource("28_oalkl")]
+transform = Transform3D(-13.688133, 0, -4.371139e-07, 0, 5, 0, 1.1966546e-06, 0, -5, -28.939127, 9.058636, 25.82476)
+
+[node name="Sketchfab_Scene3" parent="fence" unique_id=2125561958 instance=ExtResource("28_oalkl")]
+transform = Transform3D(-5.983273e-07, 0, -5, 0, 5, 0, 13.688133, 0, -2.1855695e-07, 29.353909, 8.979935, 4.6139297)
+
+[node name="Sketchfab_Scene4" parent="fence" unique_id=1352492335 instance=ExtResource("28_oalkl")]
+transform = Transform3D(1.7949819e-06, 0, 5, 0, 5, 0, -13.688133, 0, 6.556709e-07, -49.76506, 9.058636, -33.036236)
