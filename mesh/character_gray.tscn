@@ -6,57 +6,75 @@
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_ellqp"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_cdclu"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_rq5ky"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_coy7m"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3pyf0"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v7kl5"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_iwoxo"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yemd2"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_v7160"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_3ki31"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_xpc8r"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_0ik72"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_f05vr"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_yb0nv"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_hdwrn"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_g0xyf"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_lc4wb"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_7vuh3"]
 albedo_texture = ExtResource("2_e2o6q")
+texture_filter = 0
 
 [node name="blockbench_export" unique_id=65244047 instance=ExtResource("1_o1gqv")]
 

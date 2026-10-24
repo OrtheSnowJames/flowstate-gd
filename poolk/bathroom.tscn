@@ -76,7 +76,7 @@ mesh = SubResource("BoxMesh_bw0ub")
 [node name="wall_1" type="StaticBody3D" parent="." unique_id=1475451906]
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="wall_1" unique_id=442467849]
-transform = Transform3D(0.99992996, 0, -0.011833056, 0, 1, 0, 0.011833056, 0, 0.99992996, 0.9356261, 1.5, 3.9768467)
+transform = Transform3D(0.99992996, 0, -0.011833056, 0, 1, 0, 0.011833056, 0, 0.99992996, 0.9356261, 0.8861692, 3.9768467)
 material_override = SubResource("StandardMaterial3D_0t4hm")
 mesh = SubResource("BoxMesh_cckdj")
 
@@ -146,11 +146,11 @@ mesh = SubResource("BoxMesh_qv5tf")
 [node name="roof" type="StaticBody3D" parent="." unique_id=567323150]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="roof" unique_id=114927208]
-transform = Transform3D(0.8660254, 0.5, 0, -0.5, 0.8660254, 0, 0, 0, 1, -1.738905, 3.97117, 0)
+transform = Transform3D(0.9820466, 0.38397872, 0, -0.5669849, 0.66507065, 0, 0, 0, 1, -1.5712118, 3.97117, 0)
 material_override = SubResource("StandardMaterial3D_j0q5j")
 mesh = SubResource("BoxMesh_npvi7")
 
 [node name="MeshInstance3D2" type="MeshInstance3D" parent="roof" unique_id=1765985049]
-transform = Transform3D(0.8660254, -0.5, 0, 0.5, 0.8660254, 0, 0, 0, 1, -7.810005, 3.97117, 0)
+transform = Transform3D(0.9698542, -0.6038288, 0, 0.5599456, 1.0458621, 0, 0, 0, 1, -8.374265, 3.97117, 0)
 material_override = SubResource("StandardMaterial3D_01vu0")
 mesh = SubResource("BoxMesh_npvi7")
