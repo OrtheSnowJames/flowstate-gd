@@ -35,6 +35,8 @@ func finish_pelt(key: String, body: Node3D = null) -> void:
 	if (Net.is_online() and not multiplayer.is_server()) or not _active_pelts.has(key):
 		return
 	var damage := 10.0
+	var caster := get_node_or_null(_active_pelts[key].caster_path) if not _active_pelts[key].caster_path.is_empty() else null
+	var attacker := int(caster.get("_owner_peer")) if caster and caster.is_in_group("player") else 0
 	var scene := get_tree().current_scene
 	var cube := scene.get_node_or_null("PushCube/KingOfCube") if scene else null
 	if is_instance_valid(body) and cube and cube.supports_player(body):
@@ -44,7 +46,7 @@ func finish_pelt(key: String, body: Node3D = null) -> void:
 	else:
 		net_remove_pelt(key)
 	if is_instance_valid(body) and body.has_method("take_stamina_damage"):
-		_send_to_owner(body, "take_stamina_damage", [damage], func() -> void: body.take_stamina_damage(damage))
+		_send_to_owner(body, "take_stamina_damage", [damage, attacker], func() -> void: body.take_stamina_damage(damage, attacker))
 
 
 @rpc("authority", "call_local", "reliable")
@@ -133,7 +135,7 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 			_knockback(body, travel_dir, _knockback_impulse_power * strength)
 			# long range lance a hit that lands at full extension is harder to land
 			_apply_hit_damage(body, strength, reach, max_distance,
-					damage_min, damage_max, false)
+					damage_min, damage_max, false, caster)
 
 	# elongation drives the sims along direction reach see the class comment above so shrinking
 	add_impulse(origin, 0.42 * strength, 1.3, travel_dir, 1.0, 7.0 * strength * (reach / max_distance))
@@ -169,7 +171,7 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 			_knockback(body, travel_dir, _knockback_impulse_attack * strength)
 			# point blank haymaker the opposite of water power the closer the hit lands the
 			_apply_hit_damage(body, strength, reach, max_distance,
-					damage_min, damage_max, true)
+					damage_min, damage_max, true, caster)
 
 	add_impulse(origin, 0.6 * strength, 2.2 * strength, travel_dir, 1.0, 1.4 * (reach / max_distance))
 
@@ -303,16 +305,17 @@ func _knockback(body: Node3D, travel_dir: Vector3, impulse: float) -> void:
 
 # stamina damage on a landed hit scaled by strength and by how far along
 func _apply_hit_damage(body: Node3D, strength: float, along: float, max_distance: float,
-		min_damage: float, max_damage: float, closer_hurts_more: bool) -> void:
+		min_damage: float, max_damage: float, closer_hurts_more: bool, caster: Node3D = null) -> void:
 	if not body.has_method("take_stamina_damage"):
 		return
 	var t := clampf(along / max_distance, 0.0, 1.0)
 	if closer_hurts_more:
 		t = 1.0 - t
 	var amount := lerpf(min_damage, max_damage, t) * strength
+	var attacker := int(caster.get("_owner_peer")) if caster and caster.is_in_group("player") else 0
 	# ask the victim to hurt itself rather than editing their stamina from here stamina
-	_send_to_owner(body, "take_stamina_damage", [amount],
-			func() -> void: body.take_stamina_damage(amount))
+	_send_to_owner(body, "take_stamina_damage", [amount, attacker],
+			func() -> void: body.take_stamina_damage(amount, attacker))
 
 
 # runs method on body wherever that body is authoritative directly when thats us over

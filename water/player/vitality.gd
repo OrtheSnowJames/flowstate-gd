@@ -25,12 +25,15 @@ static func _stamina_change(player, delta: float) -> void:
 		player._death()
 
 
-static func take_stamina_damage(player, amount: float) -> void:
+static func take_stamina_damage(player, amount: float, attacker: int = 0) -> void:
 	if player.practice != null and player.practice.infinite_stamina:
 		player.stamina = player.max_stamina_per_mode(Net.game_mode)
 		return
 	if player._water_wall_up:
 		amount *= player.water_wall_block_reduction
+	if amount > 0.0:
+		player._last_damage_peer = attacker
+		player._last_damage_time = Time.get_ticks_msec()
 	player.stamina = clampf(player.stamina - amount, 0.0, player.max_stamina_per_mode(Net.game_mode))
 	if player.stamina <= 5.0:
 		player._death()
@@ -39,14 +42,16 @@ static func take_stamina_damage(player, amount: float) -> void:
 static func _death(player) -> void:
 	if player._unconscious:
 		return
+	var killer: int = player._last_damage_peer if Time.get_ticks_msec() - player._last_damage_time <= 10000 else 0
 	if Net.is_online():
 		# call_local so this covers us as well as everyone else
-		player.rpc("net_death")
+		player.rpc("net_death", killer)
 	else:
-		player.net_death()
+		player.net_death(killer)
 
 
-static func net_death(player) -> void:
+static func net_death(player, killer: int = 0) -> void:
+	Net.arcade.ultimate.credit(player, killer)
 	if player._unconscious:
 		return
 	player._unconscious = true
@@ -117,6 +122,9 @@ static func net_revive(player) -> void:
 	if not player._unconscious:
 		return
 	player._unconscious = false
+	player._last_damage_peer = 0
+	player._last_damage_time = 0
+	Net.arcade.ultimate.reset_life(player)
 	player._jump_cancel_available = false
 	player.set_process_input(true)
 	player.stamina = player.max_stamina_per_mode(Net.game_mode) * player.revive_stamina_fraction

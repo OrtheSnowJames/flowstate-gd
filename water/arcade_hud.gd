@@ -4,6 +4,7 @@ var controller: Node
 var prompt := Label.new()
 var marker := Label.new()
 var lock_status := Label.new()
+var ultimate_status := Label.new()
 
 
 func _ready() -> void:
@@ -24,6 +25,17 @@ func _ready() -> void:
 	prompt.add_theme_constant_override("shadow_offset_y", 2)
 	prompt.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	root.add_child(marker)
+	root.add_child(ultimate_status)
+	ultimate_status.set_anchors_and_offsets_preset(Control.PRESET_CENTER_BOTTOM)
+	ultimate_status.offset_left = -100
+	ultimate_status.offset_right = 100
+	ultimate_status.offset_top = -65
+	ultimate_status.offset_bottom = -35
+	ultimate_status.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	ultimate_status.add_theme_font_size_override("font_size", 20)
+	ultimate_status.add_theme_color_override("font_outline_color", Color.BLACK)
+	ultimate_status.add_theme_constant_override("outline_size", 3)
+	ultimate_status.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	marker.text = "+"
 	marker.size = Vector2(64, 64)
 	marker.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -48,6 +60,7 @@ func _process(_delta: float) -> void:
 	prompt.hide()
 	marker.hide()
 	lock_status.hide()
+	ultimate_status.hide()
 	if not controller.active() or Net.is_spectating() or Net.input_blocked_by_menu():
 		return
 	var id := multiplayer.get_unique_id() if Net.is_online() else 1
@@ -55,6 +68,13 @@ func _process(_delta: float) -> void:
 	if player == null or player._unconscious or player.movement_locked:
 		return
 	_update_target(player)
+	var kills: int = controller.ultimate.charges.get(id, 0)
+	ultimate_status.text = "Ult ready" if kills >= 3 else "Ult  %d / 3" % kills
+	ultimate_status.show()
+	if controller.ultimate.holding(player):
+		ultimate_status.text = "Ult"
+		lock_status.hide()
+		return
 	var state: Dictionary = controller.view.get(id, {})
 	var phase: int = state.get("phase", -1)
 	var q := "Left Trigger" if VR.active else "Q"
@@ -85,7 +105,7 @@ func _process(_delta: float) -> void:
 
 
 func _update_target(player) -> void:
-	var target: int = controller.pick_target(player)
+	var target: int = 0 if controller.ultimate.holding(player) else controller.pick_target(player)
 	var at: Vector2 = player.Controller.aim_position(player)
 	if target != 0:
 		at = VR.project_ui_position(controller._body(target).global_position, player._camera)

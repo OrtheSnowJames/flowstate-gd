@@ -23,7 +23,7 @@ static func _cast_water_move(player, kind: WaterMove, origin: Vector3, aim: Vect
 
 static func net_cast_water_move(player, kind: WaterMove, origin: Vector3, aim: Vector3, strength: float,
 		hit: Dictionary = {}) -> void:
-	if player._ocean == null or player._water_wall_up:
+	if player._ocean == null or player._water_wall_up or Net.arcade.ultimate.holding(player):
 		return
 	# everyone draws the wave only the peer that cast it resolves what it hit
 	var apply_hits = player._is_local()
@@ -100,6 +100,8 @@ static func _cast_water_wall(player, origin: Vector3, aim: Vector3, strength: fl
 
 
 static func net_water_wall(player, origin: Vector3, aim: Vector3, strength: float) -> void:
+	if Net.arcade.ultimate.holding(player):
+		return
 	player._wall_state = [origin, aim, strength]
 	player._water_wall_up = true
 	if player._ocean and player._ocean.has_method("start_water_wall"):

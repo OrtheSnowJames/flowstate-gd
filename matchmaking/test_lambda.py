@@ -141,6 +141,30 @@ class MatchmakingTests(unittest.TestCase):
         event = {"body": base64.b64encode(b"{}").decode(), "isBase64Encoded": True}
         self.assertEqual(api.body_of(event), {})
 
+    def test_couch_rooms_are_private_four_seat_rooms(self):
+        room = self.register(protocol=2, room_type="couch")
+        path = "/rooms/" + room["room_code"]
+        self.assertEqual(room["max_players"], 4)
+        self.assertEqual(room["state"], "couch")
+        self.assertEqual(request("POST", "/matchmaking", {"protocol": 2})[0], 404)
+        for index in range(3):
+            self.reserve(path, f"{index:064x}")
+        self.assertEqual(request("POST", path + "/connections", token="f" * 64)[0], 409)
+        self.assertEqual(request("POST", path + "/heartbeat", {"players": 5}, room["host_token"])[0], 400)
+        self.assertEqual(request("POST", path + "/heartbeat", {"players": 4, "state": "lobby"}, room["host_token"])[0], 200)
+        self.assertEqual(request("GET", path)[0], 409)
+        self.assertEqual(request("POST", "/matchmaking", {"protocol": 2})[0], 404)
+        self.assertEqual(request("POST", "/rooms", {"port": 7654, "room_type": "couch"})[0], 400)
+
+    def test_quick_play_leaves_space_for_the_party(self):
+        self.register(protocol=2, players=18)
+        self.assertEqual(request("POST", "/matchmaking", {"protocol": 2, "party_size": 4})[0], 404)
+        self.assertEqual(request("POST", "/matchmaking", {"protocol": 2, "party_size": 2})[0], 200)
+        room = self.register(protocol=2, players=16)
+        self.assertEqual(request("POST", "/matchmaking", {"protocol": 2, "party_size": 4})[1]["room_code"], room["room_code"])
+        for size in [0, 5, True, 1.5]:
+            self.assertEqual(request("POST", "/matchmaking", {"party_size": size})[0], 400)
+
     def test_full_and_state_changes(self):
         room = self.register()
         code, token = room["room_code"], room["host_token"]

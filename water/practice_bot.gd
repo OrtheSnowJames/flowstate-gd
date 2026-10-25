@@ -42,6 +42,8 @@ func _physics_process(delta: float) -> void:
 	if Net.is_online():
 		player.queue_free()
 		return
+	if Net.arcade.controls(player):
+		return
 	player._drift_to_a_stop()
 	if player._unconscious:
 		return

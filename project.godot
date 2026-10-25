@@ -54,6 +54,7 @@ SimpleGrass="*uid://bfq0snth8sj3h"
 ControllerNavigation="*res://menu/controller_navigation.gd"
 VR="*res://vr.gd"
 VoiceChat="*res://voice/voice_chat.gd"
+CouchParty="*res://vr/couch_party.gd"
 
 [display]
 

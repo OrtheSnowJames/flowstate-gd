@@ -11,6 +11,7 @@ const TIE_MARGIN := 2
 const POUND_DAMAGE := 75.0
 const SNAPSHOT_INTERVAL := 0.05
 const HUD := preload("res://water/arcade_hud.gd")
+var ultimate = preload("res://water/arcade_ultimate.gd").new()
 
 var states: Dictionary = {}
 var view: Dictionary = {}
@@ -28,6 +29,9 @@ var _hud: CanvasLayer
 
 
 func _ready() -> void:
+	ultimate.name = "Ultimate"
+	ultimate.combat = self
+	add_child(ultimate)
 	_hud = HUD.new()
 	_hud.controller = self
 	add_child(_hud)
@@ -42,8 +46,25 @@ func _host() -> bool:
 
 
 func _body(id: int) -> Node3D:
+	if id < 0 and not Net.is_online() and is_instance_id_valid(-id):
+		var bot = instance_from_id(-id)
+		if bot is Node3D and bot.is_inside_tree() and bot.is_in_group("player") and bot.practice != null:
+			return bot
 	var players := Net._players_root()
 	return players.get_node_or_null(str(id)) as Node3D if players else null
+
+
+func _id(player) -> int:
+	# negative ids keep solo bots separate from network peers
+	return -player.get_instance_id() if player.practice != null else player._owner_peer
+
+
+func _combatants() -> Array[Node]:
+	var players: Array[Node] = []
+	for player in get_tree().get_nodes_in_group("player"):
+		if not player.is_queued_for_deletion() and (player.practice == null or not Net.is_online()):
+			players.append(player)
+	return players
 
 
 func _position(id: int) -> Vector3:
@@ -71,7 +92,7 @@ func airborne(player) -> bool:
 
 
 func controls(player) -> bool:
-	return active() and _puppets.has(str(player.name).to_int())
+	return active() and (_puppets.has(_id(player)) or ultimate.holding(player))
 
 
 func pick_target(player) -> int:
@@ -82,9 +103,9 @@ func pick_target(player) -> int:
 	var controller_aim: bool = VR.active or player.using_controller
 	var best := 1.0 - cos(deg_to_rad(25.0)) if controller_aim else 160.0
 	var target := 0
-	var id := str(player.name).to_int()
-	for other in Net._players_root().get_children():
-		var other_id := str(other.name).to_int()
+	var id := _id(player)
+	for other in _combatants():
+		var other_id := _id(other)
 		if not _enemies(id, other_id) or camera.is_position_behind(other.global_position):
 			continue
 		if player.global_position.distance_to(other.global_position) > DASH_RANGE:
@@ -102,11 +123,11 @@ func pick_target(player) -> int:
 func pick_pound_target(player) -> int:
 	if not active():
 		return 0
-	var id := str(player.name).to_int()
+	var id := _id(player)
 	var target := 0
 	var best := INF
-	for other in Net._players_root().get_children():
-		var other_id := str(other.name).to_int()
+	for other in _combatants():
+		var other_id := _id(other)
 		if not _can_pound_target(id, other_id):
 			continue
 		var offset := _position(other_id) - _position(id)
@@ -130,7 +151,9 @@ func handle_input(player, event: InputEvent) -> bool:
 		return false
 	if event.is_echo():
 		return controls(player)
-	var id := str(player.name).to_int()
+	if ultimate.handle_input(player, event):
+		return true
+	var id := _id(player)
 	if event.is_action_pressed("arcade_q"):
 		request_action(Action.Q, pick_target(player), int(view.get(id, {}).get("fight", 0)))
 		return true
@@ -159,6 +182,8 @@ func net_action(action: int, target: int, fight: int) -> void:
 
 func submit(id: int, action: int, target: int = 0, fight: int = 0) -> void:
 	if not _host() or not active() or not _available(id):
+		return
+	if ultimate.held.has(id):
 		return
 	var state: Dictionary = states.get(id, {})
 	if not state.is_empty() and state.phase == Phase.CLASH:
@@ -368,9 +393,9 @@ func _move(id: int, state: Dictionary, delta: float) -> void:
 				_release(state.target)
 				_publish(true)
 				if Net.is_online():
-					rpc("net_pound_hit", state.target)
+					rpc("net_pound_hit", state.target, id)
 				else:
-					net_pound_hit(state.target)
+					net_pound_hit(state.target, id)
 				return
 	var motion := _safe_motion(start, next)
 	state.position = motion
@@ -416,12 +441,15 @@ func _safe_motion(start: Vector3, end: Vector3) -> Vector3:
 
 
 @rpc("authority", "call_local", "reliable")
-func net_pound_hit(id: int) -> void:
+func net_pound_hit(id: int, attacker: int = 0) -> void:
 	var player := _body(id)
 	if player == null or player._unconscious:
 		return
 	if player._is_local():
-		player.stamina = maxf(0.0, player.stamina - POUND_DAMAGE)
+		if player.practice == null or not player.practice.infinite_stamina:
+			player._last_damage_peer = attacker
+			player._last_damage_time = Time.get_ticks_msec()
+			player.stamina = maxf(0.0, player.stamina - POUND_DAMAGE)
 		player.linear_velocity = Vector3.DOWN * 30.0
 		player.shake_camera(0.25, 0.35)
 		if player.stamina <= 5.0:

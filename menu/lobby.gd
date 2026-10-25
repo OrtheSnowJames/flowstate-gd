@@ -9,6 +9,7 @@ const PLAYER_LIST := preload("res://menu/player_list.tscn")
 
 func _ready() -> void:
 	Net.lobby_changed.connect(_refresh)
+	CouchParty.changed.connect(_refresh)
 	# the host pressing start doesnt change the roster so it wouldnt reach _refresh through
 	Net.round_loading.connect(_on_round_loading)
 	_refresh()
@@ -36,19 +37,16 @@ func _refresh() -> void:
 	_count.text = "%s\n%d / %d players  -  Red %d / Blue %d" % [Net.game_mode_name(), count, Net.MAX_PLAYERS, red, blue]
 	$UI/RoomCode.text = "Room Code: " + Net.room_code if not Net.room_code.is_empty() else ""
 
-	# only the host can start everyone else is told what theyre waiting for is_server
+	var choices: Array = []
 	if multiplayer.is_server() or not Net.is_online():
-		_menu_screen.show_buttons([
-			{"label": "Start", "on_press": _on_start},
-			{"label": "View Players", "on_press": _on_view_players},
-			{"label": "Leave", "on_press": _on_leave},
-		])
+		choices.append({"label": "Waiting for party..." if CouchParty.leader() and not CouchParty.ready_for_match() else "Start", "on_press": _on_start})
 	else:
-		_menu_screen.show_buttons([
-			{"label": "Waiting for host", "on_press": _noop},
-			{"label": "View Players", "on_press": _on_view_players},
-			{"label": "Leave", "on_press": _on_leave},
-		])
+		choices.append({"label": "Waiting for host", "on_press": _noop})
+	choices.append({"label": "View Players", "on_press": _on_view_players})
+	if CouchParty.active():
+		choices.append({"label": "Rooms", "on_press": CouchParty.open_panel})
+	choices.append({"label": "Leave", "on_press": _on_leave})
+	_menu_screen.show_buttons(choices)
 
 
 const PLAYER_SCRIPT := preload("res://water/player.gd")

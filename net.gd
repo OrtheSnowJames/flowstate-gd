@@ -378,6 +378,8 @@ func join_game(ip := "", port := PORT) -> Error:
 
 
 func leave_game() -> void:
+	_party_groups.clear()
+	_peer_parties.clear()
 	VoiceChat.reset_session()
 	_session_generation += 1
 	_awaiting_connection = false
@@ -524,9 +526,34 @@ func game_mode_name() -> String:
 	return "Normal"
 
 
+func cycle_solo_game_mode() -> bool:
+	if is_online() or round_state != RoundState.PLAYING or not _round_started or _round_over \
+			or input_blocked_by_menu() or is_spectating() or _players_root() == null:
+		return false
+	var previous := game_mode
+	var modes := GameMode.values()
+	net_sync_game_mode(modes[(modes.find(game_mode) + 1) % modes.size()])
+	_reset_round_scoreboard()
+	for player in get_tree().get_nodes_in_group("player"):
+		var old_max: float = player.max_stamina_per_mode(previous)
+		var new_max: float = player.max_stamina_per_mode(game_mode)
+		player.stamina = clampf(player.stamina / old_max, 0.0, 1.0) * new_max
+		if player.gui:
+			var bar := player.gui.get_node_or_null("stamina_bar") as Range
+			if bar:
+				bar.max_value = new_max
+				bar.value = player.stamina
+	print("net: solo mode -> ", game_mode_name())
+	return true
+
+
 @rpc("authority", "call_local", "reliable")
 func net_sync_game_mode(mode: int) -> void:
 	game_mode = mode as GameMode if mode in GameMode.values() else GameMode.NORMAL
+	if game_mode == GameMode.ARCADE:
+		_lifeguards.clear()
+		for player in get_tree().get_nodes_in_group("player"):
+			player.is_lifeguard = false
 	cube_control = CubeControl.NEUTRAL
 	cube_control_changed.emit()
 	lobby_changed.emit()
@@ -683,6 +710,8 @@ func lobby_count() -> int:
 
 # host only put everyone in the pool safe to call twice the state check
 func start_round() -> void:
+	if CouchParty.leader() and not CouchParty.ready_for_match():
+		return
 	if not multiplayer.is_server() and is_online():
 		push_warning("net: only the host can start the round")
 		return
@@ -1069,6 +1098,37 @@ func _ensure_message_text() -> Node:
 
 # teams whos on which side peer id player team the host owns this outright
 var _teams: Dictionary = {}
+var _party_groups: Dictionary = {}
+var _peer_parties: Dictionary = {}
+
+
+@rpc("any_peer", "reliable")
+func net_join_party(key: String, size: int) -> void:
+	if is_online() and multiplayer.is_server():
+		assign_party(multiplayer.get_remote_sender_id(), key, size)
+
+
+func assign_party(id: int, key: String, size: int) -> void:
+	if not multiplayer.is_server() or round_state != RoundState.LOBBY or not _teams.has(id):
+		return
+	if key.length() != 64 or not key.is_valid_hex_number() or size < 1 or size > 4 or _peer_parties.has(id):
+		return
+	var counts := [0, 0]
+	for peer in _teams:
+		if peer != id:
+			counts[_teams[peer]] += 1
+	var team: int = _party_groups.get(key, {}).get("team", -1)
+	if team < 0:
+		team = 1 if counts[1] < counts[0] else 0
+		_party_groups[key] = {"team": team, "peers": []}
+	if _party_groups[key].peers.size() >= 4:
+		return
+	if counts[team] >= MAX_PLAYERS / 2:
+		team = 1 - team
+	_teams[id] = team
+	_peer_parties[id] = key
+	_party_groups[key].peers.append(id)
+	_broadcast_roster()
 
 
 # this peers idea of what side id is on or 1 if it hasnt
@@ -1142,12 +1202,14 @@ var _lifeguards: Dictionary = {}
 # whether id is their teams lifeguard the only player who can revive see player
 func is_lifeguard_peer(id: int) -> bool:
 	var team := team_of(id)
-	return team >= 0 and _lifeguards.get(team, 0) == id
+	return game_mode != GameMode.ARCADE and team >= 0 and _lifeguards.get(team, 0) == id
 
 
 # host only roll one lifeguard per team out of that teams current roster called
 func _pick_lifeguards() -> void:
 	_lifeguards.clear()
+	if game_mode == GameMode.ARCADE:
+		return
 	for team in [PLAYER_SCRIPT.Team.RED, PLAYER_SCRIPT.Team.BLUE]:
 		var roster := _peers_on_team(team)
 		if roster.is_empty():
@@ -1160,7 +1222,7 @@ func _pick_lifeguards() -> void:
 @rpc("authority", "call_local", "reliable")
 func net_sync_roster(teams: Dictionary, lifeguards: Dictionary, names: Dictionary) -> void:
 	_teams = teams.duplicate()
-	_lifeguards = lifeguards.duplicate()
+	_lifeguards = {} if game_mode == GameMode.ARCADE else lifeguards.duplicate()
 	_names = names.duplicate()
 	_apply_teams_to_bodies()
 	# this table is also the lobby roster see lobby_count receiving it is how a
@@ -1250,6 +1312,12 @@ func _offer_late_join_spectate(id: int) -> void:
 
 
 func _on_peer_disconnected(id: int) -> void:
+	var key: String = _peer_parties.get(id, "")
+	if _party_groups.has(key):
+		_party_groups[key].peers.erase(id)
+		if _party_groups[key].peers.is_empty():
+			_party_groups.erase(key)
+	_peer_parties.erase(id)
 	print("net: peer %d disconnected" % id)
 	_arena_ready.erase(id)
 	if not multiplayer.is_server():
@@ -1287,6 +1355,7 @@ func _on_connected_to_server() -> void:
 	print("net: connected as peer %d" % multiplayer.get_unique_id())
 	# the host has no way to know our chosen name until we tell it
 	update_my_name()
+	CouchParty.register_team()
 
 
 func _on_connection_failed() -> void:
@@ -1309,7 +1378,7 @@ func net_room_code(code: String) -> void:
 func net_game_in_progress(teams: Dictionary, lifeguards: Dictionary, names: Dictionary,
 		red_score: int, blue_score: int, red_goal: int, blue_goal: int) -> void:
 	_teams = teams.duplicate()
-	_lifeguards = lifeguards.duplicate()
+	_lifeguards = {} if game_mode == GameMode.ARCADE else lifeguards.duplicate()
 	_names = names.duplicate()
 	_round_red_score = red_score
 	_round_blue_score = blue_score
@@ -1386,6 +1455,7 @@ func net_spectator_ready() -> void:
 		_round_red_score, _round_blue_score, _round_red_goal, _round_blue_goal)
 	_arena_ready[id] = true
 	rpc("net_sync_arena_peers", _arena_ready)
+	arcade.ultimate.sync_peer(id)
 	# launch the drone when the spectator joins the loaded match
 	var target := living_lifeguard(id)
 	if target and _can_watch_lifeguard(id, str(target.name).to_int()):
@@ -1444,6 +1514,7 @@ func start_connect_localhost() -> void:
 	if err == OK:
 		ok = await _await_connection_result()
 	if _connection_game_in_progress:
+		CouchParty.follow_match({"code": room_code, "ip": "127.0.0.1", "port": PORT})
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()
 		return
@@ -1491,6 +1562,7 @@ func start_connect(ip: String, port := PORT, rtc_session: Dictionary = {}) -> vo
 	if generation != _session_generation:
 		return
 	if _connection_game_in_progress:
+		CouchParty.follow_match({"code": rtc_session.get("code", ""), "ip": ip, "port": port})
 		_end_connect_flow()
 		await _show_game_in_progress_prompt()
 		return
@@ -1498,6 +1570,7 @@ func start_connect(ip: String, port := PORT, rtc_session: Dictionary = {}) -> vo
 	if ok:
 		await Transition.hide_status()
 		await Transition.blur_out()
+		CouchParty.follow_match({"code": rtc_session.get("code", ""), "ip": ip, "port": port})
 		return
 
 	leave_game()
@@ -1609,6 +1682,9 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_viewport().set_input_as_handled()
 		_handle_session_escape()
 		return
+	if event.is_action_pressed("change_mode_solo_play") and cycle_solo_game_mode():
+		get_viewport().set_input_as_handled()
+		return
 	if event is InputEventKey and event.pressed and not event.echo:
 		match event.keycode:
 			KEY_F1:
@@ -1625,6 +1701,8 @@ func _unhandled_input(event: InputEvent) -> void:
 
 # flips is_lifeguard on whichever player body belongs to this peer for testing the buffs
 func _toggle_local_lifeguard() -> void:
+	if game_mode == GameMode.ARCADE:
+		return
 	for p in get_tree().get_nodes_in_group("player"):
 		if p.practice == null and p.is_multiplayer_authority():
 			p.is_lifeguard = not p.is_lifeguard

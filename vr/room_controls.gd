@@ -62,8 +62,10 @@ func update_pointers(delta: float, menus: bool) -> void:
 			if targets[i] == _screen.get_node("Hitbox"):
 				var local := _screen.to_local(ray.get_collision_point())
 				positions[i] = Vector2(local.x / _screen.mesh.size.x + 0.5, 0.5 - local.y / _screen.mesh.size.y) * get_tree().root.get_visible_rect().size
-				if not menus:
+				if not menus or not CouchParty.can_use_screen():
 					targets[i] = null
+			if targets[i] == _switch and CouchParty.active() and not CouchParty.leader():
+				targets[i] = null
 		var beam: MeshInstance3D = pointer.get_node("Beam")
 		beam.position.z = -distance * 0.5
 		beam.scale.y = maxf(distance, 0.001)
@@ -85,8 +87,11 @@ func update_pointers(delta: float, menus: bool) -> void:
 			if not triggers[i] or _triggers[i] or not was_tracked[i]:
 				continue
 			if targets[i] == _switch:
-				lights_on = not lights_on
-				apply_lighting()
+				if CouchParty.active():
+					CouchParty.toggle_lights()
+				else:
+					lights_on = not lights_on
+					apply_lighting()
 				break
 			elif targets[i] == _screen.get_node("Hitbox"):
 				_active_hand = i

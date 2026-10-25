@@ -192,3 +192,7 @@ Entering immersive VR, stopping VR or restarting the app restores performance mo
 - Diving board
 - Done: Voice chat
 - Solo Play Sandbox
+- "Fun" mode - water balloons, higher ground and more fun I guess (I realize I made this game too competitive)
+- Done: VR couch parties (3 people on the couch beside you)
+- VR couch parties with quest friends
+- Fix bug where you can clip out of map

@@ -23,6 +23,7 @@ func _ready() -> void:
 	_move.select(target.practice.move)
 	_infinite.button_pressed = target.practice.infinite_stamina
 	_lifeguard.button_pressed = target.is_lifeguard
+	_lifeguard.disabled = Net.game_mode == Net.GameMode.ARCADE
 	_red.button_pressed = target.team == target.Team.RED
 	_blue.button_pressed = target.team == target.Team.BLUE
 	$Backdrop/Panel/Scroll/Fields/Actions/Apply.pressed.connect(_apply)

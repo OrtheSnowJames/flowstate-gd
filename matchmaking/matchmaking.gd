@@ -47,7 +47,7 @@ func valid_code(code: String) -> bool:
 func quick_play() -> void:
 	if not await _begin_search("Finding a match..."):
 		return
-	var result := await _request(HTTPClient.METHOD_POST, "/matchmaking", {"protocol": PROTOCOL})
+	var result := await _request(HTTPClient.METHOD_POST, "/matchmaking", {"protocol": PROTOCOL, "party_size": CouchParty.party_size()})
 	if result.status == 404:
 		await _host_room(Net.PORT)
 	elif result.status == 200:
@@ -137,9 +137,16 @@ func _host_room(port: int, use_webrtc := true) -> void:
 		return
 	await _hide_search()
 	await Net.open_host_lobby()
+	CouchParty.follow_match({"code": Net.room_code})
 
 
 func _join_room(room: Dictionary) -> void:
+	if room.get("room_type", "match") != "match":
+		await _notice("Join couch rooms using Rooms in the VR menu")
+		return
+	if CouchParty.leader() and int(room.get("players", 0)) + CouchParty.party_size() > Net.MAX_PLAYERS:
+		await _notice("Not enough space for your couch party")
+		return
 	if room.get("max_players", 0) != Net.MAX_PLAYERS or (room.get("protocol", 0) != 1 and room.get("protocol", 0) != PROTOCOL):
 		await _notice("Room uses a different game version")
 		return

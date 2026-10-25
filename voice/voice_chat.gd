@@ -66,7 +66,7 @@ func connected() -> bool:
 
 
 func listening() -> bool:
-	return connected() and Settings.voice_configured and Settings.voice_enabled
+	return not CouchParty.active() and connected() and Settings.voice_configured and Settings.voice_enabled
 
 
 func same_team(first: int, second: int) -> bool:
@@ -134,6 +134,8 @@ func _update_talkers() -> void:
 
 
 func prompt_setup(parent: Node) -> void:
+	if CouchParty.active():
+		return
 	if Settings.voice_configured and not Settings.player_name.is_empty():
 		return
 	if is_instance_valid(_prompt):
@@ -160,6 +162,11 @@ func apply_settings() -> void:
 
 
 func _unhandled_input(event: InputEvent) -> void:
+	if CouchParty.active() and not event.is_echo() and event.is_action_pressed("voice_toggle"):
+		CouchParty.muted = not CouchParty.muted
+		CouchParty.changed.emit()
+		get_viewport().set_input_as_handled()
+		return
 	if not connected() or event.is_echo() or not event.is_action_pressed("voice_toggle"):
 		return
 	if get_viewport().gui_get_focus_owner() is LineEdit or Net.input_blocked_by_menu():
@@ -175,7 +182,26 @@ func _unhandled_input(event: InputEvent) -> void:
 
 
 func _process(delta: float) -> void:
+	if CouchParty.active():
+		_clear_speakers()
+		_status.show()
+		_status.text = "Room " + CouchParty.code + " | Mic: " + ("Off" if CouchParty.muted else "On")
+		_status.modulate = Color(1.0, 0.7, 0.6) if CouchParty.muted else Color(0.5, 1.0, 0.65)
+		_talkers.hide()
+		if CouchParty.muted:
+			_stop_capture()
+			return
+		_device_check -= delta
+		if _device_check <= 0.0:
+			_device_check = 2.0
+			_update_microphone()
+		if not _error.is_empty():
+			_status.text = "Room mic: " + _error
+		if _mic != null and _mic.playing:
+			_capture_packets()
+		return
 	if not connected():
+		_stop_capture()
 		if _session != null:
 			reset_session()
 		_status.hide()
@@ -232,6 +258,7 @@ func _permission_result(permission: String, granted: bool) -> void:
 	_permission_pending = false
 	_device_check = 0.0
 	if not granted:
+		CouchParty.muted = true
 		Settings.voice_enabled = false
 		Settings.save_settings()
 		_stop_capture()
@@ -278,6 +305,9 @@ func _capture_packets() -> void:
 
 
 func _send_packet(data: PackedByteArray) -> void:
+	if CouchParty.active():
+		CouchParty.send_voice(data)
+		return
 	if not listening():
 		return
 	_sequence += 1

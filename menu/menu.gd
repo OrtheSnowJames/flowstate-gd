@@ -24,6 +24,7 @@ func _show_root() -> void:
 		choices.append({"label": "Exit VR", "on_press": VR.exit_immersive})
 	else:
 		if VR.active:
+			choices.append({"label": "Rooms", "on_press": CouchParty.open_panel})
 			choices.append({"label": "Real VR", "on_press": VR.enter_immersive})
 		else:
 			choices.append({"label": "Enter VR", "on_press": _toggle_vr})
@@ -209,6 +210,10 @@ func _step_clamped(value: float, step: float, lo: float, hi: float) -> float:
 
 # play
 func _on_solo_play() -> void:
+	if CouchParty.active():
+		CouchParty.message = "Leave the couch room before playing solo"
+		CouchParty.open_panel()
+		return
 	Net.start_solo_play()
 
 

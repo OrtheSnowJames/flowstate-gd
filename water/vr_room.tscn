@@ -8,7 +8,8 @@
 [ext_resource type="Texture2D" uid="uid://3qwiltakrok7" path="res://mesh/banana_0.jpg" id="6_734bj"]
 [ext_resource type="Texture2D" uid="uid://cr0jyvqtk5qro" path="res://mesh/lifeguard_0.png" id="7_hgvkw"]
 [ext_resource type="Texture2D" uid="uid://bp6xdotokw0y2" path="res://img/red_brick_diff_1k.jpg" id="8_mueu4"]
-[ext_resource type="Script" path="res://vr/room_controls.gd" id="9_controls"]
+[ext_resource type="Script" uid="uid://dkg4bhcb7jxpk" path="res://vr/room_controls.gd" id="9_controls"]
+[ext_resource type="PackedScene" uid="uid://clq1sq2bjno1n" path="res://mesh/low_poly_bean_bag.glb" id="10_qvmjs"]
 
 [sub_resource type="Environment" id="Environment_room"]
 resource_local_to_scene = true
@@ -18,12 +19,48 @@ ambient_light_source = 2
 ambient_light_color = Color(1, 1, 1, 1)
 ambient_light_energy = 0.8
 
+[sub_resource type="StandardMaterial3D" id="Material_pointer"]
+shading_mode = 0
+albedo_color = Color(0.15, 0.85, 1, 1)
+
+[sub_resource type="CylinderMesh" id="Mesh_pointer"]
+top_radius = 0.0015
+bottom_radius = 0.0015
+height = 1.0
+radial_segments = 8
+rings = 1
+
+[sub_resource type="SphereMesh" id="Mesh_pointer_tip"]
+radius = 0.009
+height = 0.018
+radial_segments = 8
+rings = 4
+
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_screen"]
 resource_local_to_scene = true
 shading_mode = 0
 
 [sub_resource type="QuadMesh" id="QuadMesh_screen"]
 size = Vector2(0.684, 0.385)
+
+[sub_resource type="BoxShape3D" id="Shape_tv"]
+size = Vector3(0.684, 0.385, 0.006)
+
+[sub_resource type="StandardMaterial3D" id="Material_switch_plate"]
+albedo_color = Color(0.8, 0.82, 0.85, 1)
+roughness = 0.6
+
+[sub_resource type="BoxMesh" id="Mesh_switch_plate"]
+size = Vector3(0.055, 0.085, 0.012)
+
+[sub_resource type="StandardMaterial3D" id="Material_switch_rocker"]
+albedo_color = Color(0.25, 0.28, 0.32, 1)
+
+[sub_resource type="BoxMesh" id="Mesh_switch_rocker"]
+size = Vector3(0.025, 0.045, 0.01)
+
+[sub_resource type="BoxShape3D" id="Shape_switch"]
+size = Vector3(0.055, 0.085, 0.03)
 
 [sub_resource type="StandardMaterial3D" id="StandardMaterial3D_m6sa2"]
 albedo_texture = ExtResource("1_orjjw")
@@ -67,42 +104,6 @@ uv1_scale = Vector3(5, 5, 5)
 [sub_resource type="BoxMesh" id="BoxMesh_v0u0g"]
 size = Vector3(0.1, 0.1, 0.1)
 
-[sub_resource type="StandardMaterial3D" id="Material_pointer"]
-shading_mode = 0
-albedo_color = Color(0.15, 0.85, 1, 1)
-
-[sub_resource type="CylinderMesh" id="Mesh_pointer"]
-top_radius = 0.0015
-bottom_radius = 0.0015
-height = 1.0
-radial_segments = 8
-rings = 1
-
-[sub_resource type="SphereMesh" id="Mesh_pointer_tip"]
-radius = 0.009
-height = 0.018
-radial_segments = 8
-rings = 4
-
-[sub_resource type="BoxShape3D" id="Shape_tv"]
-size = Vector3(0.684, 0.385, 0.006)
-
-[sub_resource type="StandardMaterial3D" id="Material_switch_plate"]
-albedo_color = Color(0.8, 0.82, 0.85, 1)
-roughness = 0.6
-
-[sub_resource type="StandardMaterial3D" id="Material_switch_rocker"]
-albedo_color = Color(0.25, 0.28, 0.32, 1)
-
-[sub_resource type="BoxMesh" id="Mesh_switch_plate"]
-size = Vector3(0.055, 0.085, 0.012)
-
-[sub_resource type="BoxMesh" id="Mesh_switch_rocker"]
-size = Vector3(0.025, 0.045, 0.01)
-
-[sub_resource type="BoxShape3D" id="Shape_switch"]
-size = Vector3(0.055, 0.085, 0.03)
-
 [node name="VrRoom" type="Node3D" unique_id=1136494264]
 script = ExtResource("9_controls")
 
@@ -129,50 +130,50 @@ current = true
 tracker = &"left_hand"
 pose = &"grip"
 
-[node name="Pointer" type="Node3D" parent="XROrigin3D/LeftHand"]
+[node name="Pointer" type="Node3D" parent="XROrigin3D/LeftHand" unique_id=811881167]
 visible = false
 
-[node name="Ray" type="RayCast3D" parent="XROrigin3D/LeftHand/Pointer"]
+[node name="Ray" type="RayCast3D" parent="XROrigin3D/LeftHand/Pointer" unique_id=541107994]
 enabled = false
 target_position = Vector3(0, 0, -10)
 collision_mask = 524288
 collide_with_areas = true
 collide_with_bodies = false
 
-[node name="Beam" type="MeshInstance3D" parent="XROrigin3D/LeftHand/Pointer"]
-rotation = Vector3(1.5707964, 0, 0)
-cast_shadow = 0
+[node name="Beam" type="MeshInstance3D" parent="XROrigin3D/LeftHand/Pointer" unique_id=420160739]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
 material_override = SubResource("Material_pointer")
+cast_shadow = 0
 mesh = SubResource("Mesh_pointer")
 
-[node name="Tip" type="MeshInstance3D" parent="XROrigin3D/LeftHand/Pointer"]
-cast_shadow = 0
+[node name="Tip" type="MeshInstance3D" parent="XROrigin3D/LeftHand/Pointer" unique_id=1071948801]
 material_override = SubResource("Material_pointer")
+cast_shadow = 0
 mesh = SubResource("Mesh_pointer_tip")
 
 [node name="RightHand" type="XRController3D" parent="XROrigin3D" unique_id=1713002440]
 tracker = &"right_hand"
 pose = &"grip"
 
-[node name="Pointer" type="Node3D" parent="XROrigin3D/RightHand"]
+[node name="Pointer" type="Node3D" parent="XROrigin3D/RightHand" unique_id=920576446]
 visible = false
 
-[node name="Ray" type="RayCast3D" parent="XROrigin3D/RightHand/Pointer"]
+[node name="Ray" type="RayCast3D" parent="XROrigin3D/RightHand/Pointer" unique_id=174508683]
 enabled = false
 target_position = Vector3(0, 0, -10)
 collision_mask = 524288
 collide_with_areas = true
 collide_with_bodies = false
 
-[node name="Beam" type="MeshInstance3D" parent="XROrigin3D/RightHand/Pointer"]
-rotation = Vector3(1.5707964, 0, 0)
-cast_shadow = 0
+[node name="Beam" type="MeshInstance3D" parent="XROrigin3D/RightHand/Pointer" unique_id=1846245109]
+transform = Transform3D(1, 0, 0, 0, -4.371139e-08, -1, 0, 1, -4.371139e-08, 0, 0, 0)
 material_override = SubResource("Material_pointer")
+cast_shadow = 0
 mesh = SubResource("Mesh_pointer")
 
-[node name="Tip" type="MeshInstance3D" parent="XROrigin3D/RightHand/Pointer"]
-cast_shadow = 0
+[node name="Tip" type="MeshInstance3D" parent="XROrigin3D/RightHand/Pointer" unique_id=20669337]
 material_override = SubResource("Material_pointer")
+cast_shadow = 0
 mesh = SubResource("Mesh_pointer_tip")
 
 [node name="Room" type="Node3D" parent="." unique_id=384202160]
@@ -189,38 +190,37 @@ mesh = SubResource("QuadMesh_screen")
 [node name="ImmersiveEntry" type="Marker3D" parent="Room/GameScreen" unique_id=1452849069]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.099)
 
-[node name="Hitbox" type="Area3D" parent="Room/GameScreen"]
+[node name="Hitbox" type="Area3D" parent="Room/GameScreen" unique_id=911430681]
 collision_layer = 524288
 collision_mask = 0
 monitoring = false
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Room/GameScreen/Hitbox"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Room/GameScreen/Hitbox" unique_id=1290989407]
 shape = SubResource("Shape_tv")
 
-[node name="TVGlow" type="OmniLight3D" parent="Room/GameScreen"]
-position = Vector3(0, 0, 0.12)
+[node name="TVGlow" type="OmniLight3D" parent="Room/GameScreen" unique_id=649911990]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0.12)
 visible = false
 light_color = Color(0.65, 0.8, 1, 1)
 light_energy = 0.45
 omni_range = 3.5
 
-[node name="LightSwitch" type="Area3D" parent="Room"]
-position = Vector3(0.7, 0.42, -0.94)
+[node name="LightSwitch" type="Area3D" parent="Room" unique_id=1390564842]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0.7, 0.42, -0.94)
 collision_layer = 524288
 collision_mask = 0
 monitoring = false
 
-[node name="Plate" type="MeshInstance3D" parent="Room/LightSwitch"]
+[node name="Plate" type="MeshInstance3D" parent="Room/LightSwitch" unique_id=816339460]
 material_override = SubResource("Material_switch_plate")
 mesh = SubResource("Mesh_switch_plate")
 
-[node name="Rocker" type="MeshInstance3D" parent="Room/LightSwitch"]
-position = Vector3(0, 0, 0.01)
-rotation = Vector3(-0.18, 0, 0)
+[node name="Rocker" type="MeshInstance3D" parent="Room/LightSwitch" unique_id=14562490]
+transform = Transform3D(1, 0, 0, 0, 0.9838437, 0.17902958, 0, -0.17902958, 0.9838437, 0, 0, 0.01)
 material_override = SubResource("Material_switch_rocker")
 mesh = SubResource("Mesh_switch_rocker")
 
-[node name="CollisionShape3D" type="CollisionShape3D" parent="Room/LightSwitch"]
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Room/LightSwitch" unique_id=1733886422]
 shape = SubResource("Shape_switch")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Room" unique_id=1642508563]
@@ -284,3 +284,21 @@ mesh = SubResource("BoxMesh_v0u0g")
 transform = Transform3D(-4.371139e-08, 0, -20.253086, 0, 8.042636, 0, 1, 0, -8.852905e-07, -0.013669889, 0.40322214, 0.9659833)
 material_override = SubResource("StandardMaterial3D_iqut7")
 mesh = SubResource("BoxMesh_v0u0g")
+
+[node name="Sketchfab_Scene" parent="." unique_id=1338996052 instance=ExtResource("10_qvmjs")]
+transform = Transform3D(1.7011083, 0, 1.0517746, 0, 2, 0, -1.0517746, 0, 1.7011083, -2.223462, 0, 0.75252575)
+
+[node name="PartySeats" type="Node3D" parent="."]
+
+[node name="Seat0" type="Marker3D" parent="PartySeats"]
+position = Vector3(0, 1.6, 1.8)
+
+[node name="Seat1" type="Marker3D" parent="PartySeats"]
+position = Vector3(-0.9, 1.6, 1.8)
+
+[node name="Seat2" type="Marker3D" parent="PartySeats"]
+position = Vector3(0.9, 1.6, 1.8)
+
+[node name="Seat3" type="Marker3D" parent="PartySeats"]
+position = Vector3(-2.22, 1.3, 0.75)
+rotation = Vector3(0, -0.88, 0)

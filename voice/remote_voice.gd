@@ -13,6 +13,24 @@ var capacity := 0
 var _gain := 1.0
 var _has_gain := false
 var speaking_until := 0
+var _spatial: AudioStreamPlayer3D
+
+
+func spatial_at(parent: Node3D) -> void:
+	_spatial = AudioStreamPlayer3D.new()
+	_spatial.stream = stream
+	_spatial.unit_size = 2.0
+	_spatial.max_distance = 12.0
+	parent.add_child(_spatial)
+
+
+func output() -> Node:
+	return _spatial if is_instance_valid(_spatial) else self
+
+
+func _exit_tree() -> void:
+	if is_instance_valid(_spatial):
+		_spatial.queue_free()
 
 
 func _ready() -> void:
@@ -35,7 +53,7 @@ func receive(sequence: int, data: PackedByteArray) -> void:
 	packets[sequence] = frames
 	# discard stale audio instead of letting latency grow
 	if packets.size() > MAX_PACKETS:
-		stop()
+		output().stop()
 		playback = null
 		packets = {sequence: frames}
 		next_sequence = sequence
@@ -53,8 +71,8 @@ func _process(_delta: float) -> void:
 	if playback == null:
 		if packets.size() < 3 and now - first_received < 60:
 			return
-		play()
-		playback = get_stream_playback()
+		output().play()
+		playback = output().get_stream_playback()
 		capacity = playback.get_frames_available()
 	while not packets.is_empty() and capacity - playback.get_frames_available() < PCM.FRAMES * 3:
 		if not playback.can_push_buffer(PCM.FRAMES):

@@ -16,6 +16,8 @@ var _closed: Array = []
 var _generation := 0
 var _elapsed := 0.0
 var _requesting := false
+var independent := false
+var max_players := 20
 
 
 func available() -> bool:
@@ -42,7 +44,7 @@ func start_host(code: String, token: String, servers: Array) -> void:
 func start_client(session: Dictionary) -> Error:
 	if not available():
 		return ERR_UNAVAILABLE
-	if Net.is_online() or Net._block_online_if_penalized(false):
+	if not independent and (Net.is_online() or Net._block_online_if_penalized(false)):
 		return ERR_ALREADY_IN_USE
 	peer = WebRTCMultiplayerPeer.new()
 	_id = int(session.peer_id)
@@ -184,7 +186,7 @@ func _poll_host() -> void:
 		var id := int(key)
 		if _connections.has(id):
 			continue
-		if _connections.size() >= Net.MAX_PLAYERS - 1 or id < 2:
+		if _connections.size() >= max_players - 1 or id < 2:
 			_closed.append(key)
 			continue
 		var connection := _add_connection(id)

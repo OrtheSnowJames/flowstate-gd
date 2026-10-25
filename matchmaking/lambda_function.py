@@ -70,8 +70,8 @@ def integer(body, key, low, high, default=None):
 
 def state_of(body, default="lobby"):
     state = body.get("state", default)
-    if state not in ("lobby", "in_game"):
-        raise ValueError("state must be lobby or in_game")
+    if state not in ("lobby", "in_game", "couch"):
+        raise ValueError("state must be lobby in_game or couch")
     return state
 
 
@@ -89,9 +89,9 @@ def source_ip(event):
 
 def clean(item):
     # keep the host token out of room lookups
-    return {key: item[key] for key in (
+    return {**{key: item[key] for key in (
         "room_code", "ip", "port", "players", "max_players", "state", "last_seen", "protocol"
-    )}
+    )}, "room_type": item.get("room_type", "match")}
 
 
 def bearer(event):
@@ -110,15 +110,25 @@ def get_room(code):
 def register(event, body):
     address = source_ip(event)
     port = integer(body, "port", 1, 65535)
-    players = integer(body, "players", 1, MAX_PLAYERS, 1)
+    kind = body.get("room_type", "match")
+    if kind not in ("match", "couch"):
+        raise ValueError("Invalid room type")
+    capacity = 4 if kind == "couch" else MAX_PLAYERS
+    players = integer(body, "players", 1, capacity, 1)
     protocol = integer(body, "protocol", PROTOCOL, RTC_PROTOCOL, PROTOCOL)
     state = state_of(body)
+    if kind == "couch":
+        if protocol != RTC_PROTOCOL:
+            raise ValueError("Couch rooms require WebRTC")
+        state = "couch"
+    elif state == "couch":
+        raise ValueError("Only couch rooms can use couch state")
     timestamp = int(time.time())
     for _ in range(5):
         code = "".join(secrets.choice(ALPHABET) for _ in range(6))
         item = {
             "room_code": code, "ip": address, "port": port, "players": players,
-            "max_players": MAX_PLAYERS, "state": state, "protocol": protocol,
+            "max_players": capacity, "state": state, "protocol": protocol, "room_type": kind,
             "host_token": secrets.token_urlsafe(32), "last_seen": timestamp,
             "expires_at": timestamp + TTL_SECONDS,
         }
@@ -136,6 +146,7 @@ def register(event, body):
 
 def quick_match(body):
     protocol = integer(body, "protocol", PROTOCOL, RTC_PROTOCOL, PROTOCOL)
+    party_size = integer(body, "party_size", 1, 4, 1)
     excluded = body.get("exclude_codes", [])
     if not isinstance(excluded, list) or len(excluded) > 10 or not all(isinstance(code, str) for code in excluded):
         raise ValueError("exclude_codes must contain at most 10 codes")
@@ -153,7 +164,7 @@ def quick_match(body):
             candidate = secrets.choice(candidates)
             candidates.remove(candidate)
             item = get_room(candidate["room_code"])
-            if item and item["state"] == "lobby" and item["players"] < MAX_PLAYERS and item["protocol"] == protocol:
+            if item and item["state"] == "lobby" and item["players"] + party_size <= MAX_PLAYERS and item["protocol"] == protocol:
                 return reply(200, clean(item))
         if not result.get("LastEvaluatedKey"):
             return reply(404, {"error": "No joinable matches found"})
@@ -171,7 +182,7 @@ def room_request(event, body, method, parts):
     if method == "GET":
         if item["protocol"] not in (PROTOCOL, RTC_PROTOCOL):
             return reply(409, {"error": "Room uses a different game version"})
-        if item["players"] >= MAX_PLAYERS:
+        if item["players"] >= item["max_players"]:
             return reply(409, {"error": "Room is full"})
         return reply(200, clean(item))
     token = bearer(event)
@@ -183,8 +194,12 @@ def room_request(event, body, method, parts):
             ExpressionAttributeValues={":token": token},
         )
         return reply(200, {"ok": True})
-    players = integer(body, "players", 1, MAX_PLAYERS, int(item["players"]))
+    players = integer(body, "players", 1, int(item["max_players"]), int(item["players"]))
     state = state_of(body, item["state"])
+    if item.get("room_type") == "couch":
+        state = "couch"
+    elif state == "couch":
+        raise ValueError("Only couch rooms can use couch state")
     timestamp = int(time.time())
     rooms().update_item(
         Key={"room_code": code},
@@ -266,7 +281,7 @@ def signaling(event, body, parts):
                 raise ValueError("A random 64 character join token is required")
             key = next((key for key, value in sessions.items() if secrets.compare_digest(value["token"], token)), None)
             if key is None:
-                if item["players"] + len(sessions) >= MAX_PLAYERS:
+                if item["players"] + len(sessions) >= item["max_players"]:
                     return reply(409, {"error": "Room is full or has pending joins"})
                 key = str(secrets.randbelow(2147483645) + 2)
                 while key in sessions:

@@ -88,6 +88,7 @@ func ready_room(preview := false) -> bool:
 	room_view = SubViewport.new()
 	room_view.name = "VRRoomView"
 	room_view.own_world_3d = true
+	room_view.audio_listener_enable_3d = true
 	room_view.size = Vector2i(1280, 720)
 	room_view.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	room_view.use_xr = not preview
@@ -116,6 +117,9 @@ func ready_room(preview := false) -> bool:
 
 func _request_room_center() -> void:
 	if active and not immersive and not entering and not exiting:
+		if _head is not XRCamera3D:
+			_place_in_room(_head.transform)
+			return
 		_room_needs_center = true
 
 
@@ -132,6 +136,8 @@ func _center_room_from_tracking() -> void:
 
 func _place_in_room(head_pose: Transform3D) -> void:
 	var seat: Transform3D = _room.get_node("SeatEye").global_transform.orthonormalized()
+	if CouchParty.active():
+		seat = CouchParty.seat_transform(CouchParty.local_seat())
 	var forward := -head_pose.basis.z
 	forward.y = 0.0
 	if forward.length_squared() < 0.001:
@@ -147,6 +153,7 @@ func _place_in_room(head_pose: Transform3D) -> void:
 func enter_immersive() -> void:
 	if not active or immersive or entering or exiting:
 		return
+	CouchParty.leave()
 	_quest_test_code.reset()
 	Settings.reset_quest_test_performance()
 	entering = true
@@ -164,6 +171,7 @@ func enter_immersive() -> void:
 	# keep the old world alive until the viewport releases its render scenario
 	var previous_world := room_view.find_world_3d()
 	room_view.own_world_3d = false
+	room_view.audio_listener_enable_3d = false
 	room_view.world_3d = get_tree().root.world_3d
 	previous_world = null
 	_saved_disable_3d = get_tree().root.disable_3d
@@ -204,6 +212,7 @@ func exit_immersive() -> void:
 	# return the headset to a separate room while the game goes back onto the tv
 	room_view.world_3d = null
 	room_view.own_world_3d = true
+	room_view.audio_listener_enable_3d = true
 	_room_root.add_child(_room)
 	_environment.environment = _room_environment
 	_room_root.apply_lighting()
@@ -266,6 +275,7 @@ func project_ui_position(world: Vector3, fallback: Camera3D) -> Vector2:
 
 
 func stop() -> void:
+	CouchParty.leave()
 	_quest_test_code.reset()
 	Settings.reset_quest_test_performance()
 	if _zoom and _zoom.is_running():

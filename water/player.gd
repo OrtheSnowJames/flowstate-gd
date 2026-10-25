@@ -205,6 +205,7 @@ var last_d_press := -1000.0
 # off duty by default on swaps blockbench_export for mesh lifeguard glb same rig animations
 @export var is_lifeguard: bool = false:
 	set(value):
+		value = value and Net.game_mode != Net.GameMode.ARCADE
 		if is_lifeguard == value:
 			return
 		is_lifeguard = value
@@ -303,6 +304,8 @@ var _gravity: float = 9.8
 var _last_backstroke_time: float = -1000.0
 # latched by _death once stamina runs out see there gates input and the whole
 var _unconscious: bool = false
+var _last_damage_peer := 0
+var _last_damage_time := 0
 var replicated_unconscious: bool:
 	get:
 		return _unconscious
@@ -631,8 +634,8 @@ func _stamina_change(delta: float) -> void:
 	Vitality._stamina_change(self, delta)
 
 @rpc("any_peer", "reliable")
-func take_stamina_damage(amount: float) -> void:
-	Vitality.take_stamina_damage(self, amount)
+func take_stamina_damage(amount: float, attacker: int = 0) -> void:
+	Vitality.take_stamina_damage(self, amount, attacker)
 
 func _input(event: InputEvent) -> void:
 	# keystrokes in this window drive this windows player and nobody elses without this one
@@ -701,8 +704,8 @@ func _death() -> void:
 	Vitality._death(self)
 
 @rpc("any_peer", "call_local", "reliable")
-func net_death() -> void:
-	Vitality.net_death(self)
+func net_death(killer: int = 0) -> void:
+	Vitality.net_death(self, killer)
 
 func revive() -> void:
 	Vitality.revive(self)
@@ -755,6 +758,8 @@ func _physics_process(delta: float) -> void:
 		return
 	_update_water_counter(delta)
 	if Net.arcade.controls(self):
+		if Net.arcade.ultimate.holding(self) and not Net.input_blocked_by_menu():
+			_turn_from_input(delta)
 		return
 
 	if _unconscious:
