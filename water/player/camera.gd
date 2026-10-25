@@ -176,6 +176,9 @@ static func _teammates_in_arena(player) -> Array:
 static func _update_nameplates(player) -> void:
 	var wanted = {}
 	for other in player._teammates_in_arena():
+		if other.practice != null:
+			wanted[other.get_instance_id()] = other
+			continue
 		# the nodes name is the peer id same convention _enter_tree reads on the way
 		var pid = str(other.name).to_int()
 		if pid > 0:
@@ -195,4 +198,5 @@ static func _update_nameplates(player) -> void:
 			var plate = player._NAMEPLATE.instantiate()
 			player.gui.add_child(plate)
 			player._nameplates[pid] = plate
-		player._nameplates[pid].setup(wanted[pid], VR.view_camera(player._camera), Net.name_of(pid))
+		var display_name: String = wanted[pid].practice.display_name if wanted[pid].practice != null else Net.name_of(pid)
+		player._nameplates[pid].setup(wanted[pid], VR.view_camera(player._camera), display_name)

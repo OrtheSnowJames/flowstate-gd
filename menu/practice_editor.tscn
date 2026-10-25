@@ -1,0 +1,124 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://menu/practice_editor.gd" id="1"]
+
+[sub_resource type="ButtonGroup" id="Teams"]
+
+[sub_resource type="StyleBoxFlat" id="Panel"]
+content_margin_left = 20.0
+content_margin_top = 20.0
+content_margin_right = 20.0
+content_margin_bottom = 20.0
+bg_color = Color(0.1, 0.1, 0.12, 0.96)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_left = 8
+corner_radius_bottom_right = 8
+
+[node name="PracticeEditor" type="Control"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+script = ExtResource("1")
+
+[node name="Backdrop" type="ColorRect" parent="."]
+layout_mode = 1
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+color = Color(0, 0, 0, 0.45)
+
+[node name="Panel" type="PanelContainer" parent="Backdrop"]
+layout_mode = 0
+theme_override_styles/panel = SubResource("Panel")
+
+[node name="Scroll" type="ScrollContainer" parent="Backdrop/Panel"]
+layout_mode = 2
+horizontal_scroll_mode = 0
+follow_focus = true
+
+[node name="Fields" type="VBoxContainer" parent="Backdrop/Panel/Scroll"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_constants/separation = 12
+
+[node name="Title" type="Label" parent="Backdrop/Panel/Scroll/Fields"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 24
+text = "Player"
+autowrap_mode = 3
+
+[node name="MoveLabel" type="Label" parent="Backdrop/Panel/Scroll/Fields"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Move"
+
+[node name="Move" type="OptionButton" parent="Backdrop/Panel/Scroll/Fields"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+clip_text = true
+fit_to_longest_item = false
+
+[node name="Infinite" type="CheckButton" parent="Backdrop/Panel/Scroll/Fields"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Infinite stamina"
+
+[node name="Lifeguard" type="CheckButton" parent="Backdrop/Panel/Scroll/Fields"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+theme_override_font_sizes/font_size = 18
+text = "Lifeguard"
+
+[node name="Team" type="HBoxContainer" parent="Backdrop/Panel/Scroll/Fields"]
+layout_mode = 2
+theme_override_constants/separation = 8
+
+[node name="Label" type="Label" parent="Backdrop/Panel/Scroll/Fields/Team"]
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Team"
+
+[node name="Red" type="Button" parent="Backdrop/Panel/Scroll/Fields/Team"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(1, 0.45, 0.45, 1)
+theme_override_colors/font_pressed_color = Color(1, 0.45, 0.45, 1)
+theme_override_font_sizes/font_size = 18
+toggle_mode = true
+button_group = SubResource("Teams")
+text = "Red"
+
+[node name="Blue" type="Button" parent="Backdrop/Panel/Scroll/Fields/Team"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_colors/font_color = Color(0.4, 0.7, 1, 1)
+theme_override_colors/font_pressed_color = Color(0.4, 0.7, 1, 1)
+theme_override_font_sizes/font_size = 18
+toggle_mode = true
+button_group = SubResource("Teams")
+text = "Blue"
+
+[node name="Actions" type="HBoxContainer" parent="Backdrop/Panel/Scroll/Fields"]
+layout_mode = 2
+theme_override_constants/separation = 12
+
+[node name="Apply" type="Button" parent="Backdrop/Panel/Scroll/Fields/Actions"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Apply"
+
+[node name="Cancel" type="Button" parent="Backdrop/Panel/Scroll/Fields/Actions"]
+custom_minimum_size = Vector2(0, 42)
+layout_mode = 2
+size_flags_horizontal = 3
+theme_override_font_sizes/font_size = 18
+text = "Cancel"

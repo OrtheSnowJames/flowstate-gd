@@ -1626,7 +1626,7 @@ func _unhandled_input(event: InputEvent) -> void:
 # flips is_lifeguard on whichever player body belongs to this peer for testing the buffs
 func _toggle_local_lifeguard() -> void:
 	for p in get_tree().get_nodes_in_group("player"):
-		if p.is_multiplayer_authority():
+		if p.practice == null and p.is_multiplayer_authority():
 			p.is_lifeguard = not p.is_lifeguard
 			print("net: test_lifeguard_key -> %s is_lifeguard=%s" % [p.name, p.is_lifeguard])
 			return

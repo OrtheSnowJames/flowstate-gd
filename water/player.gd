@@ -6,6 +6,8 @@ var using_controller := false
 var controller_angles := Vector2.ZERO
 var controller_dodge_taps: Dictionary = {}
 var _jump_spent := false
+var practice: Node
+var practice_input_blocked := false
 
 const Types = preload("res://water/player/types.gd")
 const Appearance = preload("res://water/player/appearance.gd")
@@ -356,7 +358,7 @@ var _shake_strength: float = 0.0
 
 # the nodes name is the peer id that owns this body net gd names
 func _enter_tree() -> void:
-	_owner_peer = str(name).to_int()
+	_owner_peer = 0 if practice != null else str(name).to_int()
 	var spawn_sync := get_node_or_null("SpawnSynchronizer")
 	# 0 means the name isnt a peer id at all the scene opened on
 	if _owner_peer > 0:
@@ -416,6 +418,13 @@ func _ready() -> void:
 
 	# kickboard rig stat buffs if is_lifeguard was baked on for this instance deferred to
 	_apply_lifeguard_loadout()
+	if practice != null:
+		stamina = max_stamina_per_mode(Net.game_mode)
+		gui = null
+		_eyelid = null
+		_muffled_player = null
+		_cam_pivot.queue_free()
+		return
 	if _owner_peer > 0:
 		vr_arms = preload("res://water/player/vr_arms.gd").new()
 		vr_arms.name = "TrackedArms"
@@ -527,6 +536,8 @@ func _process(delta: float) -> void:
 	# remote animations follow the owners clip and playback time
 	if ANIMATE_PLAYER and (_is_local() or not Net.is_online()):
 		_anim_change()
+	if practice != null:
+		return
 
 	# the camera the cursor and the shake are per window so they only make
 	if not _is_local():
@@ -625,7 +636,9 @@ func take_stamina_damage(amount: float) -> void:
 
 func _input(event: InputEvent) -> void:
 	# keystrokes in this window drive this windows player and nobody elses without this one
-	if not _is_local():
+	if practice != null or practice_input_blocked or not _is_local():
+		return
+	if not Net.is_online() and event is InputEventKey and event.ctrl_pressed:
 		return
 	Controller.track(self, event)
 	if Net.input_blocked_by_menu():
@@ -734,6 +747,8 @@ func _drift_to_a_stop() -> void:
 
 
 func _physics_process(delta: float) -> void:
+	if practice != null:
+		return
 	var _max_stamina = max_stamina_per_mode(Net.game_mode)
 	# a remote body is a puppet its transform is replicated in from the peer
 	if not _is_local():
@@ -747,7 +762,7 @@ func _physics_process(delta: float) -> void:
 		_drift_to_a_stop()
 		return
 
-	if Net.input_blocked_by_menu():
+	if Net.input_blocked_by_menu() or practice_input_blocked:
 		_drift_to_a_stop()
 		return
 

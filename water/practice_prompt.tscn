@@ -1,0 +1,7 @@
+[gd_scene load_steps=3 format=3]
+
+[ext_resource type="PackedScene" path="res://water/revive_prompt.tscn" id="1"]
+[ext_resource type="Script" path="res://water/practice_prompt.gd" id="2"]
+
+[node name="PracticePrompt" instance=ExtResource("1")]
+script = ExtResource("2")

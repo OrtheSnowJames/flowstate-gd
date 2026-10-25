@@ -152,6 +152,18 @@ You just share the IP and port with your friends and they can connect.
 
 If you just want to play alone, there's always solo play. It doesn't require internet.
 
+#### Fake Friends
+
+Not the real name for the feature, but good enough.
+
+This feature lets you place fake players in the water to practice with.
+
+Step by step:
+- Ctrl+C to spawn a player at your location
+- Ctrl+E while hovering over a player to edit its settings
+- You can edit the move the player spams, infinite stamina, lifeguard and team
+- Ctrl+D while hovering over a player to delete it
+
 ## VR Builds
 
 Forgive me. I used powershell. I know. But I had to because of windows.
@@ -177,6 +189,6 @@ This is the only way to toggle performance mode (on by default).
 Entering immersive VR, stopping VR or restarting the app restores performance mode.
 
 ## TODO:
-Diving board
-Voice chat
-Solo Play Sandbox
+- Diving board
+- Done: Voice chat
+- Solo Play Sandbox

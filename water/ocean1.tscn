@@ -28,6 +28,7 @@
 [ext_resource type="PackedScene" uid="uid://3306dkiwtl72" path="res://addons/simplegrasstextured/shaders/wooden_fences__low_poly.glb" id="28_oalkl"]
 [ext_resource type="PackedScene" uid="uid://b8e3x60f5saj5" path="res://mesh/banana.glb" id="29_oalkl"]
 [ext_resource type="Script" uid="uid://bs3u8l4groj4f" path="res://water/king_of_cube.gd" id="30_cube_mode"]
+[ext_resource type="Script" path="res://water/practice_players.gd" id="31_practice"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -580,6 +581,9 @@ min_splash_speed = 1.5
 splash_strength = 1.4
 wake_strength = 4.0
 wake_min_speed = 0.12
+
+[node name="PracticePlayers" type="Node3D" parent="."]
+script = ExtResource("31_practice")
 
 [node name="PushCube" type="RigidBody3D" parent="." unique_id=1648123897]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 10, 0)

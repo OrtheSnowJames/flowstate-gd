@@ -26,6 +26,9 @@ static func _stamina_change(player, delta: float) -> void:
 
 
 static func take_stamina_damage(player, amount: float) -> void:
+	if player.practice != null and player.practice.infinite_stamina:
+		player.stamina = player.max_stamina_per_mode(Net.game_mode)
+		return
 	if player._water_wall_up:
 		amount *= player.water_wall_block_reduction
 	player.stamina = clampf(player.stamina - amount, 0.0, player.max_stamina_per_mode(Net.game_mode))
@@ -54,7 +57,8 @@ static func net_death(player) -> void:
 	player.set_process_input(false)
 
 	# that may have been the last one standing on this side told rather than
-	Net.call_deferred("on_player_down")
+	if player.practice == null:
+		Net.call_deferred("on_player_down")
 
 	# a wall left standing when its owner blacks out would hang in the pool
 	if player._water_wall_up:
@@ -68,7 +72,7 @@ static func net_death(player) -> void:
 		player._movement_anim_state = -1 # same reasoning as _play_water_action_anim
 
 	# past here is what blacking out looks like from behind your own eyes the
-	if not player._is_local():
+	if player.practice != null or not player._is_local():
 		return
 
 	if player._muffled_player:
@@ -125,7 +129,7 @@ static func net_revive(player) -> void:
 	player.last_d_press = -1000.0
 
 	# past here is what coming round looks like from behind your own eyes the
-	if not player._is_local():
+	if player.practice != null or not player._is_local():
 		return
 
 	if player._muffled_player:

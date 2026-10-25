@@ -31,7 +31,7 @@ static func _apply_mesh_for_lifeguard(player) -> void:
 	if not (old and old.has_node("kickboard") == player.is_lifeguard):
 		if old:
 			player.remove_child(old)
-			old.free()
+			old.queue_free()
 		var mesh: Node3D = (player._LIFEGUARD_MESH if player.is_lifeguard else player._CHARACTER_MESH).instantiate()
 		mesh.name = "blockbench_export"
 		# matches player tscns own baked transform for this node exactly both rigs were modeled
