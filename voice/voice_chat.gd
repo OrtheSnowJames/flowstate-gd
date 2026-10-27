@@ -161,10 +161,28 @@ func apply_settings() -> void:
 	Settings.save_settings()
 
 
+func enabled() -> bool:
+	return not CouchParty.muted if CouchParty.active() else Settings.voice_enabled
+
+
+func set_enabled(value: bool) -> void:
+	if CouchParty.active():
+		CouchParty.muted = not value
+		if not value:
+			_stop_capture()
+		else:
+			_permission_requested = false
+			_device_check = 0.0
+		CouchParty.changed.emit()
+		return
+	Settings.voice_configured = true
+	Settings.voice_enabled = value
+	apply_settings()
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if CouchParty.active() and not event.is_echo() and event.is_action_pressed("voice_toggle"):
-		CouchParty.muted = not CouchParty.muted
-		CouchParty.changed.emit()
+		set_enabled(not enabled())
 		get_viewport().set_input_as_handled()
 		return
 	if not connected() or event.is_echo() or not event.is_action_pressed("voice_toggle"):
@@ -177,8 +195,7 @@ func _unhandled_input(event: InputEvent) -> void:
 	if not Settings.voice_configured:
 		prompt_setup(Transition)
 		return
-	Settings.voice_enabled = not Settings.voice_enabled
-	apply_settings()
+	set_enabled(not enabled())
 
 
 func _process(delta: float) -> void:

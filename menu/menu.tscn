@@ -44,3 +44,33 @@ size_flags_horizontal = 3
 size_flags_vertical = 3
 mouse_filter = 1
 script = ExtResource("5_menuscreen")
+
+[node name="GuestMenu" type="MarginContainer" parent="UI" groups=["couch_guest_menu"]]
+visible = false
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 32.0
+offset_top = 24.0
+offset_right = -32.0
+offset_bottom = -24.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="UI/GuestMenu"]
+layout_mode = 2
+theme_override_constants/separation = 20
+alignment = 1
+
+[node name="Message" type="Label" parent="UI/GuestMenu/VBox"]
+layout_mode = 2
+theme_override_font_sizes/font_size = 28
+text = "Host is choosing an option (probably)"
+horizontal_alignment = 1
+autowrap_mode = 3
+
+[node name="Buttons" type="Control" parent="UI/GuestMenu/VBox"]
+custom_minimum_size = Vector2(0, 140)
+layout_mode = 2
+mouse_filter = 1
+script = ExtResource("5_menuscreen")

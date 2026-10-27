@@ -3,7 +3,7 @@ extends Node
 const Gestures := preload("res://vr/gestures.gd")
 const Arms := preload("res://water/player/vr_arms.gd")
 const HandPush := preload("res://vr/hand_push.gd")
-const HAND_TIP_OFFSET := Vector3(0, 0, -0.045)
+const HAND_TIP_OFFSET := Arms.HAND_TIP_OFFSET
 const SWIM_MOMENTUM_GAIN := 2.0
 const SWIM_MOMENTUM_LOSS := 0.5
 # one stroke per second with a little room for timing error
@@ -171,12 +171,7 @@ func hand_transform(hand: XRController3D) -> Transform3D:
 
 
 func hand_tip_transform(hand: XRController3D) -> Transform3D:
-	var tracker := XRServer.get_tracker(hand.tracker) as XRPositionalTracker
-	var aim := tracker.get_pose("aim") if tracker else null
-	var pose := hand.global_transform
-	if aim and aim.has_tracking_data:
-		pose = origin.global_transform * aim.get_adjusted_transform()
-	return pose.translated_local(HAND_TIP_OFFSET)
+	return Arms.hand_tip_transform(hand, origin)
 
 
 func hand_touching_water(hand: int, at: Vector3) -> bool:

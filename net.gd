@@ -33,6 +33,7 @@ signal cube_control_changed
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
 var room_code := ""
+var couch_practice := false
 
 var _escape_menu_open := false
 var _input_blocked_by_menu := false
@@ -378,6 +379,9 @@ func join_game(ip := "", port := PORT) -> Error:
 
 
 func leave_game() -> void:
+	CouchParty.practice_game.stop()
+	couch_practice = false
+	_input_blocked_by_menu = false
 	_party_groups.clear()
 	_peer_parties.clear()
 	VoiceChat.reset_session()
@@ -527,13 +531,26 @@ func game_mode_name() -> String:
 
 
 func cycle_solo_game_mode() -> bool:
-	if is_online() or round_state != RoundState.PLAYING or not _round_started or _round_over \
+	if (is_online() and (not couch_practice or not multiplayer.is_server())) \
+			or round_state != RoundState.PLAYING or not _round_started or _round_over \
 			or input_blocked_by_menu() or is_spectating() or _players_root() == null:
 		return false
-	var previous := game_mode
 	var modes := GameMode.values()
-	net_sync_game_mode(modes[(modes.find(game_mode) + 1) % modes.size()])
+	var next_mode: int = modes[(modes.find(game_mode) + 1) % modes.size()]
+	if couch_practice:
+		rpc("net_cycle_practice_mode", next_mode)
+	else:
+		net_cycle_practice_mode(next_mode)
 	_reset_round_scoreboard()
+	return true
+
+
+@rpc("authority", "call_local", "reliable")
+func net_cycle_practice_mode(mode: int) -> void:
+	if is_online() and not couch_practice:
+		return
+	var previous := game_mode
+	net_sync_game_mode(mode)
 	for player in get_tree().get_nodes_in_group("player"):
 		var old_max: float = player.max_stamina_per_mode(previous)
 		var new_max: float = player.max_stamina_per_mode(game_mode)
@@ -544,7 +561,6 @@ func cycle_solo_game_mode() -> bool:
 				bar.max_value = new_max
 				bar.value = player.stamina
 	print("net: solo mode -> ", game_mode_name())
-	return true
 
 
 @rpc("authority", "call_local", "reliable")
@@ -710,7 +726,7 @@ func lobby_count() -> int:
 
 # host only put everyone in the pool safe to call twice the state check
 func start_round() -> void:
-	if CouchParty.leader() and not CouchParty.ready_for_match():
+	if CouchParty.leader() and not couch_practice and not CouchParty.ready_for_match():
 		return
 	if not multiplayer.is_server() and is_online():
 		push_warning("net: only the host can start the round")
@@ -922,6 +938,9 @@ func net_return_to_lobby() -> void:
 
 # back to the waiting room after a round with the roster intact so the
 func _return_to_lobby() -> void:
+	if couch_practice:
+		await _leave_current_game_to_menu()
+		return
 	var generation := _session_generation
 	_clear_spectator_drones()
 	round_state = RoundState.LOBBY
@@ -1487,6 +1506,9 @@ func net_spectator_lobby() -> void:
 
 # solo play a one player round runs the exact same load everyone ready spawn
 func start_solo_play() -> void:
+	if CouchParty.active():
+		CouchParty.practice_game.start()
+		return
 	net_sync_game_mode(GameMode.NORMAL)
 	# a roster of exactly us cleared first so a previous sessions leftovers cant put
 	_teams.clear()
@@ -1496,6 +1518,24 @@ func start_solo_play() -> void:
 	net_report_name(Settings.player_name)
 	round_state = RoundState.LOBBY
 	start_round()
+
+
+func begin_couch_practice(peer: WebRTCMultiplayerPeer) -> void:
+	couch_practice = true
+	multiplayer.multiplayer_peer = peer
+	_teams.clear()
+	_lifeguards.clear()
+	_names.clear()
+	_arena_ready.clear()
+	_round_started = false
+	_round_over = false
+	round_state = RoundState.LOBBY
+	_input_blocked_by_menu = true
+	net_sync_game_mode(GameMode.NORMAL)
+	if multiplayer.is_server():
+		_assign_team(1)
+		net_report_name(Settings.player_name)
+		CouchParty._report_profile()
 
 
 # connect to localhost lands in the lobby either way joining an existing one if
@@ -1632,7 +1672,7 @@ func _on_connect_attempt_failed() -> void:
 func _handle_session_escape() -> void:
 	if _escape_menu_open or _leaving_game:
 		return
-	if not is_online() or _is_online_session_alone():
+	if couch_practice or not is_online() or _is_online_session_alone():
 		_leave_current_game_to_menu()
 	else:
 		_confirm_online_disconnect()
@@ -1655,7 +1695,7 @@ func _confirm_online_disconnect() -> void:
 	await Transition.blur_in()
 	var prompt := DISCONNECT_PROMPT.instantiate()
 	Transition.add_child(prompt)
-	var confirmed: bool = await prompt.open(DISCONNECT_WARNING)
+	var confirmed: bool = await prompt.open(DISCONNECT_WARNING, "Disconnect", "Cancel", VR.active)
 	if confirmed:
 		Settings.start_online_penalty(DISCONNECT_PENALTY_SECONDS)
 		await _leave_current_game_to_menu()

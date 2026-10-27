@@ -303,3 +303,4 @@ sgt_wind_pattern={
 
 shaders/enabled=true
 openxr/enabled.android=true
+openxr/extensions/meta/dynamic_resolution.quest=false

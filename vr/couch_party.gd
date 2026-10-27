@@ -14,6 +14,7 @@ var message := ""
 var lights_on := true
 var group_key := ""
 var rtc := preload("res://matchmaking/rtc_transport.gd").new()
+var practice_game := preload("res://vr/couch_practice.gd").new()
 var _api := SceneMultiplayer.new()
 var _token := ""
 var _generation := 0
@@ -42,6 +43,8 @@ func _ready() -> void:
 	rtc.independent = true
 	rtc.max_players = 4
 	add_child(rtc)
+	practice_game.name = "PracticeGame"
+	add_child(practice_game)
 	VR.mode_changed.connect(_mode_changed)
 	Net.lobby_changed.connect(_report_profile)
 
@@ -65,7 +68,12 @@ func party_size() -> int:
 func can_use_screen() -> bool:
 	return not active() or leader() or is_instance_valid(_panel) \
 		or Net._connection_game_in_progress \
+		or _guest_menu_visible() \
 		or (Net.round_state == Net.RoundState.PLAYING and Net._round_started and not Net._round_over)
+
+
+func _guest_menu_visible() -> bool:
+	return get_tree().get_nodes_in_group("couch_guest_menu").any(func(menu): return menu.is_visible_in_tree())
 
 
 func ready_for_match() -> bool:
@@ -169,6 +177,8 @@ func join_room(value: String) -> void:
 
 
 func leave(reason := "") -> void:
+	if Net.couch_practice:
+		Net._leave_current_game_to_menu(true)
 	_generation += 1
 	var old_code := code
 	var old_token := _token
@@ -242,6 +252,7 @@ func hello(display_name: String) -> void:
 
 func _peer_left(id: int) -> void:
 	if leader():
+		practice_game.member_left(id)
 		members.erase(id)
 		_publish.call_deferred()
 
@@ -354,7 +365,7 @@ func local_pose() -> Array:
 	var pose: Array = [inverse * VR._head.global_transform, Transform3D.IDENTITY, Transform3D.IDENTITY, 0]
 	for i in range(VR._hands.size()):
 		if VR._hands[i].get_is_active():
-			pose[i + 1] = inverse * VR._hands[i].global_transform
+			pose[i + 1] = (inverse * POSES.hand_tip_transform(VR._hands[i], VR._origin)).orthonormalized()
 			pose[3] |= 1 << i
 	return pose if POSES.valid_pose(pose) else []
 
@@ -437,7 +448,7 @@ func join_match(destination: Dictionary) -> void:
 
 
 func register_team() -> void:
-	if not active() or not Net.is_online():
+	if not active() or not Net.is_online() or Net.couch_practice:
 		return
 	if Net.multiplayer.multiplayer_peer.get_connection_status() != MultiplayerPeer.CONNECTION_CONNECTED:
 		return
@@ -507,7 +518,13 @@ func _receive_voice(id: int, sequence: int, data: PackedByteArray) -> void:
 func _input(event: InputEvent) -> void:
 	if event.is_action("voice_toggle"):
 		return
-	if not active() or leader() or can_use_screen():
+	if not active() or leader():
+		return
+	if _guest_menu_visible() and not is_instance_valid(_panel) and event.is_action_pressed("ui_cancel"):
+		open_panel()
+		get_viewport().set_input_as_handled()
+		return
+	if can_use_screen():
 		return
 	if event.is_action_pressed("ui_cancel"):
 		open_panel()

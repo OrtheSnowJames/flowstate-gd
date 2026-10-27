@@ -2,6 +2,7 @@ extends Node3D
 
 const EYE_HEIGHT := 1.05
 const REMOTE_ARM_OFFSET := Vector3(0, 0.1, -0.6)
+const HAND_TIP_OFFSET := Vector3(0, 0, -0.045)
 
 var pose: Array = []
 var _display: Array = []
@@ -11,6 +12,15 @@ var _team := -1
 var _hidden := false
 var _original_arms: Array[Node3D] = []
 var _body_layers: Dictionary = {}
+
+
+static func hand_tip_transform(hand: XRController3D, origin: Node3D) -> Transform3D:
+	var tracker := XRServer.get_tracker(hand.tracker) as XRPositionalTracker
+	var aim := tracker.get_pose("aim") if tracker else null
+	var pose := hand.global_transform
+	if aim and aim.has_tracking_data:
+		pose = origin.global_transform * aim.get_adjusted_transform()
+	return pose.translated_local(HAND_TIP_OFFSET)
 
 
 static func valid_pose(value: Array) -> bool:

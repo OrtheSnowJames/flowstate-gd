@@ -5,6 +5,7 @@ const NAME_PROMPT := preload("res://menu/name_prompt.tscn")
 const SERVER_PROMPT := preload("res://menu/server_prompt.tscn")
 
 @onready var _menu_screen: Control = $UI/MenuScroll/MenuScreen
+var _couch_guest := false
 
 
 func _ready() -> void:
@@ -12,6 +13,23 @@ func _ready() -> void:
 		if _menu_screen._heading.visible:
 			_show_root())
 	_show_root()
+	CouchParty.changed.connect(_refresh_couch_guest)
+	_refresh_couch_guest()
+
+
+func _refresh_couch_guest() -> void:
+	var guest := CouchParty.active() and not CouchParty.leader()
+	if guest == _couch_guest:
+		return
+	_couch_guest = guest
+	$UI/MenuScroll.visible = not guest
+	$UI/GuestMenu.visible = guest
+	if guest:
+		$UI/GuestMenu/VBox/Buttons.show_buttons([
+			{"label": "Rooms", "on_press": CouchParty.open_panel},
+		])
+	else:
+		_show_root()
 
 
 # screens
@@ -210,10 +228,6 @@ func _step_clamped(value: float, step: float, lo: float, hi: float) -> float:
 
 # play
 func _on_solo_play() -> void:
-	if CouchParty.active():
-		CouchParty.message = "Leave the couch room before playing solo"
-		CouchParty.open_panel()
-		return
 	Net.start_solo_play()
 
 

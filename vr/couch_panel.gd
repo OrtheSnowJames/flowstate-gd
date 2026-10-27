@@ -63,9 +63,12 @@ func refresh() -> void:
 	if CouchParty.active():
 		for member in CouchParty.members.values():
 			label("%s  %s" % [member.name, "(bean bag)" if member.seat == 3 else ""])
-		button("Microphone: " + ("Off" if CouchParty.muted else "On"), func():
-			CouchParty.muted = not CouchParty.muted
-			refresh())
+		var mic := CheckButton.new()
+		mic.text = "Microphone"
+		mic.custom_minimum_size.y = 44
+		mic.button_pressed = VoiceChat.enabled()
+		mic.toggled.connect(VoiceChat.set_enabled)
+		list.add_child(mic)
 		button("Leave Room", CouchParty.leave)
 	else:
 		button("Create Room", CouchParty.create_room, CouchParty.busy)
