@@ -6,6 +6,8 @@ const AVATAR := preload("res://vr/couch_avatar.gd")
 const POSES := preload("res://water/player/vr_arms.gd")
 const PCM := preload("res://voice/pcm.gd")
 const SPEAKER := preload("res://voice/remote_voice.gd")
+const META_APP_ID := "1652096086707641"
+const META_DESTINATION := "vr_room_lobby"
 var code := ""
 var members: Dictionary = {}
 var muted := false
@@ -30,6 +32,15 @@ var _limits: Dictionary = {}
 var _poses: Dictionary = {}
 var _sequence := 0
 var _panel: Control
+var meta_platform: Object
+var _meta_ready := false
+var _meta_presence: Dictionary = {}
+var _meta_published: Dictionary = {}
+var _meta_updating := false
+var _meta_inviting := false
+var _meta_retry_time := 0
+var _meta_pending_code := ""
+var _meta_target_code := ""
 
 
 func _ready() -> void:
@@ -47,6 +58,165 @@ func _ready() -> void:
 	add_child(practice_game)
 	VR.mode_changed.connect(_mode_changed)
 	Net.lobby_changed.connect(_report_profile)
+	changed.connect(_update_meta_presence)
+	_setup_meta.call_deferred()
+
+
+# setting up meta quest joining
+func _setup_meta() -> void:
+	if OS.get_name() != "Android" or not Engine.has_singleton("MetaPlatformSDK"):
+		return
+	meta_platform = Engine.get_singleton("MetaPlatformSDK")
+	meta_platform.notification_received.connect(_meta_notification)
+	var request = meta_platform.initialize_platform_async(META_APP_ID)
+	if request == null:
+		_meta_error("Couldn't start Meta friends")
+		return
+	var result = await request.completed
+	if result.is_error() or result.get_platform_initialize().result != 0:
+		_meta_error("Couldn't start Meta friends", result)
+		return
+	request = meta_platform.entitlement_get_is_viewer_entitled_async()
+	if request == null:
+		_meta_error("Couldn't verify Meta app access")
+		return
+	result = await request.completed
+	if result.is_error():
+		_meta_error("Meta friends requires access to this app on your Meta account", result)
+		return
+	_meta_ready = true
+	_meta_published = {"unknown": true}
+	_update_meta_presence()
+	_queue_meta_join(meta_platform.application_lifecycle_get_launch_details())
+	changed.emit()
+
+
+func broadcast_lobby_id(session_id: String) -> void:
+	_meta_presence = {"code": session_id, "joinable": members.size() < 4 and not Net.couch_practice} if not session_id.is_empty() else {}
+	_sync_meta_presence()
+
+
+func _update_meta_presence() -> void:
+	broadcast_lobby_id(code if active() and not busy else "")
+
+
+func _sync_meta_presence() -> void:
+	if not _meta_ready or _meta_updating or _meta_presence == _meta_published \
+		or Time.get_ticks_msec() < _meta_retry_time:
+		return
+	_meta_updating = true
+	var presence := _meta_presence.duplicate()
+	var request
+	if presence.is_empty():
+		request = meta_platform.group_presence_clear_async()
+	else:
+		var options = ClassDB.instantiate("MetaPlatformSDK_GroupPresenceOptions")
+		options.set_destination_api_name(META_DESTINATION)
+		options.set_lobby_session_id(presence.code)
+		options.set_is_joinable(presence.joinable)
+		request = meta_platform.group_presence_set_async(options)
+	var result = await request.completed if request != null else null
+	_meta_updating = false
+	if result == null or result.is_error():
+		_meta_retry_time = Time.get_ticks_msec() + 10000
+		_meta_error("Couldn't update Meta room presence", result)
+	else:
+		_meta_published = presence
+		_meta_retry_time = 0
+		_sync_meta_presence.call_deferred()
+	changed.emit()
+
+
+func can_invite_meta_friends() -> bool:
+	return _meta_ready and active() and not busy and not _meta_inviting and not _meta_updating \
+		and _meta_published == _meta_presence and _meta_presence.get("joinable", false)
+
+
+func invite_meta_friends() -> void:
+	if not can_invite_meta_friends():
+		return
+	_meta_inviting = true
+	changed.emit()
+	var options = ClassDB.instantiate("MetaPlatformSDK_InviteOptions")
+	var request = meta_platform.group_presence_launch_invite_panel_async(options)
+	var result = await request.completed if request != null else null
+	_meta_inviting = false
+	if result == null or result.is_error():
+		_meta_error("Couldn't open Meta friend invites", result)
+	changed.emit()
+
+
+func _meta_notification(notification: Object) -> void:
+	if notification.is_error():
+		return
+	var kind: int = notification.type
+	if kind == ClassDB.class_get_integer_constant("MetaPlatformSDK", "MESSAGE_NOTIFICATION_GROUP_PRESENCE_JOIN_INTENT_RECEIVED"):
+		_queue_meta_join(notification.get_group_presence_join_intent())
+	elif kind == ClassDB.class_get_integer_constant("MetaPlatformSDK", "MESSAGE_NOTIFICATION_APPLICATION_LIFECYCLE_LAUNCH_INTENT_CHANGED"):
+		_queue_meta_join(meta_platform.application_lifecycle_get_launch_details())
+	elif kind == ClassDB.class_get_integer_constant("MetaPlatformSDK", "MESSAGE_NOTIFICATION_GROUP_PRESENCE_LEAVE_INTENT_RECEIVED"):
+		var details = notification.get_group_presence_leave_intent()
+		if details != null and details.destination_api_name == META_DESTINATION and details.lobby_session_id == code:
+			leave()
+
+
+func _queue_meta_join(details) -> void:
+	if details == null or details.destination_api_name != META_DESTINATION:
+		return
+	var value: String = str(details.lobby_session_id).strip_edges().to_upper()
+	if not Matchmaking.valid_code(value):
+		_meta_error("This Meta invite doesn't contain a valid couch room")
+		return
+	if value == code or value == _meta_pending_code or value == _meta_target_code:
+		return
+	_meta_pending_code = value
+
+
+func _join_meta_room() -> void:
+	_meta_target_code = _meta_pending_code
+	_meta_pending_code = ""
+	busy = true
+	message = "Joining friend's couch room..."
+	changed.emit()
+	var generation := _generation
+	var prepared := await _prepare_meta_join(generation)
+	if generation == _generation:
+		if prepared:
+			var value := _meta_target_code
+			leave()
+			open_panel()
+			await join_room(value)
+		else:
+			busy = false
+			message = ""
+			changed.emit()
+	_meta_target_code = ""
+
+
+func _prepare_meta_join(generation: int) -> bool:
+	if Net.is_online() and not Net.couch_practice and not Net._is_online_session_alone():
+		await Net._confirm_online_disconnect()
+		if generation != _generation or Net.is_online():
+			return false
+	if VR.immersive:
+		busy = false
+		await VR.exit_immersive()
+		if generation != _generation or not available():
+			return false
+		busy = true
+	if Net.is_online() or Net._escape_scene_active():
+		await Net._leave_current_game_to_menu(true)
+	return generation == _generation and available()
+
+
+func _meta_error(text: String, result = null) -> void:
+	if result != null and result.is_error():
+		push_warning(text + ": " + str(result.error.message))
+	else:
+		push_warning(text)
+	if not busy:
+		message = text
+		changed.emit()
 
 
 func available() -> bool:
@@ -180,6 +350,7 @@ func leave(reason := "") -> void:
 	if Net.couch_practice:
 		Net._leave_current_game_to_menu(true)
 	_generation += 1
+	_meta_pending_code = ""
 	var old_code := code
 	var old_token := _token
 	code = ""
@@ -330,7 +501,14 @@ func toggle_lights() -> void:
 
 
 func _process(delta: float) -> void:
-	if not code.is_empty() and busy:
+	if _meta_ready:
+		if _meta_retry_time > 0:
+			_sync_meta_presence()
+		if not _meta_pending_code.is_empty() and _meta_target_code.is_empty() and not busy \
+			and VR.active and not VR.entering and not VR.exiting \
+			and not Net._leaving_game and not Net._escape_menu_open and not Matchmaking.busy:
+			_join_meta_room()
+	if not code.is_empty() and busy and _meta_target_code.is_empty():
 		_joining_time += delta
 		if _joining_time > 40.0:
 			leave("Couch connection timed out")
@@ -398,6 +576,7 @@ func _heartbeat() -> void:
 
 
 func _report_profile() -> void:
+	_update_meta_presence()
 	if not active():
 		return
 	var game_id := get_tree().get_multiplayer().get_unique_id() if Net.is_online() else 0
