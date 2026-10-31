@@ -114,6 +114,8 @@ func _open_code_prompt() -> void:
 func _show_settings() -> void:
 	var buttons := [
 		{"label": "Name and Voice Chat", "on_press": _on_edit_name},
+		{"type": "stepper", "label": "Frame Limit", "value": _frame_limit_text(),
+			"on_left": _change_frame_limit.bind(-1), "on_right": _change_frame_limit.bind(1)},
 		{"type": "stepper", "label": "Camera Height", "value": "%.1fm" % Settings.camera_hover_height,
 			"on_left": _dec_camera_height, "on_right": _inc_camera_height},
 		{"type": "stepper", "label": "Angle", "value": "%d°" % int(Settings.camera_pitch_deg),
@@ -126,6 +128,19 @@ func _show_settings() -> void:
 	]
 	buttons.append({"label": "Back", "on_press": _show_root})
 	_menu_screen.show_buttons(buttons)
+
+
+func _frame_limit_text() -> String:
+	var limit := Settings.effective_frame_limit()
+	return "%d FPS" % limit if limit > 0 else "Unlimited"
+
+
+func _change_frame_limit(direction: int) -> String:
+	var limits: Array = [30, 40, 60] if VR.quest_standalone else Settings.FRAME_LIMITS
+	var index := limits.find(Settings.effective_frame_limit())
+	Settings.frame_limit = limits[posmod(index + direction, limits.size())]
+	Settings.save_settings()
+	return _frame_limit_text()
 
 
 # opens the same modal the lobbys first join prompt uses pre filled with the

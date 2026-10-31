@@ -59,7 +59,7 @@ static func is_standalone_quest(platform: String, model: String, runtime: String
 
 func _apply_quest_fps_limit() -> void:
 	if quest_standalone:
-		Engine.max_fps = 60
+		Settings.apply_frame_limit()
 
 # split up start into start_init and ready_room
 func start_init(preview := false) -> bool:

@@ -5,6 +5,12 @@ const _SAVE_PATH := "user://settings.cfg"
 const _SECTION := "camera"
 const _ONLINE_SECTION := "online"
 const _PROFILE_SECTION := "profile"
+const FRAME_LIMITS := [30, 40, 60, 90, 120, 144, 165, 240, 0]
+
+var frame_limit := 0:
+	set(value):
+		frame_limit = value if value in FRAME_LIMITS else 0
+		apply_frame_limit()
 
 # display name shown to other players the lobbys player list everyone and a floating
 var player_name: String = ""
@@ -26,6 +32,18 @@ var online_penalty_until_unix: int = 0
 
 func _ready() -> void:
 	load_settings()
+	apply_frame_limit()
+
+
+func effective_frame_limit() -> int:
+	var vr := get_node_or_null("/root/VR")
+	if vr and vr.quest_standalone:
+		return mini(frame_limit, 60) if frame_limit > 0 else 60
+	return frame_limit
+
+
+func apply_frame_limit() -> void:
+	Engine.max_fps = effective_frame_limit()
 
 
 func load_settings() -> void:
@@ -33,6 +51,7 @@ func load_settings() -> void:
 	# a missing corrupt file just means nothing saved yet the defaults above already match
 	if cfg.load(_SAVE_PATH) != OK:
 		return
+	frame_limit = int(cfg.get_value("graphics", "frame_limit", frame_limit))
 	camera_hover_height = cfg.get_value(_SECTION, "camera_hover_height", camera_hover_height)
 	camera_pitch_deg = cfg.get_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	turn_speed = cfg.get_value(_SECTION, "turn_speed", turn_speed)
@@ -48,6 +67,7 @@ func load_settings() -> void:
 
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
+	cfg.set_value("graphics", "frame_limit", frame_limit)
 	cfg.set_value(_SECTION, "camera_hover_height", camera_hover_height)
 	cfg.set_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	cfg.set_value(_SECTION, "turn_speed", turn_speed)
