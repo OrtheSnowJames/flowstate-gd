@@ -51,6 +51,8 @@ static func _death(player) -> void:
 
 
 static func net_death(player, killer: int = 0) -> void:
+	player.CannonBall.reset(player)
+	player.Movement._finish_hurdle(player)
 	Net.arcade.ultimate.credit(player, killer)
 	if player._unconscious:
 		return
@@ -166,6 +168,8 @@ static func net_revive(player) -> void:
 
 
 static func respawn(player, at: Vector3, yaw: float) -> void:
+	player.CannonBall.reset(player)
+	player.Movement._finish_hurdle(player)
 	player.net_revive()
 	player._jump_cancel_available = false
 	player.global_position = at

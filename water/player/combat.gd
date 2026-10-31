@@ -48,6 +48,8 @@ static func net_cast_water_move(player, kind: WaterMove, origin: Vector3, aim: V
 
 
 static func _try_water_counter(player) -> bool:
+	if player._hurdling or player._cannon_ball_active:
+		return false
 	if not player._is_local() or player._unconscious or player.movement_locked or player._water_wall_up or Net.is_spectating() \
 			or Net.input_blocked_by_menu() or player._ocean == null or player._submersion() <= 0.0 \
 			or player.stamina < player.water_counter_stamina_cost:
@@ -71,6 +73,8 @@ static func _update_water_counter(player, delta: float) -> void:
 
 
 static func _try_water_pelt(player, hand := -1) -> bool:
+	if player._hurdling or player._cannon_ball_active:
+		return false
 	if not player._is_local() or player._unconscious or player.movement_locked or player._water_wall_up or Net.is_spectating() \
 			or Net.input_blocked_by_menu() or player._ocean == null \
 			or player.stamina < player.water_pelt_stamina_cost or player._water_pelt_cooldown_timer > 0.0 \

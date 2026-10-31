@@ -13,6 +13,7 @@ const Types = preload("res://water/player/types.gd")
 const Appearance = preload("res://water/player/appearance.gd")
 const Camera = preload("res://water/player/camera.gd")
 const Movement = preload("res://water/player/movement.gd")
+const CannonBall = preload("res://water/player/cannon_ball.gd")
 const Combat = preload("res://water/player/combat.gd")
 const Vitality = preload("res://water/player/vitality.gd")
 
@@ -77,6 +78,7 @@ var last_d_press := -1000.0
 
 # top movement speed in m s reached at full momentum momentum scales speed from
 @export var swim_speed: float = 12.0
+@export var land_walk_speed_mult: float = 2.0
 # radians second the body and camera which follows its yaw turns while holding a
 @export var turn_speed: float = 2.5
 
@@ -144,6 +146,10 @@ var last_d_press := -1000.0
 @export var jump_cooldown: float = 1.0
 @export var jump_cancel_momentum: float = 8.0
 @export var jump_cancel_stamina_cost: float = 10.0
+@export var hurdle_duration: float = 0.65
+@export var hurdle_reach: float = 3.0
+@export var cannon_ball_damage: float = 10.0
+@export var cannon_ball_radius: float = 5.0
 
 @export_group("Blackout")
 # fallback for how long the eyelids take to fall shut normally the close is
@@ -169,6 +175,7 @@ var last_d_press := -1000.0
 @export var max_arcade_stamina: float = 200.0
 @export var balance_mult: float = 0.5
 @export var stamina_expended_dodge: float = 20.0 # cant dodge in the deep end
+@export var stamina_expended_hurdle: float = 10.0 * balance_mult
 @export var stamina_in_shallow_end_per_second: float = 9.0 * balance_mult
 @export var stamina_expended_in_deep_end_per_second_tread: float = 2.5 * balance_mult
 @export var stamina_expended_in_deep_end_per_second_swim: float = 5.0 * balance_mult
@@ -230,13 +237,25 @@ var dir: Vector3 = Vector3.ZERO
 var can_move: bool = true
 # get_node_or_null not get_node a decorative player dropped into a scene with no hud see
 @onready var gui: CanvasLayer = get_node_or_null("/root/Main/gui")
+@onready var hurdle_area: Area3D = get_node_or_null("../../hurdle_preventer/area_detector") as Area3D
+
 # movement state state of movement
 @export var movement_state: MovementState = MovementState.IDLE
 var _ocean: Node = null
 # counts down after a dodge jump until another one is allowed
 var _dodge_cooldown_timer: float = 0.0
 var _jump_cooldown_timer: float = 0.0
+var _hurdle_cooldown_timer: float = 0.0
+
 var _jump_cancel_available := false
+var hurdle_cooldown: float = 3.0
+var _hurdling := false
+var _hurdle_elapsed := 0.0
+var _hurdle_from := Vector3.ZERO
+var _hurdle_target := Vector3.ZERO
+var _hurdle_was_frozen := false
+var _board_jump_available := false
+var _cannon_ball_active := false
 # counts down after casting water_power water_attack until that same move can fire again see
 var _water_power_cooldown_timer: float = 0.0
 var _water_attack_cooldown_timer: float = 0.0
@@ -612,7 +631,7 @@ func net_water_wall_stop() -> void:
 # knockback applied where this bodys physics actually run called by ocean_fluid_bridges _knockback via _send_to_owner
 @rpc("any_peer", "reliable")
 func net_apply_impulse(impulse: Vector3) -> void:
-	if _is_local():
+	if _is_local() and not _hurdling:
 		apply_central_impulse(impulse)
 
 
@@ -651,7 +670,7 @@ func _input(event: InputEvent) -> void:
 	if _unconscious:
 		return
 	# nothing lands before the countdown finishes not moves not the revive key not the
-	if movement_locked:
+	if movement_locked or _hurdling or _cannon_ball_active:
 		return
 	if Net.arcade.handle_input(self, event):
 		return
@@ -756,6 +775,15 @@ func _physics_process(delta: float) -> void:
 	# a remote body is a puppet its transform is replicated in from the peer
 	if not _is_local():
 		return
+	_hurdle_cooldown_timer = maxf(_hurdle_cooldown_timer - delta, 0.0)
+	if CannonBall.update(self):
+		return
+	if _hurdling:
+		if _unconscious or movement_locked or Net.is_spectating() or Net.arcade.controls(self):
+			Movement._finish_hurdle(self)
+		else:
+			Movement._update_hurdle(self, delta)
+			return
 	_update_water_counter(delta)
 	if Net.arcade.controls(self):
 		if Net.arcade.ultimate.holding(self) and not Net.input_blocked_by_menu():
@@ -792,6 +820,8 @@ func _physics_process(delta: float) -> void:
 	var submersion := _submersion()
 	var shallow := in_shallow_end()
 	Movement.update(self, delta, submersion, shallow)
+	if _hurdling or _cannon_ball_active:
+		return
 
 	Combat.process_input(self, delta, submersion)
 

@@ -28,7 +28,8 @@
 [ext_resource type="PackedScene" uid="uid://3306dkiwtl72" path="res://addons/simplegrasstextured/shaders/wooden_fences__low_poly.glb" id="28_oalkl"]
 [ext_resource type="PackedScene" uid="uid://b8e3x60f5saj5" path="res://mesh/banana.glb" id="29_oalkl"]
 [ext_resource type="Script" uid="uid://bs3u8l4groj4f" path="res://water/king_of_cube.gd" id="30_cube_mode"]
-[ext_resource type="Script" path="res://water/practice_players.gd" id="31_practice"]
+[ext_resource type="PackedScene" uid="uid://bw6nln0xm03d4" path="res://poolk/diving_board.tscn" id="30_vyau6"]
+[ext_resource type="Script" uid="uid://dgv3oybnnwvq2" path="res://water/practice_players.gd" id="31_practice"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_ihpsq"]
 sky_horizon_color = Color(0.66224277, 0.6717428, 0.6867428, 1)
@@ -180,11 +181,14 @@ albedo_texture = ExtResource("15_1p6d8")
 [sub_resource type="PlaneMesh" id="PlaneMesh_vuobg"]
 size = Vector2(6, 85)
 
+[sub_resource type="BoxShape3D" id="BoxShape3D_vyau6"]
+size = Vector3(5.751465, 1, 79.378296)
+
 [sub_resource type="BoxShape3D" id="BoxShape3D_concrete_floor_3"]
 size = Vector3(80, 0.5, 6)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_oalkl"]
-size = Vector3(60, 24, 1)
+size = Vector3(85.17285, 24, 1)
 
 [sub_resource type="MultiMesh" id="MultiMesh_qqv8b"]
 transform_format = 1
@@ -251,6 +255,9 @@ transform_format = 1
 instance_count = 2
 mesh = ExtResource("27_oalkl")
 buffer = PackedFloat32Array(4, 0, 0, 15.787289, 0, 2, 0, 9, 0, 0, 4, 8.225723, 4, 0, 0, 15.518223, 0, 2, 0, 9, 0, 0, 4, 0.99980164)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_vuobg"]
+size = Vector3(1, 5.6485596, 43.943375)
 
 [node name="Main" type="Node3D" unique_id=1189769047]
 physics_interpolation_mode = 2
@@ -582,7 +589,7 @@ splash_strength = 1.4
 wake_strength = 4.0
 wake_min_speed = 0.12
 
-[node name="PracticePlayers" type="Node3D" parent="."]
+[node name="PracticePlayers" type="Node3D" parent="." unique_id=347422378]
 script = ExtResource("31_practice")
 
 [node name="PushCube" type="RigidBody3D" parent="." unique_id=1648123897]
@@ -755,6 +762,17 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 8.75, -40)
 [node name="CollisionShape3D" type="CollisionShape3D" parent="concrete_floor_2_collision" unique_id=876069740]
 shape = SubResource("BoxShape3D_concrete_floor_2")
 
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=2124622673]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="StaticBody3D" unique_id=549443891]
+transform = Transform3D(0.93766314, 0, 2.5549731e-09, 0, 1, 0, 2.724832e-09, 0, 0.93766314, 31.955315, 9, -10.685713)
+material_override = SubResource("StandardMaterial3D_vyau6")
+mesh = SubResource("PlaneMesh_vuobg")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=1149734177]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 31.88058, 8.526282, -10.595886)
+shape = SubResource("BoxShape3D_vyau6")
+
 [node name="StaticBody3D3" type="StaticBody3D" parent="." unique_id=876069738]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 1, 0, -1, 0, -4.371139e-08, -36, 9, -33)
 
@@ -848,11 +866,15 @@ transform = Transform3D(1, 0, 0, 0, 5, 0, 0, 0, 1, -0.5, 18.5, -21.608849)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D3" type="CollisionShape3D" parent="walls" unique_id=326566403]
-transform = Transform3D(-4.371139e-08, 0, 1, 0, 5, 0, -1, 0, -4.371139e-08, 26.5, 18.5, 8.391151)
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 5, 0, -1, 0, -4.371139e-08, 26.499998, 18.5, -63.78679)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="CollisionShape3D4" type="CollisionShape3D" parent="walls" unique_id=942971688]
 transform = Transform3D(-4.371139e-08, 0, 1, 0, 5, 0, -1, 0, -4.371139e-08, -26.5, 18.5, 8.391151)
+shape = SubResource("BoxShape3D_oalkl")
+
+[node name="CollisionShape3D5" type="CollisionShape3D" parent="walls" unique_id=1289875631]
+transform = Transform3D(-4.371139e-08, 0, 1, 0, 5, 0, -1, 0, -4.371139e-08, 33.701904, 18.5, -12.72407)
 shape = SubResource("BoxShape3D_oalkl")
 
 [node name="Sketchfab_Scene" parent="." unique_id=2006442429 instance=ExtResource("29_oalkl")]
@@ -910,10 +932,26 @@ multimesh = SubResource("MultiMesh_wcq21")
 transform = Transform3D(13.688133, 0, 0, 0, 5, 0, 0, 0, 5, 9.35391, 9.058636, -50.138603)
 
 [node name="Sketchfab_Scene5" parent="fence" unique_id=447498896 instance=ExtResource("28_oalkl")]
-transform = Transform3D(-13.688133, 0, -4.371139e-07, 0, 5, 0, 1.1966546e-06, 0, -5, -28.939127, 9.058636, 25.82476)
+transform = Transform3D(-14, 0, -7.721925e-07, 0, 5.114, 0, 2.1139413e-06, 0, -5.114, -27.10216, 9.058636, 25.82476)
 
 [node name="Sketchfab_Scene3" parent="fence" unique_id=2125561958 instance=ExtResource("28_oalkl")]
-transform = Transform3D(-5.983273e-07, 0, -5, 0, 5, 0, 13.688133, 0, -2.1855695e-07, 29.353909, 8.979935, 4.6139297)
+transform = Transform3D(-5.983273e-07, 0, -5, 0, 5, 0, 13.688133, 0, -2.1855695e-07, 34.12547, 8.979935, 4.6139297)
 
 [node name="Sketchfab_Scene4" parent="fence" unique_id=1352492335 instance=ExtResource("28_oalkl")]
 transform = Transform3D(1.7949819e-06, 0, 5, 0, 5, 0, -13.688133, 0, 6.556709e-07, -49.76506, 9.058636, -33.036236)
+
+[node name="hurdle_preventer" type="StaticBody3D" parent="." unique_id=1480695301]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="hurdle_preventer" unique_id=911279624]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 25.35073, 5.882442, -0.7997513)
+shape = SubResource("BoxShape3D_vuobg")
+
+[node name="area_detector" type="Area3D" parent="hurdle_preventer" unique_id=1858010297]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 13.123772, 8.655497, 0)
+
+[node name="CollisionShape3D2" type="CollisionShape3D" parent="hurdle_preventer/area_detector" unique_id=877745316]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 11.200167, -2.7730546, -0.7997513)
+shape = SubResource("BoxShape3D_vuobg")
+
+[node name="DivingBoard" parent="hurdle_preventer" unique_id=662215468 instance=ExtResource("30_vyau6")]
+transform = Transform3D(-2, 0, -3.019916e-07, 0, 2, 0, 3.019916e-07, 0, -2, 29.686344, 9.017122, -9.435825)

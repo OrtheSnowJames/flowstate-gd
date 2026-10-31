@@ -108,12 +108,14 @@ static func _tinted_texture(source: Texture2D, color: Color) -> ImageTexture:
 static func _fix_animation_loop_modes(player) -> void:
 	if not player._anim_player:
 		return
-	var loop_names: Array[String] = ["water_wall"]
+	var loop_names: Array[String] = ["water_wall", "walk"]
 	if not player.is_lifeguard:
 		loop_names += player._CHARACTER_LOOP_ANIMS
 	for anim_name in loop_names:
 		if player._anim_player.has_animation(anim_name):
 			player._anim_player.get_animation(anim_name).loop_mode = Animation.LOOP_LINEAR
+	if player._anim_player.has_animation("cannon_ball"):
+		player._anim_player.get_animation("cannon_ball").loop_mode = Animation.LOOP_NONE
 
 
 static func _apply_replicated_animation(player) -> void:
@@ -153,7 +155,11 @@ static func play_anim(player, anim_state: AnimationState) -> void:
 	else:
 		# anything else runs at its authored rate speed_scale is a property of the whole
 		player._anim_player.speed_scale = 1.0
-		player._anim_player.play(player.anim_name_to_string(anim_state))
+		var clip: String = player.anim_name_to_string(anim_state)
+		if anim_state == AnimationState.HURDLE:
+			# fit the whole hurdle animation to the climb
+			player._anim_player.speed_scale = player._anim_player.get_animation(clip).length / maxf(player.hurdle_duration, 0.01)
+		player._anim_player.play(clip)
 
 
 static func _play_water_action_anim(player, anim_name: String) -> void:
@@ -218,6 +224,10 @@ static func _anim_change(player) -> void:
 			player.play_anim(AnimationState.WALK)
 		MovementState.JUMP:
 			player.play_anim(AnimationState.JUMP)
+		MovementState.HURDLE:
+			player.play_anim(AnimationState.HURDLE)
+		MovementState.CANNON_BALL:
+			player.play_anim(AnimationState.CANNON_BALL)
 
 
 static func _apply_swim_up_anim_speed(player) -> void:

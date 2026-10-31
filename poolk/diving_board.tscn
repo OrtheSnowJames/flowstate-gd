@@ -1,0 +1,51 @@
+[gd_scene format=3 uid="uid://bw6nln0xm03d4"]
+
+[ext_resource type="Texture2D" uid="uid://drbqtxuyxgxrg" path="res://img/gravel_embedded_concrete_02_diff_1k.jpg" id="1_ek3el"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_6m5sc"]
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_tylor"]
+albedo_texture = ExtResource("1_ek3el")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_uvjt4"]
+albedo_color = Color(0.51125896, 0.5112589, 0.5112589, 1)
+albedo_texture = ExtResource("1_ek3el")
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_pdrih"]
+albedo_texture = ExtResource("1_ek3el")
+emission_enabled = true
+emission = Color(0.5649617, 0.5649616, 0.5649616, 1)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_ek3el"]
+size = Vector3(3.4785767, 1.0566406, 1)
+
+[node name="DivingBoard" type="Node3D" unique_id=662215468]
+
+[node name="StaticBody3D" type="StaticBody3D" parent="." unique_id=311121099 groups=["diving_board"]]
+
+[node name="MeshInstance3D3" type="MeshInstance3D" parent="StaticBody3D" unique_id=2134759109]
+transform = Transform3D(0.59842163, 0, 0.040750794, 0, 0.25239772, 0, -0.12956919, 0, 0.1882095, 0.080722645, 0, 0.13656797)
+mesh = SubResource("BoxMesh_6m5sc")
+
+[node name="MeshInstance3D4" type="MeshInstance3D" parent="StaticBody3D" unique_id=1695382658]
+transform = Transform3D(0.60196424, -1.5055454e-05, -0.035213485, -3.5775745e-05, 0.25239766, -0.0001233179, 0.11196308, 0.00016160143, 0.18932365, 0.073526576, 0, -0.13411689)
+material_override = SubResource("StandardMaterial3D_tylor")
+mesh = SubResource("BoxMesh_6m5sc")
+
+[node name="MeshInstance3D5" type="MeshInstance3D" parent="StaticBody3D" unique_id=1377687870]
+transform = Transform3D(0.6108871, -1.5055455e-05, 0.01301929, 6.294662e-05, 0.25239766, -0.00012223763, -0.04139544, 0.00016160143, 0.19212998, 0.055115, -7.726252e-05, -0.015158184)
+mesh = SubResource("BoxMesh_6m5sc")
+
+[node name="MeshInstance3D2" type="MeshInstance3D" parent="StaticBody3D" unique_id=365670399]
+transform = Transform3D(1.218014, 0, 0, 0, 0.25239772, 0, 0, 0, 0.6957258, 0.20123726, 0.18366988, 0)
+material_override = SubResource("StandardMaterial3D_uvjt4")
+mesh = SubResource("BoxMesh_6m5sc")
+
+[node name="MeshInstance3D6" type="MeshInstance3D" parent="StaticBody3D" unique_id=2133217352]
+transform = Transform3D(3.515831, 0, 0, 0, 0.25239772, 0, 0, 0, 0.82543087, 1.0109906, 0.42851537, 0)
+material_override = SubResource("StandardMaterial3D_pdrih")
+mesh = SubResource("BoxMesh_6m5sc")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="StaticBody3D" unique_id=1973334231]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 1.0244446, 0.027260184, 0)
+shape = SubResource("BoxShape3D_ek3el")

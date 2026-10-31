@@ -192,6 +192,7 @@ Entering immersive VR, stopping VR or restarting the app restores performance mo
 - Diving board
 - Done: Voice chat
 - Solo Play Sandbox
-- "Fun" mode - water balloons, higher ground and more fun I guess (I realize I made this game too competitive)
-- VR couch parties with quest friends
+- "Fun" mode - water balloons, higher ground, otter pops and more fun I guess (I realize I made this game too competitive)
+- Done? Untested: VR couch parties with quest friends
 - Fix bug where you can clip out of map
+- Make stamina only start running out when you start moving

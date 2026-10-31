@@ -3,7 +3,6 @@ extends RefCounted
 const Types = preload("res://water/player/types.gd")
 const MovementState = Types.MovementState
 
-
 static func _integrate_forces(player, state: PhysicsDirectBodyState3D) -> void:
 	if not player._is_local() or not Net.is_online() or player.multiplayer.is_server() or player._unconscious or player.movement_locked:
 		return
@@ -54,6 +53,8 @@ static func detect_dodge(player, now: float, event: InputEvent) -> void:
 
 
 static func _dodge_left(player) -> void:
+	if player._hurdling:
+		return
 	if player.ANIMATE_PLAYER:
 		player._anim_player.play("dodge_left")
 		player._movement_anim_state = -1 # same reasoning as _play_water_action_anim
@@ -61,6 +62,8 @@ static func _dodge_left(player) -> void:
 
 
 static func _dodge_right(player) -> void:
+	if player._hurdling:
+		return
 	if player.ANIMATE_PLAYER:
 		player._anim_player.play("dodge_right")
 		player._movement_anim_state = -1
@@ -68,6 +71,8 @@ static func _dodge_right(player) -> void:
 
 
 static func _dodge(player, local_dir: Vector3) -> void:
+	if player._hurdling:
+		return
 	if player.DEBUG_IN_SHALLOW_WATER:
 		print("dodge attempt: shallow=", player.in_shallow_end(), " submersion=", player._submersion(),
 				" stamina=", player.stamina, "/", player.stamina_expended_dodge,
@@ -92,6 +97,10 @@ static func _dodge(player, local_dir: Vector3) -> void:
 	player.apply_central_impulse(right * player.dodge_impulse)
 
 static func _jump_support(player) -> bool:
+	return not _jump_surface(player).is_empty()
+
+
+static func _jump_surface(player) -> Dictionary:
 	var excluded: Array[RID] = []
 	for body in player.get_tree().get_nodes_in_group("player"):
 		if body is CollisionObject3D:
@@ -99,7 +108,7 @@ static func _jump_support(player) -> bool:
 	var query := PhysicsRayQueryParameters3D.create(player.global_position,
 		player.global_position + Vector3.DOWN * (player.body_half_height + 0.2), 1, excluded)
 	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
-	return not hit.is_empty() and hit.normal.y > 0.5
+	return hit if not hit.is_empty() and hit.normal.y > 0.5 else {}
 
 
 static func _refresh_jump(player) -> void:
@@ -110,10 +119,105 @@ static func _refresh_jump(player) -> void:
 static func _can_launch(player) -> bool:
 	return not player._jump_spent and (player._submersion() > 0.0 or _jump_support(player))
 
+static func _can_hurdle(player) -> bool:
+	if is_instance_valid(player.hurdle_area):
+		return player.hurdle_area.overlaps_body(player)
+	return player.get_node_or_null("../../top_tile") != null
+
+
+static func _hurdle_destination(player) -> Variant:
+	var tiles = player.get_node_or_null("../../top_tile")
+	if tiles == null:
+		return null
+	var best: Variant = null
+	var nearest: float = player.hurdle_reach
+	var forward: Vector3 = -player.global_basis.z
+	forward.y = 0.0
+	for tile in tiles.find_children("*", "MeshInstance3D", true, false):
+		# land inside the orange edge with room for the capsule
+		var bounds: AABB = tile.global_transform * tile.get_aabb()
+		var inset_x := minf(0.65, bounds.size.x * 0.5)
+		var inset_z := minf(0.65, bounds.size.z * 0.5)
+		var target := Vector3(
+			clampf(player.global_position.x, bounds.position.x + inset_x, bounds.end.x - inset_x),
+			bounds.end.y + player.body_half_height + 0.05,
+			clampf(player.global_position.z, bounds.position.z + inset_z, bounds.end.z - inset_z))
+		var offset: Vector3 = target - player.global_position
+		if offset.y <= 0.1 or offset.y > player.hurdle_reach + player.body_half_height:
+			continue
+		offset.y = 0.0
+		if offset.length() > nearest or forward.normalized().dot(offset.normalized()) < 0.5:
+			continue
+		nearest = offset.length()
+		best = target
+	return best
+
+
+static func _hurdle(player) -> bool:
+	if player._hurdling or player._unconscious or player.movement_locked or not _can_hurdle(player) \
+			or player._hurdle_cooldown_timer > 0.0 or player.stamina < player.stamina_expended_hurdle:
+		return false
+	var target: Variant = _hurdle_destination(player)
+	if target == null:
+		return false
+	player.CannonBall.reset(player)
+	player._hurdling = true
+	player._hurdle_elapsed = 0.0
+	player._hurdle_from = player.global_position
+	player._hurdle_target = target
+	player._hurdle_was_frozen = player.freeze
+	player.freeze = true
+	player.linear_velocity = Vector3.ZERO
+	player.angular_velocity = Vector3.ZERO
+	player.momentum = 0.0
+	player.dir = Vector3.ZERO
+	player.can_move = false
+	player._hurdle_cooldown_timer = player.hurdle_cooldown
+	player._jump_cancel_available = false
+	player._jump_spent = true
+	player._water_counter_timer = 0.0
+	if player._water_wall_up:
+		player._cast_water_wall_stop()
+	player._stop_water_wall_anim()
+	player._action_anim_lock_movement_state = -1
+	player.stamina -= player.stamina_expended_hurdle
+	player.movement_state = MovementState.HURDLE
+	player.play_anim(player.AnimationState.HURDLE)
+	return true
+
+
+static func _update_hurdle(player, delta: float) -> void:
+	player._hurdle_elapsed += delta
+	var t := clampf(player._hurdle_elapsed / maxf(player.hurdle_duration, 0.01), 0.0, 1.0)
+	# rise above the lip before moving onto it
+	var lifted: Vector3 = player._hurdle_from
+	lifted.y = player._hurdle_target.y + 0.15
+	if t < 0.5:
+		player.global_position = player._hurdle_from.lerp(lifted, smoothstep(0.0, 0.5, t))
+	else:
+		player.global_position = lifted.lerp(player._hurdle_target, smoothstep(0.5, 1.0, t))
+	player.linear_velocity = Vector3.ZERO
+	player.angular_velocity = Vector3.ZERO
+	if t >= 1.0:
+		_finish_hurdle(player)
+
+
+static func _finish_hurdle(player) -> void:
+	if not player._hurdling:
+		return
+	player._hurdling = false
+	player.freeze = player._hurdle_was_frozen
+	player.can_move = true
+	player.linear_velocity = Vector3.ZERO
+	player.angular_velocity = Vector3.ZERO
+	if player.movement_state == MovementState.HURDLE:
+		player.movement_state = MovementState.IDLE
+
 
 static func _jump_arcade(player, _on_ground: bool) -> void:
-	if player._jump_cooldown_timer > 0.0 or not _can_launch(player):
+	if player._hurdling or player._jump_cooldown_timer > 0.0 or not _can_launch(player):
 		return
+	player.CannonBall.arm(player)
 	player._jump_spent = true
 	player._jump_cooldown_timer = player.jump_cooldown
 	player.linear_velocity.y = player.jump_speed * player.arcade_jump_mult
@@ -122,11 +226,12 @@ static func _jump_arcade(player, _on_ground: bool) -> void:
 	player._play_water_action_anim("jump_high")
 
 static func _jump(player, on_ground: bool) -> void:
-	if player._jump_cooldown_timer > 0.0 or not _can_launch(player):
+	if player._hurdling or player._jump_cooldown_timer > 0.0 or not _can_launch(player):
 		return
 	var cube_boost = player._can_cube_jump()
 	if not cube_boost and (not on_ground or player.momentum <= 0.0):
 		return
+	player.CannonBall.arm(player)
 	player._jump_spent = true
 	player._jump_cooldown_timer = player.jump_cooldown
 	# diminishing returns on momentum the exponent 1 flattens the curve so arriving at full
@@ -180,7 +285,6 @@ static func _can_cube_jump(player) -> bool:
 		player.global_position, player.global_position + Vector3.DOWN * (player.body_half_height + 0.2))
 	query.exclude = [player.get_rid()]
 	return not player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
-
 
 static func _turn_from_input(player, delta: float) -> void:
 	if VR.immersive and player._is_local():
@@ -284,8 +388,9 @@ static func _walk(player, delta: float) -> void:
 	else:
 		player.momentum = move_toward(player.momentum, 0.0, player.SWIM_GAIN * delta)
 
-	# speed comes from momentum via the shared drag thrust so wading has the same
-	player._apply_swim_motion(direction, player.momentum / player.max_momentum)
+	# boost walking on dry ground
+	var speed_mult: float = player.land_walk_speed_mult if player._submersion() <= 0.0 and _jump_support(player) else 1.0
+	_apply_swim_motion(player, direction, player.momentum / player.max_momentum, speed_mult)
 
 
 static func _swim(player, delta: float) -> void:
@@ -373,11 +478,11 @@ static func _apply_water_drag(player, t: float) -> void:
 	player._apply_central_force(Vector3(-v.x, 0.0, -v.z) * drag * player.mass)
 
 
-static func _apply_swim_motion(player, move_dir: Vector3, t: float) -> void:
+static func _apply_swim_motion(player, move_dir: Vector3, t: float, speed_mult: float = 1.0) -> void:
 	player._apply_water_drag(t)
 	if move_dir.length() > 0.01:
 		var swim_force: float = lerp(player.swim_speed * 0.5, player.swim_speed * 1.5, t)
-		player._apply_central_force(move_dir.normalized() * swim_force * player.mass)
+		player._apply_central_force(move_dir.normalized() * swim_force * speed_mult * player.mass)
 
 
 static func _wall_ahead(player, direction: Vector3) -> bool:
@@ -427,10 +532,15 @@ static func _apply_central_force(player, force: Vector3) -> void:
 
 
 static func update(player, delta: float, submersion: float, shallow: bool) -> void:
+	if player._hurdling:
+		return
 	_refresh_jump(player)
 	if submersion <= 0.0 or player.linear_velocity.y <= 0.0:
 		player._jump_cancel_available = false
 
+	if Input.is_action_just_pressed("hurdle"):
+		if player.CannonBall.start(player) or _hurdle(player):
+			return
 	if Input.is_action_just_pressed("jump"):
 		# cube boosts can also launch from the water
 		if Net.game_mode != Net.GameMode.ARCADE or not Input.is_action_pressed("swim_key"):

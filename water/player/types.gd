@@ -9,6 +9,8 @@ enum MovementState {
 	DODGE,
 	WALK,
 	JUMP,
+	HURDLE,
+	CANNON_BALL,
 }
 
 enum Team {
@@ -26,6 +28,8 @@ enum AnimationState {
 	DODGE_RIGHT,
 	WALK,
 	JUMP,
+	HURDLE,
+	CANNON_BALL,
 }
 
 enum WaterMove { POWER, ATTACK, PELT, COUNTER }
@@ -39,5 +43,7 @@ const ANIM_MAP: Dictionary = {
 	AnimationState.DODGE_LEFT: "dodge_left",
 	AnimationState.DODGE_RIGHT: "dodge_right",
 	AnimationState.WALK: "walk",
-	AnimationState.JUMP: "jump"
+	AnimationState.JUMP: "jump",
+	AnimationState.HURDLE: "hurdle",
+	AnimationState.CANNON_BALL: "cannon_ball",
 }

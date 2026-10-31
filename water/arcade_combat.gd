@@ -76,7 +76,8 @@ func _position(id: int) -> Vector3:
 
 func _available(id: int) -> bool:
 	var player := _body(id)
-	return player != null and not player.is_queued_for_deletion() and not player._unconscious and not player.movement_locked
+	return player != null and not player.is_queued_for_deletion() and not player._unconscious and not player.movement_locked \
+		and player.movement_state != player.MovementState.HURDLE
 
 
 func _enemies(a: int, b: int) -> bool:
