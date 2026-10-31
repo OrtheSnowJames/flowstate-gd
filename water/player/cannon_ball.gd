@@ -6,9 +6,13 @@ static func arm(player) -> void:
 	player._board_jump_available = not hit.is_empty() and hit.collider.is_in_group("diving_board")
 
 
+static func can_start(player) -> bool:
+	return player._board_jump_available and not player._cannon_ball_active and not player._hurdling \
+		and not player._unconscious and not player.movement_locked and player._submersion() <= 0.0
+
+
 static func start(player) -> bool:
-	if not player._board_jump_available or player._cannon_ball_active or player._hurdling \
-			or player._unconscious or player.movement_locked or player._submersion() > 0.0:
+	if not can_start(player):
 		return false
 	player._cannon_ball_active = true
 	player._jump_cancel_available = false

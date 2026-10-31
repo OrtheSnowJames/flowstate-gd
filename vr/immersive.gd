@@ -29,9 +29,6 @@ var _wall_armed := false
 var _was_blocked := true
 var _last_position := Vector3.ZERO
 var _eye: ColorRect
-var _eye_visible := true
-var _blur_visible := true
-var _fade_visible := true
 var _tracking_lost := 0.0
 var _tracking_time := 0.0
 var _hand_poses: Array = [null, null]
@@ -81,14 +78,11 @@ func setup(xr_origin: XROrigin3D, camera: Camera3D) -> void:
 	fade.position.z = -1.8
 	fade.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	head.add_child(fade)
-	_blur_visible = Transition._blur_rect.visible
-	_fade_visible = Transition._fade_rect.visible
 	Transition._blur_rect.hide()
 	Transition._fade_rect.hide()
 
 func clear_immersive() -> void:
-	Transition._blur_rect.visible = _blur_visible
-	Transition._fade_rect.visible = _fade_visible
+	restore_overlays()
 
 
 
@@ -103,14 +97,13 @@ func _process(delta: float) -> void:
 	if scene != _scene or candidate != player:
 		cancel_gestures()
 		if is_instance_valid(_eye):
-			_eye.visible = _eye_visible
+			_eye.visible = _eye.material.get_shader_parameter("progress") > 0.0
 		_scene = scene
 		player = candidate
 		_hand_poses = [null, null]
 		_hand_seen = [-100.0, -100.0]
 		_eye = player._eyelid if player else null
 		if _eye:
-			_eye_visible = _eye.visible
 			_eye.hide()
 		_center = head.position
 		_yaw = player.global_rotation.y if player else 0.0
@@ -294,10 +287,10 @@ func cancel_gestures() -> void:
 
 
 func restore_overlays() -> void:
-	Transition._blur_rect.visible = _blur_visible
-	Transition._fade_rect.visible = _fade_visible
+	Transition._blur_rect.visible = Transition._blur_mat.get_shader_parameter("amount") > 0.0
+	Transition._fade_rect.visible = Transition._fade_rect.color.a > 0.0
 	if is_instance_valid(_eye):
-		_eye.visible = _eye_visible
+		_eye.visible = _eye.material.get_shader_parameter("progress") > 0.0
 
 
 func teardown() -> void:

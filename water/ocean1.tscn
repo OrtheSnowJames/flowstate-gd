@@ -653,6 +653,7 @@ texture_over = ExtResource("9_hrcxi")
 texture_progress = ExtResource("10_hp8k4")
 
 [node name="eyelid" type="ColorRect" parent="gui" unique_id=935998782]
+visible = false
 material = SubResource("ShaderMaterial_6iwkg")
 anchors_preset = 15
 anchor_right = 1.0

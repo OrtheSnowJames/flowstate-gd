@@ -153,11 +153,15 @@ static func _hurdle_destination(player) -> Variant:
 	return best
 
 
-static func _hurdle(player) -> bool:
-	if player._hurdling or player._unconscious or player.movement_locked or not _can_hurdle(player) \
+static func hurdle_target(player) -> Variant:
+	if player._hurdling or player._cannon_ball_active or player._unconscious or player.movement_locked or not _can_hurdle(player) \
 			or player._hurdle_cooldown_timer > 0.0 or player.stamina < player.stamina_expended_hurdle:
-		return false
-	var target: Variant = _hurdle_destination(player)
+		return null
+	return _hurdle_destination(player)
+
+
+static func _hurdle(player) -> bool:
+	var target: Variant = hurdle_target(player)
 	if target == null:
 		return false
 	player.CannonBall.reset(player)

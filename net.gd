@@ -286,6 +286,7 @@ func _clear_blackout_view() -> void:
 	var eyelid := get_node_or_null("/root/Main/gui/eyelid")
 	if eyelid and eyelid.material:
 		eyelid.material.set_shader_parameter("progress", 0.0)
+		eyelid.hide()
 
 
 func online_penalty_remaining() -> int:

@@ -3,6 +3,7 @@ shader_type spatial;
 render_mode depth_draw_always, cull_back, specular_schlick_ggx;
 
 uniform sampler2D height_tex : filter_linear, repeat_disable, hint_default_black;
+uniform sampler2D detail_noise : filter_nearest, repeat_enable;
 uniform sampler2D screen_tex : hint_screen_texture, filter_linear_mipmap, repeat_disable;
 uniform sampler2D depth_tex  : hint_depth_texture, filter_nearest, repeat_disable;
 
@@ -47,17 +48,13 @@ void vertex() {
 	VERTEX.xz -= grad * amplitude * chop * 0.12;
 }
 
-// tiny value noise for micro ripples foam breakup
-float hash21(vec2 p) {
-	return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
-}
+// reuse cached random corners for the same smooth noise
 float vnoise(vec2 p) {
 	vec2 i = floor(p);
 	vec2 f = fract(p);
 	f = f * f * (3.0 - 2.0 * f);
-	return mix(
-		mix(hash21(i), hash21(i + vec2(1.0, 0.0)), f.x),
-		mix(hash21(i + vec2(0.0, 1.0)), hash21(i + vec2(1.0, 1.0)), f.x), f.y);
+	vec4 corners = textureLod(detail_noise, (i + vec2(0.5)) / vec2(textureSize(detail_noise, 0)), 0.0);
+	return mix(mix(corners.r, corners.g, f.x), mix(corners.b, corners.a, f.x), f.y);
 }
 
 void fragment() {
@@ -83,8 +80,7 @@ void fragment() {
 		slope += dgrad * detail_strength;
 	}
 
-	vec3 n_model = normalize(vec3(-slope.x, 1.0, -slope.y));
-	NORMAL = normalize((VIEW_MATRIX * vec4(normalize(mat3(MODEL_MATRIX) * n_model), 0.0)).xyz);
+	NORMAL = normalize(mat3(VIEW_MATRIX) * (mat3(MODEL_MATRIX) * vec3(-slope.x, 1.0, -slope.y)));
 
 	vec3 final_col;
 	float final_roughness;

@@ -48,6 +48,7 @@ signal body_splashed(body: Node3D, power: float)
 
 const _SIM_SHADER := preload("res://poolk/water_sim.gdshader")
 const _SURF_SHADER := preload("res://poolk/water_surface.gdshader")
+const _NOISE_SHADER := preload("res://poolk/water_noise.gdshader")
 const MAX_IMPULSES := 16
 const SPLASH_POOL_SIZE := 10
 
@@ -56,6 +57,7 @@ var _vp_b: SubViewport
 var _mat_a: ShaderMaterial
 var _mat_b: ShaderMaterial
 var _surf_mat: ShaderMaterial
+var _noise_viewport: SubViewport
 var _mesh: MeshInstance3D
 var _flip := false
 var _reset_frames := 3
@@ -173,12 +175,33 @@ func _build_surface() -> void:
 	_surf_mat.set_shader_parameter("refraction_strength", refraction_strength)
 	_surf_mat.set_shader_parameter("detail_strength", detail_strength)
 	_surf_mat.set_shader_parameter("height_tex", _vp_a.get_texture())
+	if not simple_surface:
+		_build_detail_noise()
+		_surf_mat.set_shader_parameter("detail_noise", _noise_viewport.get_texture())
 	_mesh.material_override = _surf_mat
 	# displaced verts can leave the flat aabb pad it so waves never get culled
 	_mesh.custom_aabb = AABB(
 		Vector3(-size.x * 0.5, -amplitude * 1.5, -size.z * 0.5),
 		Vector3(size.x, amplitude * 3.0, size.z))
 	add_child(_mesh)
+
+
+func _build_detail_noise() -> void:
+	if is_instance_valid(_noise_viewport):
+		return
+	_noise_viewport = SubViewport.new()
+	_noise_viewport.size = Vector2i(1024, 1024)
+	_noise_viewport.disable_3d = true
+	_noise_viewport.transparent_bg = true
+	_noise_viewport.use_hdr_2d = true
+	_noise_viewport.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var rect := ColorRect.new()
+	rect.size = Vector2(_noise_viewport.size)
+	var material := ShaderMaterial.new()
+	material.shader = _NOISE_SHADER
+	rect.material = material
+	_noise_viewport.add_child(rect)
+	add_child(_noise_viewport)
 
 
 func _build_splash_pool() -> void:

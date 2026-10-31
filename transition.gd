@@ -30,10 +30,12 @@ func _ready() -> void:
 	_blur_mat.set_shader_parameter("amount", 0.0)
 	_blur_rect = _make_full_rect()
 	_blur_rect.material = _blur_mat
+	_blur_rect.hide()
 	add_child(_blur_rect)
 
 	_fade_rect = _make_full_rect()
 	_fade_rect.color = Color(0.0, 0.0, 0.0, 0.0)
+	_fade_rect.hide()
 	add_child(_fade_rect)
 
 	_status_label = Label.new()
@@ -81,8 +83,8 @@ func reset_overlays() -> void:
 	for tween in [_fade_tween, _blur_tween, _status_tween]:
 		if tween and tween.is_valid():
 			tween.kill()
-	_fade_rect.color.a = 0.0
-	_blur_mat.set_shader_parameter("amount", 0.0)
+	_set_fade(0.0)
+	_set_blur(0.0)
 	_status_label.modulate.a = 0.0
 	_black_since_msec = -1
 
@@ -112,9 +114,14 @@ func _tween_blur(target: float) -> void:
 	var from: float = _blur_mat.get_shader_parameter("amount")
 	_blur_tween = create_tween()
 	_blur_tween.tween_method(
-		func(v: float) -> void: _blur_mat.set_shader_parameter("amount", v),
+		_set_blur,
 		from, target, _BLUR_DURATION)
 	await get_tree().create_timer(_BLUR_DURATION).timeout
+
+
+func _set_blur(amount: float) -> void:
+	_blur_mat.set_shader_parameter("amount", amount)
+	_blur_rect.visible = amount > 0.0 and not VR.immersive
 
 
 # fades the whole screen to solid black awaitable the intended use is await transition
@@ -132,9 +139,14 @@ func _tween_fade(target: float) -> void:
 	var from := _fade_rect.color.a
 	_fade_tween = create_tween()
 	_fade_tween.tween_method(
-		func(v: float) -> void: _fade_rect.color.a = v,
+		_set_fade,
 		from, target, _FADE_DURATION)
 	await get_tree().create_timer(_FADE_DURATION).timeout
+
+
+func _set_fade(amount: float) -> void:
+	_fade_rect.color.a = amount
+	_fade_rect.visible = amount > 0.0 and not VR.immersive
 
 
 # status text e g connecting faded independently of the blur fade above so a

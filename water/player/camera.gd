@@ -161,6 +161,26 @@ static func _update_revive_prompt(player) -> void:
 		prompt.show_for(target, VR.view_camera(player._camera), player.using_controller)
 
 
+static func _update_movement_prompt(player) -> void:
+	if not is_instance_valid(player.gui):
+		return
+	var action := ""
+	if not player._unconscious and not player.movement_locked and not player._hurdling \
+			and not player._cannon_ball_active and not player.practice_input_blocked \
+			and not Net.input_blocked_by_menu() and not Net.is_spectating() \
+			and not Net._round_over and not Net.arcade.controls(player):
+		if player.CannonBall.can_start(player):
+			action = "Cannon Ball"
+		elif player.Movement.hurdle_target(player) != null:
+			action = "Hurdle"
+	if not is_instance_valid(player._movement_prompt):
+		if action.is_empty():
+			return
+		player._movement_prompt = player._MOVEMENT_PROMPT.instantiate()
+		player.gui.add_child(player._movement_prompt)
+	player._movement_prompt.show_for(player, VR.view_camera(player._camera), action)
+
+
 static func _teammates_in_arena(player) -> Array:
 	var mates: Array = []
 	for other in player.get_tree().get_nodes_in_group("player"):

@@ -89,6 +89,7 @@ static func net_death(player, killer: int = 0) -> void:
 	player._eyelid_tween = player.create_tween()
 	if player._eyelid and player._eyelid.material:
 		# 0 0 is a wide open eye 1 0 fully shut see eye_closing gdshader
+		player._eyelid.visible = not VR.immersive
 		player._eyelid.material.set_shader_parameter("progress", 0.0)
 		# half the ear ringing clip so the lids finish falling while the ring is
 		var _duration = player.blackout_time
@@ -158,6 +159,7 @@ static func net_revive(player) -> void:
 	if player._eyelid and player._eyelid.material:
 		# snap open from wherever the lids actually are not from a fixed value so
 		var from: float = player._eyelid.material.get_shader_parameter("progress")
+		player._eyelid.visible = from > 0.0 and not VR.immersive
 		player._eyelid_tween = player.create_tween()
 		player._eyelid_tween.set_ease(Tween.EASE_OUT).set_trans(Tween.TRANS_QUAD)
 		player._eyelid_tween.tween_method(
@@ -166,6 +168,7 @@ static func net_revive(player) -> void:
 			from,
 			0.0,
 			player.eyelid_open_time)
+		player._eyelid_tween.tween_callback(player._eyelid.hide)
 
 
 static func respawn(player, at: Vector3, yaw: float) -> void:

@@ -57,6 +57,7 @@ const _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION := 0.1 # the kickboard block 90 of t
 const _CHARACTER_MESH := preload("res://mesh/character.glb")
 const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
 const _REVIVE_PROMPT := preload("res://prompts/revive_prompt.tscn")
+const _MOVEMENT_PROMPT := preload("res://prompts/movement_prompt.tscn")
 const _NAMEPLATE := preload("res://water/nameplate.tscn")
 
 # team kit colours both rigs mesh character glb mesh lifeguard glb are textured off
@@ -278,6 +279,7 @@ var _water_counter_timer := 0.0
 var _owner_peer: int = 0
 # this windows floating r revive tag built on demand see _ensure_revive_prompt
 var _revive_prompt: Node = null
+var _movement_prompt: Control
 # this windows floating teammate name tags peer id nameplate instance see _update_nameplates
 var _nameplates: Dictionary = {}
 # the stroke scaling _swim last built momentum with direction times the lifeguard buff cached
@@ -404,6 +406,8 @@ func _enter_tree() -> void:
 
 # a raised water wall belongs to the ocean node not to this one so
 func _exit_tree() -> void:
+	if is_instance_valid(_movement_prompt):
+		_movement_prompt.queue_free()
 	if _ocean and _ocean.has_method("stop_water_wall"):
 		_ocean.stop_water_wall(self)
 
@@ -576,6 +580,7 @@ func _process(delta: float) -> void:
 
 	_shake_change(delta)
 	_update_revive_prompt()
+	Camera._update_movement_prompt(self)
 	_update_nameplates()
 
 

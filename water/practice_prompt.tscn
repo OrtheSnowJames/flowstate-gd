@@ -1,0 +1,111 @@
+[gd_scene format=3 uid="uid://d1dau36t8e047"]
+
+[ext_resource type="Script" path="res://water/practice_prompt.gd" id="2"]
+[ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="3_daken"]
+
+[sub_resource type="Theme" id="Theme_xomsb"]
+ProgressBar/colors/font_color = Color(0.8070302, 0.9905456, 0.99999994, 1)
+ProgressBar/colors/font_outline_color = Color(0.47813022, 0.31172627, 0.47805542, 1)
+ProgressBar/fonts/font = ExtResource("3_daken")
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]
+content_margin_left = 12.0
+content_margin_top = 8.0
+content_margin_right = 14.0
+content_margin_bottom = 8.0
+bg_color = Color(0.1, 0.1, 0.12, 0.62)
+corner_radius_top_left = 8
+corner_radius_top_right = 8
+corner_radius_bottom_right = 8
+corner_radius_bottom_left = 8
+
+[sub_resource type="StyleBoxFlat" id="StyleBoxFlat_keycap"]
+content_margin_left = 9.0
+content_margin_top = 4.0
+content_margin_right = 9.0
+content_margin_bottom = 6.0
+bg_color = Color(0.88, 0.88, 0.9, 0.95)
+border_width_bottom = 3
+border_color = Color(0.55, 0.55, 0.6, 0.95)
+corner_radius_top_left = 5
+corner_radius_top_right = 5
+corner_radius_bottom_right = 5
+corner_radius_bottom_left = 5
+
+[node name="PracticePrompt" type="Control" unique_id=1892347501]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+theme = SubResource("Theme_xomsb")
+script = ExtResource("2")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="." unique_id=1280493355]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+mouse_filter = 2
+
+[node name="HP" type="ProgressBar" parent="VBoxContainer" unique_id=1030096637]
+layout_mode = 2
+mouse_filter = 2
+value = 100.0
+
+[node name="Box" type="PanelContainer" parent="VBoxContainer" unique_id=1683677845]
+layout_mode = 2
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_box")
+
+[node name="Row" type="HBoxContainer" parent="VBoxContainer/Box" unique_id=1010340957]
+layout_mode = 2
+mouse_filter = 2
+theme_override_constants/separation = 10
+
+[node name="Keycap" type="PanelContainer" parent="VBoxContainer/Box/Row" unique_id=1049321804]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="Key" type="Label" parent="VBoxContainer/Box/Row/Keycap" unique_id=1517855085]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.08, 0.08, 0.1, 1)
+theme_override_fonts/font = ExtResource("3_daken")
+theme_override_font_sizes/font_size = 16
+text = "E"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Action" type="Label" parent="VBoxContainer/Box/Row" unique_id=1946989676]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.95)
+theme_override_fonts/font = ExtResource("3_daken")
+theme_override_font_sizes/font_size = 16
+text = "Edit"
+vertical_alignment = 1
+
+[node name="Keycap2" type="PanelContainer" parent="VBoxContainer/Box/Row" unique_id=1232265766]
+layout_mode = 2
+size_flags_vertical = 4
+mouse_filter = 2
+theme_override_styles/panel = SubResource("StyleBoxFlat_keycap")
+
+[node name="Key" type="Label" parent="VBoxContainer/Box/Row/Keycap2" unique_id=48291349]
+layout_mode = 2
+theme_override_colors/font_color = Color(0.08, 0.08, 0.1, 1)
+theme_override_fonts/font = ExtResource("3_daken")
+theme_override_font_sizes/font_size = 16
+text = "D"
+horizontal_alignment = 1
+vertical_alignment = 1
+
+[node name="Action2" type="Label" parent="VBoxContainer/Box/Row" unique_id=1580707344]
+layout_mode = 2
+theme_override_colors/font_color = Color(1, 1, 1, 0.95)
+theme_override_fonts/font = ExtResource("3_daken")
+theme_override_font_sizes/font_size = 16
+text = "Delete"
+vertical_alignment = 1
