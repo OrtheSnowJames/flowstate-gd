@@ -188,6 +188,6 @@ Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache
 - Done: Voice chat
 - Solo Play Sandbox
 - "Fun" mode - water balloons, higher ground, otter pops and more fun I guess (I realize I made this game too competitive)
-- Done? Untested: VR couch parties with quest friends
-- Fix bug where you can clip out of map
+- Done? Untested, also only in alpha on my meta dashboard: VR couch parties with quest friends
+- Done: Fix bug where you can clip out of map
 - Make stamina only start running out when you start moving

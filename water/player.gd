@@ -422,6 +422,7 @@ func max_stamina_per_mode(game_mode: Net.GameMode) -> float:
 		return max_stamina
 
 func _ready() -> void:
+	continuous_cd = true
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_ON if _is_local() else Node.PHYSICS_INTERPOLATION_MODE_OFF
 	_cam_pivot.physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	mass = body_mass

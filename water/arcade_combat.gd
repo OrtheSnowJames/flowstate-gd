@@ -357,6 +357,7 @@ func _move(id: int, state: Dictionary, delta: float) -> void:
 	var start: Vector3 = state.position
 	var target := _position(state.target)
 	var next := start
+	var sweep := {}
 	match state.phase:
 		Phase.DASH:
 			state.velocity = (target - start).normalized() * DASH_SPEED
@@ -386,10 +387,15 @@ func _move(id: int, state: Dictionary, delta: float) -> void:
 			var horizontal := Vector3(target.x - start.x, 0.0, target.z - start.z)
 			state.velocity = horizontal.limit_length(1.0) * 20.0 + Vector3.DOWN * 48.0
 			next = start + state.velocity * delta
-			next = _safe_motion(start, next)
-			var closest := Geometry3D.get_closest_point_to_segment(target, start, next)
-			if closest.distance_to(target) <= 1.3 and start.y >= target.y:
-				state.position = next
+			sweep = _sweep_motion(id, start, next, state.target)
+			var hit_target := false
+			var collision: PhysicsTestMotionResult3D = sweep.collision
+			for contact in collision.get_collision_count():
+				hit_target = hit_target or collision.get_collider(contact) == _body(state.target)
+			if hit_target and start.y >= target.y:
+				# stop at contact before restoring the two physics bodies
+				state.position = sweep.position
+				state.velocity = Vector3.ZERO
 				_release(id)
 				_release(state.target)
 				_publish(true)
@@ -398,9 +404,10 @@ func _move(id: int, state: Dictionary, delta: float) -> void:
 				else:
 					net_pound_hit(state.target, id)
 				return
-	var motion := _safe_motion(start, next)
-	state.position = motion
-	if motion.distance_to(next) > 0.05 or state.time <= 0.0:
+	if sweep.is_empty():
+		sweep = _sweep_motion(id, start, next)
+	state.position = sweep.position
+	if sweep.collision.get_collision_count() > 0 or state.time <= 0.0:
 		state.velocity = Vector3.ZERO
 		_release(id)
 
@@ -424,21 +431,35 @@ func _clear_path(start: Vector3, end: Vector3) -> bool:
 	return player.get_world_3d().direct_space_state.intersect_ray(query).is_empty()
 
 
-func _safe_motion(start: Vector3, end: Vector3) -> Vector3:
-	var players := Net._players_root()
-	if players == null or players.get_child_count() == 0:
-		return start
-	var shape := CapsuleShape3D.new()
-	shape.radius = 0.45
-	shape.height = 1.9
-	var query := PhysicsShapeQueryParameters3D.new()
-	query.shape = shape
-	query.transform.origin = start
-	query.motion = end - start
-	query.collision_mask = 1
-	query.exclude = _excluded_players()
-	var motion: PackedFloat32Array = players.get_child(0).get_world_3d().direct_space_state.cast_motion(query)
-	return start.lerp(end, motion[0]) if motion.size() == 2 else start
+func _sweep_motion(id: int, start: Vector3, end: Vector3, target := 0) -> Dictionary:
+	var result := PhysicsTestMotionResult3D.new()
+	var sweep := {"position": start, "collision": result}
+	var player := _body(id) as PhysicsBody3D
+	if player == null:
+		return sweep
+	# use the real collider and recover any existing overlap with the pool
+	var query := PhysicsTestMotionParameters3D.new()
+	query.from = player.global_transform
+	query.from.origin = start
+	query.margin = 0.03
+	query.recovery_as_collision = true
+	query.max_collisions = 4
+	query.exclude_bodies = _excluded_players()
+	var victim := _body(target) as PhysicsBody3D if target != 0 else null
+	if victim:
+		var excluded := query.exclude_bodies
+		excluded.erase(victim.get_rid())
+		query.exclude_bodies = excluded
+	# short sweeps keep fast dives from skipping thin pool geometry
+	var steps := maxi(1, ceili(start.distance_to(end) / 0.5))
+	query.motion = (end - start) / steps
+	for step in steps:
+		query.from.origin = sweep.position
+		if PhysicsServer3D.body_test_motion(player.get_rid(), query, result):
+			sweep.position += result.get_travel()
+			return sweep
+		sweep.position += query.motion
+	return sweep
 
 
 @rpc("authority", "call_local", "reliable")
@@ -451,7 +472,9 @@ func net_pound_hit(id: int, attacker: int = 0) -> void:
 			player._last_damage_peer = attacker
 			player._last_damage_time = Time.get_ticks_msec()
 			player.stamina = maxf(0.0, player.stamina - POUND_DAMAGE)
-		player.linear_velocity = Vector3.DOWN * 30.0
+		var step := 1.0 / Engine.physics_ticks_per_second
+		var landing := _sweep_motion(id, player.global_position, player.global_position + Vector3.DOWN * 30.0 * step)
+		player.linear_velocity = (landing.position - player.global_position) / step
 		player.shake_camera(0.25, 0.35)
 		if player.stamina <= 5.0:
 			player._death()

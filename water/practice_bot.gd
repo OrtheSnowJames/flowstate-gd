@@ -30,15 +30,16 @@ func allow_spawn_overlap(other: PhysicsBody3D) -> void:
 
 
 func _physics_process(delta: float) -> void:
-	for other in _overlapping.duplicate():
+	for index in range(_overlapping.size() - 1, -1, -1):
+		var other = _overlapping[index]
 		if not is_instance_valid(other):
-			_overlapping.erase(other)
+			_overlapping.remove_at(index)
 			continue
 		var gap: Vector3 = other.global_position - player.global_position
 		if Vector2(gap.x, gap.z).length() > 1.2 or absf(gap.y) > 2.1:
 			player.remove_collision_exception_with(other)
 			other.remove_collision_exception_with(player)
-			_overlapping.erase(other)
+			_overlapping.remove_at(index)
 	if Net.is_online():
 		player.queue_free()
 		return

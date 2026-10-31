@@ -594,7 +594,7 @@ script = ExtResource("31_practice")
 
 [node name="PushCube" type="RigidBody3D" parent="." unique_id=1648123897]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 2.5, 10, 0)
-mass = 12.0
+mass = 24.0
 script = ExtResource("15_syncprop")
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="PushCube" unique_id=794948360]
