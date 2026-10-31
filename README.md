@@ -59,32 +59,167 @@ Press the key with the number to fire it.
 4. Water Counter - Water Walls and Water Powers, but takes 50 stamina.
 5. Water Pelt - Shoots some bubbles of water that do little damage unless the opponent is on a cube.
 
+Controller tables use button positions so they work across different gamepads. **Select** means Xbox View, PlayStation Share/Create, or Nintendo `−`. **Start** means Xbox Menu, PlayStation Options, or Nintendo `+`.
+
+# Normal
+
+In **Normal**, work with your team to drain your opponents' stamina while keeping your own team afloat. Protect your lifeguard, pick your fights, and send the whole enemy team under to win the round.
+
+## How to Play
+
+- **Knock out the other team.** Water attacks drain stamina, and running out means you faint.
+- **Protect your lifeguard.** They can revive teammates, so losing them makes every other knockout much harder to recover from.
+- **Build momentum before attacking** to make your hits stronger. Backstrokes build it faster.
+- **Retreat when you need a break.** Recover stamina in the shallow end or on dry land before going back into the fight.
+
+## A Few Things to Know
+
+- You have 100 stamina. Swimming, treading, dodging, and attacking all spend it.
+- One player on each team is randomly chosen as the lifeguard. They swim more efficiently and carry a kickboard that helps block damage.
+- A lifeguard can revive a nearby fainted teammate with half their stamina.
+- If your whole team faints, the round ends. Everyone gets revived before returning to the lobby.
+
+## Controls
+
+| Keyboard / Mouse | Controller | Action |
+|---|---|---|
+| `W` / `S` | Left stick | Move |
+| `A` / `D` | Right stick | Turn / look |
+| `Shift` + `W` / `S` | Hold left stick click while moving the stick | Swim |
+| Double-tap `A` / `D` | Double-tap D-pad left / right | Dodge in the shallow end or on land |
+| `Space` | Bottom face button | Jump |
+| `1` | Right face button | Water Power |
+| `2` | Left face button | Water Attack |
+| `3` | Top face button | Water Wall |
+| `4` | Not bound | Water Counter |
+| `5` | Right trigger | Water Pelt |
+| `R` | D-pad right | Revive a nearby teammate as a lifeguard |
+| `F` | D-pad up | Look at the scoreboard |
+| `C` | Select | Toggle voice chat |
+| `Escape` | Start | Leave solo play or open the online disconnect menu |
+
 # King of the Cube
 
-King of the cube is a mode where you secure victory by standing on the cube for a minute and a half.
+King of the Hill with a movable cube in the pool.
 
-When you stand on the cube, you gain 1 point per second. The first team to 120 points wins.
+In **King of the Cube**, fight for a place on top of the push cube and keep the other team off it. Your team earns one point per second while holding it uncontested. First to 100 points wins.
 
-Tactics:
-- Get a lifeguard on the cube
-- Surround the lifeguard with expendable players below the cube surrounding it
-- Put the cube in a corner so it's easier to defend
-- Move the cube to your half so the other team respawns further away from the cube
-- Have the lifeguard firing water pelts and the players firing water attacks/powers or even run walls
+## How to Play
 
-## Arcade Mode
+- **Get someone on the cube** to start scoring. A lifeguard is a good choice if your team can protect them.
+- **Defend from the water below.** Surround your teammate with players using Water Walls, Water Attacks, and Water Powers.
+- **Use Water Pelts against opponents on the cube.** They take extra stamina damage up there.
+- **Move the cube into a corner** to make it easier to defend, or bring it toward your team's side so returning enemies have farther to travel.
+- **Contest the cube** by getting on it alongside an enemy. Neither team scores until only one team remains on top.
 
-Arcade mode is a more arcadey mode. The controls are weirder and the physics isn't realistic.
-You have 200 max stamina, and the mechanic is jumping.
+## A Few Things to Know
 
-The main controls are Q and E.
+- The cube turns gold when empty, red or blue when one team holds it, and purple when contested.
+- Having more teammates on the cube helps defend it, but you still earn one point per second.
+- Players automatically respawn on their team's side after five seconds.
+- Knockouts help clear the cube. Holding the cube is what earns points.
 
-Jump up and dash at your opponent with Q.
+## Controls
 
-If you dash at each other, you get into a fist fight where you both have to press Q and E.
+| Keyboard / Mouse | Controller | Action |
+|---|---|---|
+| `W` / `S` | Left stick | Move |
+| `A` / `D` | Right stick | Turn / look |
+| `Shift` + `W` / `S` | Hold left stick click while moving the stick | Swim |
+| `Space` | Bottom face button | Jump onto the cube |
+| `1` | Right face button | Water Power |
+| `2` | Left face button | Water Attack |
+| `3` | Top face button | Water Wall |
+| `4` | Not bound | Water Counter |
+| `5` | Right trigger | Water Pelt |
+| `R` | D-pad right | Revive a nearby teammate as a lifeguard |
+| `F` | D-pad up | Look at the scoreboard |
+| `C` | Select | Toggle voice chat |
+| `Escape` | Start | Leave solo play or open the online disconnect menu |
 
-If you fail to press them repeatedly in the same order fast enough, you fall and are vulnerable.
-Otherwise, you can either mantle up to gain more height or dash back to where you were (Q to dash back.)
+# Arcade Mode
+
+In **Arcade Mode**, take the fight into the air with jumps, targeted dashes, and midair clashes. You have 200 stamina, no lifeguards, and plenty of opportunities to send someone straight back into the pool.
+
+## How to Play
+
+- **Jump and lock onto an opponent**, then press Q to dash at them.
+- **Win the midair clash.** If you dash into each other, alternate Q, E, Q, E as quickly as you can. A wrong key or falling behind sends you downward.
+- **Choose your next move after an evenly matched clash.** Press Q to retreat to your previous position, or E to hurdle over your opponent and gain height.
+- **Follow up with a ground pound.** Get above an opponent and press Shift + Space to slam down for 75 stamina damage.
+- **Earn three eliminations to charge your ultimate.** Hold Q and E to raise a cube overhead, aim with the mouse, and click to throw it.
+
+## A Few Things to Know
+
+- The normal water attacks are still available.
+- Watch the crosshair. If it says you're not locked on, you don't have a dash target yet.
+- There are no lifeguards in this mode, so nobody is coming over to revive you.
+- The ultimate cube knocks out anyone it hits and passes through the pool before despawning.
+- Eliminate the other team to win the round.
+
+## Controls
+
+| Keyboard / Mouse | Controller | Action |
+|---|---|---|
+| `W` / `S` | Left stick | Move |
+| `A` / `D` | Right stick | Turn / look |
+| `Shift` + `W` / `S` | Hold left stick click while moving the stick | Swim |
+| `Space` | Bottom face button | Jump |
+| `Q` | Left trigger | Dash at a locked-on opponent, or retreat after a tied clash |
+| `Q`, `E`, `Q`, `E` | Alternate left trigger, right trigger, left trigger, right trigger | Fight during a midair clash |
+| `E` | Right trigger | Hurdle over your opponent after a tied clash |
+| `Shift` + `Space` | Left stick click + bottom face button | Ground pound |
+| Hold `Q` + `E` | Hold both triggers | Activate your ultimate after three eliminations |
+| Mouse + left click | Aim with the right stick, release and press the left trigger | Aim and throw the ultimate cube |
+| `1` / `2` / `3` | Right / left / top face button | Water Power / Water Attack / Water Wall |
+| `4` | Not bound | Water Counter |
+| `5` | Right trigger, also used for E | Water Pelt |
+| `F` | D-pad up | Look at the scoreboard |
+| `C` | Select | Toggle voice chat |
+| `Escape` | Start | Leave solo play or open the online disconnect menu |
+
+# "Friendly" Pool Party
+
+A water balloon fight with friends.
+
+In **Friendly Pool Party**, fight for control of the hot tub and the inflatables surrounding it. Capture these strategic positions, launch water balloons at your opponents, and establish dominance over the pool.
+
+## How to Play
+
+- **Capture the hot tub** and inflatables to gain control of the pool.
+- **Fire water balloons from inflatables** to earn points for your team.
+- **Gang up on inflatable occupants** to knock them out, steal their balloons, and gain a tactical advantage.
+- **Manage your ammunition.** You can only carry a limited number of balloons, so make every throw count.
+
+## A Few Things to Know
+
+- You have infinite stamina.
+- Water balloons are a one-hit KO.
+- Balloons can be recovered and reused.
+
+## Controls
+
+| Keyboard / Mouse | Controller | Action |
+|---|---|---|
+| `W` / `S` | Left stick | Move |
+| `A` / `D` | Right stick | Turn / look |
+| `Shift` + `W` / `S` | Hold left stick click while moving the stick | Swim |
+| `Space` | Bottom face button | Jump onto an inflatable |
+| `5` | Right trigger | Fire a water balloon |
+| `R` | D-pad right | Pick up a nearby balloon or take one from the bucket |
+| `F` | D-pad up | Look at the scoreboard |
+| `C` | Select | Toggle voice chat |
+| `Escape` | Start | Leave solo play or open the online disconnect menu |
+
+## Voice Chat
+
+Use voice chat to call out enemies and coordinate with your team.
+
+- **Set up your mic when you first join.** The name prompt also lets you enable voice chat and choose which microphone to use.
+- **Talk to your teammates.** Match voice chat only goes to players on your team. A mic icon shows who's speaking.
+- **Press C or Select to toggle voice chat.** On Nintendo controllers, that's the `−` button. This is a toggle, so you don't need to hold it while talking.
+- **In VR, use the disconnect menu's Voice Chat toggle.** Hold both thumbsticks to open it. Couch rooms also have a Microphone toggle in the Rooms panel.
+- **Couch rooms have their own voice chat.** Everyone in the room can hear each other, with voices coming from their seats. The Microphone toggle mutes your mic there.
 
 ## Death and Spectating
 
@@ -119,22 +254,23 @@ In arcade mode, Left and Right trigger replace Q and E.
 
 ## Controller settings
 
-Similar to VR controls, but with more options.
+Use the controller column in each mode's controls table. The left stick moves your player and the right stick controls the camera and aiming.
 
-In controller mode, press the +/Options button to exit.
+| Button position | Xbox | PlayStation | Nintendo |
+|---|---|---|---|
+| Bottom face button | A | Cross | B |
+| Right face button | B | Circle | A |
+| Left face button | X | Square | Y |
+| Top face button | Y | Triangle | X |
+| Left / right trigger | LT / RT | L2 / R2 | ZL / ZR |
+| Select | View | Share / Create | `−` |
+| Start | Menu | Options | `+` |
 
-- Cross/Bottom button to Jump
-- Circle/Right button to Water Power
-- Square/Left button to Water Attack
-- Triangle/Top button to Water Wall
-- In solo play, press L on keyboard or D-pad down to toggle lifeguard.
-- D-pad right to revive
-- D-pad up to look at the scoreboard (F on keyboard)
-- D-pad left in solo play to change mode (Normal, KOTC, Arcade)
-- D-pad left or right to dodge also.
-- L2/R2 for arcade Q or E
-- Click the stick in to swim
-- R2/RT to Water Pelt
+- Move the stick or D-pad to navigate menus, then press the bottom face button to select.
+- Double-tap D-pad left or right to dodge in the shallow end or on land.
+- The bottom face button also hurdles when you're near a ledge, or starts a cannon ball after jumping off the diving board.
+- In solo play, D-pad down toggles lifeguard and D-pad left cycles through Normal, King of the Cube, Arcade, and Friendly Pool Party.
+- Water Counter was removed to balance controller mode. 
 
 ## Matchmaking
 
@@ -187,7 +323,8 @@ Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache
 - Done: Diving board
 - Done: Voice chat
 - Done: Solo Play Sandbox
-- "Fun" mode - water balloons, higher ground, otter pops and more fun I guess (I realize I made this game too competitive)
+- Done: "Fun" mode - water balloons, higher ground, otter pops and more fun I guess (I realize I made this game too competitive)
+- Allow quick time event to flip the inflatable and get people off the high ground.
 - Done? Untested, also only in alpha on my meta dashboard: VR couch parties with quest friends
 - Done: Fix bug where you can clip out of map
 - Done: Make stamina only start running out when you start moving
