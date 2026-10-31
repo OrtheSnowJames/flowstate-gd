@@ -6,6 +6,7 @@ const _SplashCrown := preload("res://water/splash.tscn")
 const _WaveShader := preload("res://water/wave.gdshader")
 const _DropletShader := preload("res://water/droplet.gdshader")
 const _BubbleBeam := preload("res://water/bubble_beam.gd")
+const _WATER_POWER_RANGE: float = preload("res://water/player/types.gd").WATER_POWER_RANGE
 var _active_waves: Array[Dictionary] = []
 var _active_pelts: Dictionary = {}
 var _consumed_pelts: Dictionary = {}
@@ -105,7 +106,7 @@ func resolve_wave_hit(origin: Vector3, direction: Vector3, strength: float,
 	var travel_dir := Vector3(direction.x, 0.0, direction.z).normalized()
 	if travel_dir == Vector3.ZERO:
 		travel_dir = Vector3.FORWARD
-	var distance := 7.0 * strength * (0.28 if close_range else 1.0)
+	var distance := _WATER_POWER_RANGE * strength * (0.28 if close_range else 1.0)
 	var width := _hit_half_width * strength * (1.6 if close_range else 1.0)
 	var hit := _find_wave_target(origin, travel_dir, distance, width, caster)
 	if hit.is_empty():
@@ -123,7 +124,7 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 	if travel_dir == Vector3.ZERO:
 		travel_dir = Vector3.FORWARD
 
-	var max_distance := 7.0 * strength
+	var max_distance := _WATER_POWER_RANGE * strength
 	if hit.is_empty():
 		hit = resolve_wave_hit(origin, travel_dir, strength, caster)
 	var target_path: NodePath = hit.path
@@ -138,7 +139,7 @@ func send_wave(origin: Vector3, direction: Vector3, strength: float = 1.0,
 					damage_min, damage_max, false, caster)
 
 	# elongation drives the sims along direction reach see the class comment above so shrinking
-	add_impulse(origin, 0.42 * strength, 1.3, travel_dir, 1.0, 7.0 * strength * (reach / max_distance))
+	add_impulse(origin, 0.42 * strength, 1.3, travel_dir, 1.0, _WATER_POWER_RANGE * strength * (reach / max_distance))
 
 	# a burst right where it launches water visibly kicking up as you shove
 	_spawn_splash(origin, 220.0 * strength, 1.0)
@@ -159,7 +160,7 @@ func send_attack_wave(origin: Vector3, direction: Vector3, strength: float = 1.0
 	if travel_dir == Vector3.ZERO:
 		travel_dir = Vector3.FORWARD
 
-	var max_distance := 7.0 * strength * 0.28
+	var max_distance := _WATER_POWER_RANGE * strength * 0.28
 	if hit.is_empty():
 		hit = resolve_wave_hit(origin, travel_dir, strength, caster, true)
 	var target_path: NodePath = hit.path

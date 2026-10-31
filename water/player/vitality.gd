@@ -5,6 +5,10 @@ const MovementState = Types.MovementState
 
 
 static func _stamina_change(player, delta: float) -> void:
+	if Net.game_mode == Net.GameMode.POOL_PARTY:
+		if not player._unconscious:
+			player.stamina = player.max_stamina_per_mode(Net.game_mode)
+		return
 	# bone dry not even wading so theres no water to be tired from recover
 	if player._submersion() <= 0.0:
 		player.stamina += delta * player.stamina_recovery_out_of_water_per_second
@@ -25,8 +29,20 @@ static func _stamina_change(player, delta: float) -> void:
 	if player.stamina <= 5.0:
 		player._death()
 
+static func get_hit_by_water_balloon(player, player_who_threw: Node) -> void:
+	if not player._is_local() or player._unconscious or not is_instance_valid(player_who_threw):
+		return
+	if player_who_threw.team != player.team:
+		player._last_damage_peer = player_who_threw._owner_peer
+		player._last_damage_time = Time.get_ticks_msec()
+		player._balloon_damage = true
+		player.stamina = 0.0
+		player._death()
+		player._balloon_damage = false
 
 static func take_stamina_damage(player, amount: float, attacker: int = 0) -> void:
+	if Net.game_mode == Net.GameMode.POOL_PARTY:
+		return
 	if player.practice != null and player.practice.infinite_stamina:
 		player.stamina = player.max_stamina_per_mode(Net.game_mode)
 		return

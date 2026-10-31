@@ -1,0 +1,87 @@
+[gd_scene format=3]
+
+[ext_resource type="Script" path="res://water/pool_party.gd" id="1"]
+[ext_resource type="PackedScene" path="res://mesh/shark_floatie.glb" id="2_shark"]
+[ext_resource type="PackedScene" path="res://mesh/rusty_bucket.glb" id="3_bucket"]
+
+[sub_resource type="BoxShape3D" id="float_shape"]
+size = Vector3(3.6, 0.8, 3)
+
+[sub_resource type="CylinderMesh" id="marker_mesh"]
+top_radius = 0.3
+bottom_radius = 0.3
+height = 0.15
+
+[sub_resource type="BoxShape3D" id="floor_shape"]
+size = Vector3(4.9, 0.3, 6.7)
+
+[node name="PoolParty" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Inflatables" type="Node3D" parent="."]
+
+[node name="Inflatable1" type="StaticBody3D" parent="Inflatables"]
+position = Vector3(24, 7.9, -15)
+
+[node name="Model" parent="Inflatables/Inflatable1" instance=ExtResource("2_shark")]
+position = Vector3(-0.00009, -0.57346, 0.02263)
+scale = Vector3(1.0013, 0.86335, 0.78981)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Inflatables/Inflatable1"]
+shape = SubResource("float_shape")
+
+[node name="Inflatable2" type="StaticBody3D" parent="Inflatables"]
+position = Vector3(21, 7.9, -7)
+rotation = Vector3(0, 0.35, 0)
+
+[node name="Model" parent="Inflatables/Inflatable2" instance=ExtResource("2_shark")]
+position = Vector3(-0.00009, -0.57346, 0.02263)
+scale = Vector3(1.0013, 0.86335, 0.78981)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Inflatables/Inflatable2"]
+shape = SubResource("float_shape")
+
+[node name="Inflatable3" type="StaticBody3D" parent="Inflatables"]
+position = Vector3(18, 7.9, 3)
+rotation = Vector3(0, -0.25, 0)
+
+[node name="Model" parent="Inflatables/Inflatable3" instance=ExtResource("2_shark")]
+position = Vector3(-0.00009, -0.57346, 0.02263)
+scale = Vector3(1.0013, 0.86335, 0.78981)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Inflatables/Inflatable3"]
+shape = SubResource("float_shape")
+
+[node name="TubFloor" type="StaticBody3D" parent="."]
+position = Vector3(31, 9.55, -16)
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="TubFloor"]
+shape = SubResource("floor_shape")
+
+[node name="Bucket" type="Node3D" parent="."]
+position = Vector3(31, 10.9, -14.2)
+
+[node name="Model" parent="Bucket" instance=ExtResource("3_bucket")]
+position = Vector3(0.00343, -0.34138, -0.05119)
+scale = Vector3(0.535, 0.535, 0.535)
+
+[node name="Label" type="Label3D" parent="Bucket"]
+position = Vector3(0, 0.8, 0)
+billboard = 1
+font_size = 40
+pixel_size = 0.01
+text = "Balloons: 0"
+
+[node name="TubMarker" type="MeshInstance3D" parent="."]
+position = Vector3(31, 13.5, -16)
+mesh = SubResource("marker_mesh")
+cast_shadow = 0
+
+[node name="Label" type="Label3D" parent="TubMarker"]
+position = Vector3(0, 0.5, 0)
+billboard = 1
+font_size = 40
+pixel_size = 0.01
+text = "Hot tub: unclaimed"
+
+[node name="Pickups" type="Node3D" parent="."]

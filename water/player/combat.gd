@@ -46,6 +46,18 @@ static func net_cast_water_move(player, kind: WaterMove, origin: Vector3, aim: V
 			player._ocean.send_water_pelt(origin, aim, player, str(hit.get("id", "")))
 			player._play_water_action_anim("water_attack")
 
+static func _throw_water_balloon(player) -> bool:
+	if Net.game_mode != Net.GameMode.POOL_PARTY or not player._is_local() or player._unconscious or player.movement_locked \
+			or player._water_wall_up or player._hurdling or player._cannon_ball_active \
+			or player.practice_input_blocked or Net.is_spectating() or Net.input_blocked_by_menu() \
+			or Net.arcade.controls(player) or player._water_pelt_cooldown_timer > 0.0 or VR.wall_triggers_held():
+		return false
+	var party := Net.pool_party()
+	if party == null or party.carried(player).is_empty():
+		return false
+	Net.throw_water_balloon(player, player.Camera._water_balloon_target(player))
+	player._water_pelt_cooldown_timer = player.water_pelt_cooldown
+	return true
 
 static func _try_water_counter(player) -> bool:
 	if player._hurdling or player._cannon_ball_active:
@@ -73,6 +85,8 @@ static func _update_water_counter(player, delta: float) -> void:
 
 
 static func _try_water_pelt(player, hand := -1) -> bool:
+	if Net.game_mode == Net.GameMode.POOL_PARTY:
+		return _throw_water_balloon(player)
 	if player._hurdling or player._cannon_ball_active:
 		return false
 	if not player._is_local() or player._unconscious or player.movement_locked or player._water_wall_up or Net.is_spectating() \

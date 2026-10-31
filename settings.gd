@@ -5,8 +5,9 @@ const _SAVE_PATH := "user://settings.cfg"
 const _SECTION := "camera"
 const _ONLINE_SECTION := "online"
 const _PROFILE_SECTION := "profile"
-const FRAME_LIMITS := [30, 40, 60, 90, 120, 144, 165, 240, 0]
+const FRAME_LIMITS := [30, 40, 50, 60, 90, 120, 144, 165, 240, 0]
 
+var show_movement_prompts := true
 var frame_limit := 0:
 	set(value):
 		frame_limit = value if value in FRAME_LIMITS else 0
@@ -44,6 +45,11 @@ func effective_frame_limit() -> int:
 
 func apply_frame_limit() -> void:
 	Engine.max_fps = effective_frame_limit()
+	if OS.has_feature("pc") and DisplayServer.get_name() != "headless":
+		# vsync can round a frame cap down to a lower refresh interval
+		var vsync := DisplayServer.VSYNC_DISABLED if frame_limit > 0 else int(
+			ProjectSettings.get_setting("display/window/vsync/vsync_mode", DisplayServer.VSYNC_ENABLED))
+		DisplayServer.window_set_vsync_mode(vsync)
 
 
 func load_settings() -> void:
@@ -52,6 +58,7 @@ func load_settings() -> void:
 	if cfg.load(_SAVE_PATH) != OK:
 		return
 	frame_limit = int(cfg.get_value("graphics", "frame_limit", frame_limit))
+	show_movement_prompts = bool(cfg.get_value("gameplay", "show_movement_prompts", true))
 	camera_hover_height = cfg.get_value(_SECTION, "camera_hover_height", camera_hover_height)
 	camera_pitch_deg = cfg.get_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	turn_speed = cfg.get_value(_SECTION, "turn_speed", turn_speed)
@@ -68,6 +75,7 @@ func load_settings() -> void:
 func save_settings() -> void:
 	var cfg := ConfigFile.new()
 	cfg.set_value("graphics", "frame_limit", frame_limit)
+	cfg.set_value("gameplay", "show_movement_prompts", show_movement_prompts)
 	cfg.set_value(_SECTION, "camera_hover_height", camera_hover_height)
 	cfg.set_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	cfg.set_value(_SECTION, "turn_speed", turn_speed)

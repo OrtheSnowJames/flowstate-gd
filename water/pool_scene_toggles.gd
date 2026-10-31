@@ -19,6 +19,7 @@ extends Node3D
 		_apply_deletion(push_cube_path, value)
 @export var water_path: NodePath = ^"water base"
 @export var push_cube_path: NodePath = ^"PushCube"
+@export var hot_tub_water_path: NodePath = ^"hot tub/Hottubsquare/water base"
 
 @export_group("Players")
 # removes the networked player spawn system outright the players spawn container and its multiplayerspawner
@@ -52,6 +53,14 @@ func _ready() -> void:
 	_apply_deletion(spawner_path, delete_players)
 	if not Engine.is_editor_hint():
 		_apply_water()
+		Net.game_mode_changed.connect(_apply_game_mode)
+		_apply_game_mode()
+
+
+func _apply_game_mode() -> void:
+	var hot_tub_water := get_node_or_null(hot_tub_water_path) as Node3D
+	if hot_tub_water:
+		hot_tub_water.visible = Net.game_mode == Net.GameMode.POOL_PARTY and not delete_water
 
 
 func _apply_water() -> void:

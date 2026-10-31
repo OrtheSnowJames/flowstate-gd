@@ -114,6 +114,8 @@ func _open_code_prompt() -> void:
 func _show_settings() -> void:
 	var buttons := [
 		{"label": "Name and Voice Chat", "on_press": _on_edit_name},
+		{"label": "Gameplay Prompts: %s" % ("On" if Settings.show_movement_prompts else "Off"),
+			"on_press": _toggle_movement_prompts},
 		{"type": "stepper", "label": "Frame Limit", "value": _frame_limit_text(),
 			"on_left": _change_frame_limit.bind(-1), "on_right": _change_frame_limit.bind(1)},
 		{"type": "stepper", "label": "Camera Height", "value": "%.1fm" % Settings.camera_hover_height,
@@ -128,6 +130,12 @@ func _show_settings() -> void:
 	]
 	buttons.append({"label": "Back", "on_press": _show_root})
 	_menu_screen.show_buttons(buttons)
+
+
+func _toggle_movement_prompts() -> void:
+	Settings.show_movement_prompts = not Settings.show_movement_prompts
+	Settings.save_settings()
+	_show_settings()
 
 
 func _frame_limit_text() -> String:

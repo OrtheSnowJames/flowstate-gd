@@ -547,10 +547,11 @@ static func update(player, delta: float, submersion: float, shallow: bool) -> vo
 	if submersion <= 0.0 or player.linear_velocity.y <= 0.0:
 		player._jump_cancel_available = false
 
-	if Input.is_action_just_pressed("hurdle"):
+	var jump_pressed := Input.is_action_just_pressed("jump")
+	if Input.is_action_just_pressed("hurdle") or (player.using_controller and jump_pressed):
 		if player.CannonBall.start(player) or _hurdle(player):
 			return
-	if Input.is_action_just_pressed("jump"):
+	if jump_pressed:
 		# cube boosts can also launch from the water
 		if Net.game_mode != Net.GameMode.ARCADE or not Input.is_action_pressed("swim_key"):
 			player._jump(shallow or submersion <= 0.0)

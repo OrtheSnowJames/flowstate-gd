@@ -59,6 +59,7 @@ const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
 const _REVIVE_PROMPT := preload("res://prompts/revive_prompt.tscn")
 const _MOVEMENT_PROMPT := preload("res://prompts/movement_prompt.tscn")
 const _NAMEPLATE := preload("res://water/nameplate.tscn")
+const WATER_BALLOON := preload("res://water/water_balloon.tscn")
 
 # team kit colours both rigs mesh character glb mesh lifeguard glb are textured off
 const _TEAM_COLORS: Dictionary = {
@@ -170,7 +171,14 @@ var last_d_press := -1000.0
 # holy grail 1 v
 @export var momentum: float = 0.0
 # holy grail 2 v
-@export var stamina: float = 100.0
+@export var stamina: float = 100.0:
+	set(value):
+		if is_inside_tree() and Net.game_mode == Net.GameMode.POOL_PARTY \
+				and not _unconscious and not _balloon_damage:
+			stamina = max_stamina_per_mode(Net.game_mode)
+		else:
+			stamina = value
+var _balloon_damage := false
 # bullshit v
 @export var max_stamina: float = 100.0
 @export var max_arcade_stamina: float = 200.0
@@ -280,6 +288,7 @@ var _owner_peer: int = 0
 # this windows floating r revive tag built on demand see _ensure_revive_prompt
 var _revive_prompt: Node = null
 var _movement_prompt: Control
+var _in_deep_water := false
 # this windows floating teammate name tags peer id nameplate instance see _update_nameplates
 var _nameplates: Dictionary = {}
 # the stroke scaling _swim last built momentum with direction times the lifeguard buff cached
@@ -604,6 +613,9 @@ func _anim_change() -> void:
 func _cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float) -> void:
 	Combat._cast_water_move(self, kind, origin, aim, strength)
 
+func _throw_water_balloon() -> void:
+	Combat._throw_water_balloon(self)
+
 @rpc("authority", "call_local", "reliable")
 func net_cast_water_move(kind: WaterMove, origin: Vector3, aim: Vector3, strength: float,
 		hit: Dictionary = {}) -> void:
@@ -684,7 +696,8 @@ func _input(event: InputEvent) -> void:
 	detect_death(event)
 	# reachable only while conscious thanks to the _unconscious guard above which is exactly right
 	if event.is_action_pressed("revive"):
-		_try_revive_nearby()
+		if not Net.try_pickup_balloon(self):
+			_try_revive_nearby()
 	var now := _time_since_start()
 	detect_dodge(now, event)
 	detect_death(event)
@@ -826,6 +839,7 @@ func _physics_process(delta: float) -> void:
 	# compute these once per tick in_shallow_end runs a raycast so dont call it or
 	var submersion := _submersion()
 	var shallow := in_shallow_end()
+	_in_deep_water = _ocean != null and submersion > 0.25 and not shallow
 	Movement.update(self, delta, submersion, shallow)
 	if _hurdling or _cannon_ball_active:
 		return

@@ -184,7 +184,7 @@ Release exports additionally need release signing configured in the Meta Quest e
 Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache; the first Quest export imports assets once.
 
 ## TODO:
-- Diving board
+- Done: Diving board
 - Done: Voice chat
 - Done: Solo Play Sandbox
 - "Fun" mode - water balloons, higher ground, otter pops and more fun I guess (I realize I made this game too competitive)

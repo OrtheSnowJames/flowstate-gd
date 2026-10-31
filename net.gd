@@ -21,7 +21,7 @@ const _CONNECT_IN_PROGRESS_GRACE := 0.35
 const CUBE_GOAL := 100
 const ROOM_PROMPT := preload("res://prompts/server_prompt.tscn")
 
-enum GameMode { NORMAL, KING_OF_CUBE, ARCADE }
+enum GameMode { NORMAL, KING_OF_CUBE, ARCADE, POOL_PARTY }
 enum CubeControl { NEUTRAL, RED, BLUE, CONTESTED }
 var game_mode: GameMode = GameMode.NORMAL
 var arcade = preload("res://water/arcade_combat.gd").new()
@@ -29,6 +29,7 @@ var cube_control: CubeControl = CubeControl.NEUTRAL
 var _round_started := false
 var _room_prompt_open := false
 signal cube_control_changed
+signal game_mode_changed
 
 # where join_game connects when called with no argument point this at a real address
 var join_ip := "127.0.0.1"
@@ -50,6 +51,12 @@ var _spectator_targets: Dictionary = {}
 var _spectator_drones: Dictionary = {}
 var _session_generation := 0
 var _load_timeout_closing := false
+var _water_balloons: Dictionary = {}
+var _water_balloon_states: Dictionary = {}
+var _water_balloon_sequence := 0
+var _water_balloon_version := 0
+var _water_balloon_received := -1
+var _water_balloon_timer := 0.0
 
 # off by default on purpose pressing test_lifeguard_key see project godots input map l as
 @export var enable_lifeguard_test_key: bool = true
@@ -231,6 +238,7 @@ func net_sync_spectator_targets(targets: Dictionary) -> void:
 
 
 func _process(_delta: float) -> void:
+	_update_water_balloons(_delta)
 	if not is_online() or multiplayer.is_server():
 		var changed := false
 		for watcher in _spectator_targets.keys():
@@ -416,12 +424,24 @@ func _players_root() -> Node:
 
 # removes every player body used when switching what session were in joining someone elses
 func _clear_players() -> void:
+	_clear_water_balloons()
 	var players := _players_root()
 	if players == null:
 		return
 	for child in players.get_children():
 		players.remove_child(child)
 		child.queue_free()
+
+
+func _clear_water_balloons() -> void:
+	_pool_party_state.clear()
+	for balloon in _water_balloons.values():
+		if is_instance_valid(balloon):
+			balloon.hide()
+			balloon.queue_free()
+	_water_balloons.clear()
+	_water_balloon_states.clear()
+	_water_balloon_received = -1
 
 
 func _add_player(id: int) -> void:
@@ -528,6 +548,8 @@ func game_mode_name() -> String:
 			return "King of the Cube"
 		GameMode.ARCADE:
 			return "Arcade"
+		GameMode.POOL_PARTY:
+			return '"Friendly" Pool Party'
 	return "Normal"
 
 
@@ -556,6 +578,8 @@ func net_cycle_practice_mode(mode: int) -> void:
 		var old_max: float = player.max_stamina_per_mode(previous)
 		var new_max: float = player.max_stamina_per_mode(game_mode)
 		player.stamina = clampf(player.stamina / old_max, 0.0, 1.0) * new_max
+		if game_mode == GameMode.POOL_PARTY:
+			player.respawn(party_spawn_position(player._owner_peer, player.team), -PI * 0.5)
 		if player.gui:
 			var bar := player.gui.get_node_or_null("stamina_bar") as Range
 			if bar:
@@ -567,12 +591,19 @@ func net_cycle_practice_mode(mode: int) -> void:
 @rpc("authority", "call_local", "reliable")
 func net_sync_game_mode(mode: int) -> void:
 	game_mode = mode as GameMode if mode in GameMode.values() else GameMode.NORMAL
+	if game_mode != GameMode.POOL_PARTY:
+		_clear_water_balloons()
 	if game_mode == GameMode.ARCADE:
 		_lifeguards.clear()
 		for player in get_tree().get_nodes_in_group("player"):
 			player.is_lifeguard = false
+	if game_mode == GameMode.POOL_PARTY:
+		for player in get_tree().get_nodes_in_group("player"):
+			if not player._unconscious:
+				player.stamina = player.max_stamina_per_mode(game_mode)
 	cube_control = CubeControl.NEUTRAL
 	cube_control_changed.emit()
+	game_mode_changed.emit()
 	lobby_changed.emit()
 
 
@@ -810,6 +841,8 @@ func _begin_round() -> void:
 	round_state = RoundState.PLAYING
 	if is_online():
 		rpc("net_sync_arena_peers", _arena_ready)
+		if game_mode == GameMode.POOL_PARTY:
+			rpc("net_sync_pool_party", _pool_party_state)
 	_reset_round_scoreboard()
 	# before any body is built so _add_player can set is_lifeguard from the roster as
 	_pick_lifeguards()
@@ -858,7 +891,7 @@ func on_player_down() -> void:
 		return
 	if round_state != RoundState.PLAYING or _round_over:
 		return
-	if game_mode == GameMode.KING_OF_CUBE:
+	if game_mode in [GameMode.KING_OF_CUBE, GameMode.POOL_PARTY]:
 		return
 	var players := _players_root()
 	if players == null:
@@ -1053,12 +1086,14 @@ func _opponent_team(team: int) -> int:
 
 
 func _round_score_for(team: int) -> int:
-	if game_mode == GameMode.KING_OF_CUBE:
+	if game_mode in [GameMode.KING_OF_CUBE, GameMode.POOL_PARTY]:
 		return _round_red_score if team == PLAYER_SCRIPT.Team.RED else _round_blue_score
 	return int(_round_faints.get(team, {}).size())
 
 
 func _round_goal_for(team: int) -> int:
+	if game_mode == GameMode.POOL_PARTY:
+		return 30
 	if game_mode == GameMode.KING_OF_CUBE:
 		return CUBE_GOAL
 	var opponent := _opponent_team(team)
@@ -1274,6 +1309,8 @@ func _broadcast_roster() -> void:
 
 # where the body belonging to id starts and which way it faces the pools
 func spawn_position(id: int) -> Vector3:
+	if game_mode == GameMode.POOL_PARTY:
+		return party_spawn_position(id, team_of(id))
 	var team := team_of(id)
 	if team < 0:
 		# no team known solo play or a body spawned before the table arrived fall
@@ -1291,6 +1328,8 @@ func spawn_position(id: int) -> Vector3:
 
 # which way the body belonging to id faces on spawn across the pool at
 func spawn_rotation_y(id: int) -> float:
+	if game_mode == GameMode.POOL_PARTY:
+		return -PI * 0.5
 	var team := team_of(id)
 	if team < 0:
 		return 0.0
@@ -1476,6 +1515,8 @@ func net_spectator_ready() -> void:
 	_arena_ready[id] = true
 	rpc("net_sync_arena_peers", _arena_ready)
 	arcade.ultimate.sync_peer(id)
+	rpc_id(id, "net_sync_pool_party", _pool_party_state)
+	rpc_id(id, "net_water_balloon_event", _water_balloon_version, _water_balloon_snapshot())
 	# launch the drone when the spectator joins the loaded match
 	var target := living_lifeguard(id)
 	if target and _can_watch_lifeguard(id, str(target.name).to_int()):
@@ -1487,6 +1528,246 @@ func net_spectator_ready() -> void:
 	var ocean := scene.get_node_or_null("water base") if scene else null
 	if ocean and ocean.has_method("get_active_waves"):
 		rpc_id(id, "net_sync_water_effects", ocean.get_active_waves(), ocean.get_active_pelts())
+
+
+var _pool_party_state: Dictionary = {}
+
+
+func pool_party() -> Node3D:
+	var scene := get_tree().current_scene
+	return scene.get_node_or_null("PoolParty") if scene else null
+
+
+func party_spawn_position(id: int, team: int) -> Vector3:
+	var mates := _peers_on_team(team)
+	var slot := maxi(mates.find(id), 0)
+	return Vector3(-22.0 + (slot % 3) * 3.0, 9.0, (-1.0 if team == PLAYER_SCRIPT.Team.RED else 1.0) * (5.0 + (slot / 3) * 3.0))
+
+
+func try_pickup_balloon(player: Node3D) -> bool:
+	var party := pool_party()
+	if game_mode != GameMode.POOL_PARTY or party == null or party.pickup_target(player) == 0:
+		return false
+	if is_online() and not multiplayer.is_server():
+		rpc_id(1, "net_pickup_balloon")
+	else:
+		party.pickup(player)
+	return true
+
+
+@rpc("any_peer", "reliable")
+func net_pickup_balloon() -> void:
+	if not is_online() or not multiplayer.is_server() or game_mode != GameMode.POOL_PARTY:
+		return
+	var player := _water_balloon_player(multiplayer.get_remote_sender_id())
+	var party := pool_party()
+	if player and party:
+		party.pickup(player)
+
+
+@rpc("authority", "reliable")
+func net_sync_pool_party(state: Dictionary) -> void:
+	if game_mode != GameMode.POOL_PARTY:
+		return
+	_pool_party_state = state.duplicate(true)
+	var party := pool_party()
+	if party and party.is_node_ready():
+		party.apply_state(state)
+
+
+@rpc("any_peer", "reliable")
+func net_request_pool_party() -> void:
+	if is_online() and multiplayer.is_server() and game_mode == GameMode.POOL_PARTY:
+		rpc_id(multiplayer.get_remote_sender_id(), "net_sync_pool_party", _pool_party_state)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_party_respawn(id: int) -> void:
+	if game_mode != GameMode.POOL_PARTY or round_state != RoundState.PLAYING or _round_over:
+		return
+	var player := _water_balloon_player(id)
+	if player:
+		player.respawn(party_spawn_position(id, player.team), -PI * 0.5)
+
+
+func award_party_point(team: int) -> void:
+	if game_mode != GameMode.POOL_PARTY or _round_over or (is_online() and not multiplayer.is_server()):
+		return
+	if team == PLAYER_SCRIPT.Team.RED:
+		_round_red_score = mini(_round_red_score + 1, 30)
+	elif team == PLAYER_SCRIPT.Team.BLUE:
+		_round_blue_score = mini(_round_blue_score + 1, 30)
+	else:
+		return
+	_sync_round_scoreboard()
+	if _round_score_for(team) >= 30:
+		if is_online():
+			rpc("net_round_over", [team])
+		else:
+			net_round_over([team])
+
+
+func _water_balloon_player(id: int) -> Node3D:
+	if id < 0 and not is_online():
+		return instance_from_id(-id) as Node3D if is_instance_id_valid(-id) else null
+	var players := _players_root()
+	return players.get_node_or_null(str(id)) if players else null
+
+
+func throw_water_balloon(player: Node3D, target: Vector3) -> void:
+	if game_mode != GameMode.POOL_PARTY or not player._is_local():
+		return
+	if is_online() and not multiplayer.is_server():
+		rpc_id(1, "net_throw_water_balloon", target)
+	else:
+		_spawn_water_balloon(player, target)
+
+
+@rpc("any_peer", "reliable")
+func net_throw_water_balloon(target: Vector3) -> void:
+	if not is_online() or not multiplayer.is_server():
+		return
+	var player := _water_balloon_player(multiplayer.get_remote_sender_id())
+	if player:
+		_spawn_water_balloon(player, target)
+
+
+func _spawn_water_balloon(player: Node3D, target: Vector3) -> void:
+	if game_mode != GameMode.POOL_PARTY or round_state != RoundState.PLAYING or _round_over or player._unconscious \
+			or player.movement_locked or player._water_wall_up or arcade.controls(player) \
+			or not target.is_finite():
+		return
+	var thrower: int = player._owner_peer if player._owner_peer > 0 else -player.get_instance_id()
+	var offset := Vector3(target.x - player.global_position.x, 0.0, target.z - player.global_position.z)
+	var max_range: float = player.Types.WATER_POWER_RANGE * clampf(player._water_power_strength(), 0.3, 4.0)
+	offset = offset.limit_length(max_range)
+	target.x = player.global_position.x + offset.x
+	target.z = player.global_position.z + offset.z
+	var origin: Vector3 = player.global_position + Vector3.UP * 1.3 + offset.limit_length(1.0)
+	if is_instance_valid(player._ocean):
+		origin.y = maxf(origin.y, player._water_height() + 0.7)
+	_water_balloon_sequence += 1
+	var party := pool_party()
+	if party == null or not party.take_for_throw(player, _water_balloon_sequence):
+		return
+	var balloon := _make_water_balloon(_water_balloon_sequence, thrower, Transform3D(Basis.IDENTITY, origin))
+	var body = balloon.get_node("RigidBody3D")
+	body.max_range = max_range
+	body.range_origin = player.global_position
+	body.throw_at(target)
+	_publish_water_balloons(true)
+
+
+func _make_water_balloon(id: int, thrower: int, pose: Transform3D) -> Node3D:
+	var player := _water_balloon_player(thrower)
+	if player == null:
+		return null
+	var balloon: Node3D = player.WATER_BALLOON.instantiate()
+	balloon.name = "WaterBalloon_%d" % id
+	balloon.top_level = true
+	balloon.transform = Transform3D.IDENTITY
+	balloon.set_multiplayer_authority(1)
+	var body = balloon.get_node("RigidBody3D")
+	body.balloon_id = id
+	body.thrower_id = thrower
+	body.water = player._ocean
+	player.add_child(balloon)
+	body.sync_transform(pose, true)
+	body.add_collision_exception_with(player)
+	_water_balloons[id] = balloon
+	return balloon
+
+
+func _water_balloon_snapshot() -> Dictionary:
+	var snapshot := {}
+	for id in _water_balloons.keys():
+		var balloon = _water_balloons[id]
+		if not is_instance_valid(balloon) or balloon.is_queued_for_deletion():
+			_water_balloons.erase(id)
+			continue
+		var body = balloon.get_node("RigidBody3D")
+		snapshot[id] = [body.thrower_id, body.global_transform]
+	return snapshot
+
+
+func _publish_water_balloons(reliable: bool) -> void:
+	_water_balloon_version += 1
+	var snapshot := _water_balloon_snapshot()
+	if is_online():
+		rpc("net_water_balloon_event" if reliable else "net_sync_water_balloons",
+			_water_balloon_version, snapshot)
+
+
+func _update_water_balloons(delta: float) -> void:
+	if is_online() and not multiplayer.is_server():
+		# a spectator may receive the throw before its player has spawned
+		for id in _water_balloon_states:
+			if not is_instance_valid(_water_balloons.get(id)):
+				var state: Array = _water_balloon_states[id]
+				_make_water_balloon(id, state[0], state[1])
+	elif not _water_balloons.is_empty():
+		_water_balloon_timer += delta
+		if _water_balloon_timer >= 0.05:
+			_water_balloon_timer = 0.0
+			_publish_water_balloons(false)
+
+
+@rpc("authority", "call_remote", "unreliable_ordered", 1)
+func net_sync_water_balloons(version: int, snapshot: Dictionary) -> void:
+	if game_mode != GameMode.POOL_PARTY or version <= _water_balloon_received:
+		return
+	_water_balloon_received = version
+	_water_balloon_states = snapshot
+	for id in _water_balloons.keys():
+		if not snapshot.has(id):
+			var balloon = _water_balloons[id]
+			if is_instance_valid(balloon):
+				balloon.queue_free()
+			_water_balloons.erase(id)
+	for id in snapshot:
+		var state: Array = snapshot[id]
+		var balloon = _water_balloons.get(id)
+		if is_instance_valid(balloon):
+			balloon.get_node("RigidBody3D").sync_transform(state[1])
+		else:
+			_make_water_balloon(id, state[0], state[1])
+
+
+@rpc("authority", "reliable")
+func net_water_balloon_event(version: int, snapshot: Dictionary) -> void:
+	net_sync_water_balloons(version, snapshot)
+
+
+func pop_water_balloon(body: RigidBody3D, victim: Node3D = null) -> void:
+	if (is_online() and not multiplayer.is_server()) or not _water_balloons.has(body.balloon_id):
+		return
+	var victim_id := 0
+	if victim:
+		victim_id = victim._owner_peer if victim._owner_peer > 0 else -victim.get_instance_id()
+	var party := pool_party()
+	var scoring_team: int = party.land(body, victim) if party else -1
+	_water_balloon_version += 1
+	if is_online():
+		rpc("net_pop_water_balloon", _water_balloon_version, body.balloon_id, body.thrower_id, victim_id)
+	else:
+		net_pop_water_balloon(_water_balloon_version, body.balloon_id, body.thrower_id, victim_id)
+	if scoring_team >= 0:
+		award_party_point(scoring_team)
+
+
+@rpc("authority", "call_local", "reliable")
+func net_pop_water_balloon(version: int, id: int, thrower: int, victim_id: int) -> void:
+	_water_balloon_received = maxi(_water_balloon_received, version)
+	_water_balloon_states.erase(id)
+	var balloon = _water_balloons.get(id)
+	_water_balloons.erase(id)
+	if is_instance_valid(balloon):
+		balloon.hide()
+		balloon.queue_free()
+	var victim := _water_balloon_player(victim_id)
+	var player := _water_balloon_player(thrower)
+	if game_mode == GameMode.POOL_PARTY and victim and player:
+		victim.Vitality.get_hit_by_water_balloon(victim, player)
 
 
 @rpc("authority", "reliable")

@@ -33,6 +33,7 @@ enum AnimationState {
 }
 
 enum WaterMove { POWER, ATTACK, PELT, COUNTER }
+const WATER_POWER_RANGE := 7.0
 
 const ANIM_MAP: Dictionary = {
 	AnimationState.IDLE: "idle",

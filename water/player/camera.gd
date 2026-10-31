@@ -141,6 +141,23 @@ static func _mouse_aim_direction(player) -> Vector3:
 	return forward.normalized()
 
 
+static func _water_balloon_target(player) -> Vector3:
+	var camera: Camera3D = VR.view_camera(player._camera)
+	var screen: Vector2 = player.Controller.aim_position(player)
+	var origin := camera.global_position if VR.immersive else camera.project_ray_origin(screen)
+	var direction := -camera.global_basis.z if VR.immersive else camera.project_ray_normal(screen)
+	var distance := 100.0
+	# aim at the water surface instead of the floor underneath it
+	if absf(direction.y) > 0.0001:
+		var water_distance: float = (player._water_height() - origin.y) / direction.y
+		if water_distance > 0.0:
+			distance = minf(distance, water_distance)
+	var target := origin + direction * distance
+	var query := PhysicsRayQueryParameters3D.create(origin, target, 1, [player.get_rid()])
+	var hit: Dictionary = player.get_world_3d().direct_space_state.intersect_ray(query)
+	return hit.get("position", target)
+
+
 static func _ensure_revive_prompt(player) -> Node:
 	if is_instance_valid(player._revive_prompt):
 		return player._revive_prompt
@@ -152,7 +169,10 @@ static func _ensure_revive_prompt(player) -> Node:
 
 
 static func _update_revive_prompt(player) -> void:
-	var target = player._revive_target()
+	var target = player._revive_target() if Settings.show_movement_prompts else null
+	var party: Node3D = Net.pool_party()
+	if party and party.pickup_target(player) != 0:
+		target = null
 	# dont build the prompt just to be told theres nobody to revive a normal
 	if target == null and not is_instance_valid(player._revive_prompt):
 		return
@@ -162,9 +182,14 @@ static func _update_revive_prompt(player) -> void:
 
 
 static func _update_movement_prompt(player) -> void:
+	if not Settings.show_movement_prompts:
+		if is_instance_valid(player._movement_prompt):
+			player._movement_prompt.hide()
+		return
 	if not is_instance_valid(player.gui):
 		return
 	var action := ""
+	var key := "A" if player.using_controller else "H"
 	if not player._unconscious and not player.movement_locked and not player._hurdling \
 			and not player._cannon_ball_active and not player.practice_input_blocked \
 			and not Net.input_blocked_by_menu() and not Net.is_spectating() \
@@ -173,12 +198,19 @@ static func _update_movement_prompt(player) -> void:
 			action = "Cannon Ball"
 		elif player.Movement.hurdle_target(player) != null:
 			action = "Hurdle"
+		elif player._in_deep_water and not VR.immersive and not Input.is_action_pressed("swim_key"):
+			if player.using_controller and player.Controller.move_input().length() > 0.25:
+				action = "Click the stick in and\npush forward to swim"
+				key = ""
+			elif not player.using_controller and Input.is_action_pressed("forward"):
+				action = "to swim"
+				key = "Shift + W"
 	if not is_instance_valid(player._movement_prompt):
 		if action.is_empty():
 			return
 		player._movement_prompt = player._MOVEMENT_PROMPT.instantiate()
 		player.gui.add_child(player._movement_prompt)
-	player._movement_prompt.show_for(player, VR.view_camera(player._camera), action)
+	player._movement_prompt.show_for(player, VR.view_camera(player._camera), action, key)
 
 
 static func _teammates_in_arena(player) -> Array:

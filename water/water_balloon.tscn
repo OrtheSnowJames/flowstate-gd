@@ -1,0 +1,26 @@
+[gd_scene format=3 uid="uid://cls6drcmce77n"]
+
+[ext_resource type="Script" uid="uid://cx0647nepbyu6" path="res://other_scripts/throw_water_balloon.gd" id="1_26ppk"]
+[ext_resource type="PackedScene" uid="uid://cp6gf3tvue02u" path="res://mesh/water_balloon.glb" id="2_w7cxk"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_e2f6t"]
+
+[sub_resource type="SphereShape3D" id="SphereShape3D_hitbox"]
+radius = 1.0
+
+[node name="WaterBalloon" type="Node3D" unique_id=1069282939]
+
+[node name="RigidBody3D" type="RigidBody3D" parent="." unique_id=80636499]
+script = ExtResource("1_26ppk")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="RigidBody3D" unique_id=882609375]
+shape = SubResource("SphereShape3D_e2f6t")
+
+[node name="PlayerHitbox" type="ShapeCast3D" parent="RigidBody3D"]
+shape = SubResource("SphereShape3D_hitbox")
+target_position = Vector3(0, 0, 0)
+collision_mask = 524288
+enabled = false
+
+[node name="Sketchfab_Scene" parent="RigidBody3D" unique_id=581975731 instance=ExtResource("2_w7cxk")]
+transform = Transform3D(0.4, 0, 0, 0, 0.4, 0, 0, 0, 0.4, -0.010311484, 0, -0.06382316)
