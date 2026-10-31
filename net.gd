@@ -8,7 +8,7 @@ const PLAYER_SCENE := preload("res://water/player.tscn")
 const PLAYER_SCRIPT := preload("res://water/player.gd")
 # the 3 2 1 go label instantiated into the arenas hud at round start
 const COUNTDOWN_TEXT := preload("res://menu/appear_disappear_text.tscn")
-const DISCONNECT_PROMPT := preload("res://menu/disconnect_prompt.tscn")
+const DISCONNECT_PROMPT := preload("res://prompts/disconnect_prompt.tscn")
 const SPECTATOR_CAMERA := preload("res://water/spectator_camera.gd")
 const SPECTATOR_DRONE := preload("res://water/spectator_drone.gd")
 # where connecting lands you a path rather than a preload menu lobby tscn instances
@@ -19,7 +19,7 @@ const DISCONNECT_WARNING := "Are you sure you want to disconnect? You will recei
 const GAME_IN_PROGRESS_MESSAGE := "Game in progress..."
 const _CONNECT_IN_PROGRESS_GRACE := 0.35
 const CUBE_GOAL := 100
-const ROOM_PROMPT := preload("res://menu/server_prompt.tscn")
+const ROOM_PROMPT := preload("res://prompts/server_prompt.tscn")
 
 enum GameMode { NORMAL, KING_OF_CUBE, ARCADE }
 enum CubeControl { NEUTRAL, RED, BLUE, CONTESTED }

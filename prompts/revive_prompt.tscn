@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://water/revive_prompt.gd" id="1_prompt"]
+[ext_resource type="Script" path="res://prompts/revive_prompt.gd" id="1_prompt"]
 [ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="2_font"]
 
 [sub_resource type="StyleBoxFlat" id="StyleBoxFlat_box"]

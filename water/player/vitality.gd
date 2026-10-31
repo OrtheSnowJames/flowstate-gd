@@ -15,7 +15,8 @@ static func _stamina_change(player, delta: float) -> void:
 		player.stamina += delta * player.stamina_in_shallow_end_per_second
 	else:
 		if player.movement_state == MovementState.TREAD:
-			player.stamina -= delta * player.stamina_expended_in_deep_end_per_second_tread
+			if player._has_started_moving:
+				player.stamina -= delta * player.stamina_expended_in_deep_end_per_second_tread
 		elif player.movement_state == MovementState.SWIM:
 			player.stamina -= delta * player.stamina_expended_in_deep_end_per_second_swim
 		elif player.movement_state == MovementState.GLIDE:

@@ -1,6 +1,6 @@
 [gd_scene format=3]
 
-[ext_resource type="Script" path="res://menu/disconnect_prompt.gd" id="1_prompt"]
+[ext_resource type="Script" path="res://prompts/disconnect_prompt.gd" id="1_prompt"]
 [ext_resource type="Script" path="res://menu/menu_screen.gd" id="2_menuscreen"]
 [ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="3_font"]
 

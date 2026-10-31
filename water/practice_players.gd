@@ -1,7 +1,7 @@
 extends Node3D
 
 const BOT := preload("res://water/practice_bot.gd")
-const PROMPT := preload("res://water/practice_prompt.tscn")
+const PROMPT := preload("res://prompts/practice_prompt.tscn")
 const EDITOR := preload("res://menu/practice_editor.tscn")
 const NAMES := ["her majesty", "john", "john pork", "big fern", "eli from the nut", "eli (evil)", "bob42", "jhev", "moscow", "asd"]
 

@@ -231,6 +231,8 @@ static func _jump(player, on_ground: bool) -> void:
 	var cube_boost = player._can_cube_jump()
 	if not cube_boost and (not on_ground or player.momentum <= 0.0):
 		return
+	if not player._has_started_moving:
+		player._has_started_moving = true
 	player.CannonBall.arm(player)
 	player._jump_spent = true
 	player._jump_cooldown_timer = player.jump_cooldown
@@ -400,6 +402,9 @@ static func _swim(player, delta: float) -> void:
 	if not Input.is_action_pressed("swim_key"):
 		player._glide(delta)
 		return
+
+	if not player._has_started_moving:
+		player._has_started_moving = true
 	# actively swimming re enables movement after a tread stopped it so the player isnt
 	player.can_move = true
 	# momentum 0 0 1 0

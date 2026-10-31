@@ -1,8 +1,8 @@
 # menu screen state machine root play settings play solo play connect to localhost back
 extends Node3D
 
-const NAME_PROMPT := preload("res://menu/name_prompt.tscn")
-const SERVER_PROMPT := preload("res://menu/server_prompt.tscn")
+const NAME_PROMPT := preload("res://prompts/name_prompt.tscn")
+const SERVER_PROMPT := preload("res://prompts/server_prompt.tscn")
 
 @onready var _menu_screen: Control = $UI/MenuScroll/MenuScreen
 var _couch_guest := false

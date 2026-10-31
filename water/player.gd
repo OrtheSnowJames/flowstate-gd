@@ -56,7 +56,7 @@ const _LIFEGUARD_WATER_WALL_BLOCK_REDUCTION := 0.1 # the kickboard block 90 of t
 
 const _CHARACTER_MESH := preload("res://mesh/character.glb")
 const _LIFEGUARD_MESH := preload("res://mesh/lifeguard.glb")
-const _REVIVE_PROMPT := preload("res://water/revive_prompt.tscn")
+const _REVIVE_PROMPT := preload("res://prompts/revive_prompt.tscn")
 const _NAMEPLATE := preload("res://water/nameplate.tscn")
 
 # team kit colours both rigs mesh character glb mesh lifeguard glb are textured off
@@ -248,6 +248,7 @@ var _jump_cooldown_timer: float = 0.0
 var _hurdle_cooldown_timer: float = 0.0
 
 var _jump_cancel_available := false
+var _has_started_moving := false
 var hurdle_cooldown: float = 3.0
 var _hurdling := false
 var _hurdle_elapsed := 0.0

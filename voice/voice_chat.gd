@@ -140,7 +140,7 @@ func prompt_setup(parent: Node) -> void:
 		return
 	if is_instance_valid(_prompt):
 		return
-	_prompt = load("res://menu/name_prompt.tscn").instantiate()
+	_prompt = load("res://prompts/name_prompt.tscn").instantiate()
 	parent.add_child(_prompt)
 	_prompt.open(Settings.player_name, "Enter your name", _profile_chosen)
 

@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://br4iwrahbl617"]
 
-[ext_resource type="Script" uid="uid://dd4uxiv2nj1xq" path="res://water/practice_prompt.gd" id="2"]
+[ext_resource type="Script" uid="uid://dd4uxiv2nj1xq" path="res://prompts/practice_prompt.gd" id="2"]
 [ext_resource type="FontFile" uid="uid://ccqkk80t14i6o" path="res://IntroRust-Base.otf" id="3_daken"]
 
 [sub_resource type="Theme" id="Theme_xomsb"]
