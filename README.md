@@ -183,11 +183,6 @@ AS (ante-script): This setup takes a while as android is pretty annoying. I coul
 Release exports additionally need release signing configured in the Meta Quest export preset.
 Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache; the first Quest export imports assets once.
 
-### Override Performance Mode
-For standalone Quest testing only, stay in the TV Room and press A, A, B, B, then move either thumbstick left, right, left, right.
-This is the only way to toggle performance mode (on by default).
-Entering immersive VR, stopping VR or restarting the app restores performance mode.
-
 ## TODO:
 - Diving board
 - Done: Voice chat

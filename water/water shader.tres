@@ -1,12 +1,12 @@
 [gd_resource type="ShaderMaterial" format=3 uid="uid://dtnq8dw3dxtia"]
 
-[ext_resource type="Shader" uid="uid://dppmh6xfbum7" path="res://water/water shader 2.gdshader" id="1_ql3mw"]
+[ext_resource type="Shader" uid="uid://cb5lk0kldpqle" path="res://water/water shader 2.gdshader" id="1_ql3mw"]
 
 [resource]
 render_priority = 1
 shader = ExtResource("1_ql3mw")
-shader_parameter/color_shallow = Color(0.25912058, 0.29701483, 0.3033305, 0.5411765)
-shader_parameter/color_deep = Color(0.063702986, 0.06592266, 0.07204356, 0.3882353)
+shader_parameter/color_shallow = Color(0.12, 0.34, 0.52, 0.5411765)
+shader_parameter/color_deep = Color(0.025, 0.10, 0.22, 0.3882353)
 shader_parameter/color_foam = Color(0.5700089, 0.5597274, 0.5442967, 0.69803923)
 shader_parameter/wave_scale = 8.0
 shader_parameter/wave_speed = 3.0
@@ -26,12 +26,12 @@ shader_parameter/caustic_strength = 0.8
 shader_parameter/trail_pos = PackedVector3Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 shader_parameter/trail_age = PackedFloat32Array(0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0)
 shader_parameter/trail_count = 16
-shader_parameter/player_radius = 0.5
-shader_parameter/ripple_freq = 8.0
-shader_parameter/ripple_speed = 8.0
-shader_parameter/ripple_radius = 14.0
-shader_parameter/ripple_decay = 4.0
-shader_parameter/ripple_str = 0.5
+shader_parameter/player_radius = 1.2
+shader_parameter/ripple_freq = 40.0
+shader_parameter/ripple_speed = 4.0
+shader_parameter/ripple_radius = 12.0
+shader_parameter/ripple_decay = 6.0
+shader_parameter/ripple_str = 0.4
 shader_parameter/color_ripple = Color(0.06666667, 0.08235294, 0.105882354, 0.21176471)
 shader_parameter/foam_distance = 0.45000000670554
 shader_parameter/foam_strength = 0.40000000596048

@@ -1,11 +1,8 @@
 # persisted player tunable settings camera height angle and a d turning feel applied to
 extends Node
 
-signal performance_mode_changed
-
 const _SAVE_PATH := "user://settings.cfg"
 const _SECTION := "camera"
-const _GRAPHICS_SECTION := "graphics"
 const _ONLINE_SECTION := "online"
 const _PROFILE_SECTION := "profile"
 
@@ -23,36 +20,12 @@ var camera_pitch_deg: float = -36.0
 var turn_speed: float = 2.5
 # whether a d turning ramps up the longer the key is held on or
 var exponential_turn_sensitivity: bool = false
-# lowers water cost for weaker machines
-var _performance_mode := false
-var _quest_test_quality := false
-var performance_mode: bool:
-	get:
-		return not _quest_test_quality if VR.quest_standalone else _performance_mode
-	set(value):
-		var previous := performance_mode
-		_performance_mode = value
-		if previous != performance_mode:
-			performance_mode_changed.emit()
 # unix time until online connect is allowed again
 var online_penalty_until_unix: int = 0
 
 
 func _ready() -> void:
 	load_settings()
-
-
-func toggle_quest_test_performance() -> void:
-	if not VR.quest_standalone or not VR.active or VR.immersive or VR.entering:
-		return
-	_quest_test_quality = not _quest_test_quality
-	performance_mode_changed.emit()
-
-
-func reset_quest_test_performance() -> void:
-	if _quest_test_quality:
-		_quest_test_quality = false
-		performance_mode_changed.emit()
 
 
 func load_settings() -> void:
@@ -65,7 +38,6 @@ func load_settings() -> void:
 	turn_speed = cfg.get_value(_SECTION, "turn_speed", turn_speed)
 	exponential_turn_sensitivity = cfg.get_value(
 		_SECTION, "exponential_turn_sensitivity", exponential_turn_sensitivity)
-	performance_mode = cfg.get_value(_GRAPHICS_SECTION, "performance_mode", performance_mode)
 	online_penalty_until_unix = cfg.get_value(
 		_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	player_name = cfg.get_value(_PROFILE_SECTION, "player_name", player_name)
@@ -80,7 +52,6 @@ func save_settings() -> void:
 	cfg.set_value(_SECTION, "camera_pitch_deg", camera_pitch_deg)
 	cfg.set_value(_SECTION, "turn_speed", turn_speed)
 	cfg.set_value(_SECTION, "exponential_turn_sensitivity", exponential_turn_sensitivity)
-	cfg.set_value(_GRAPHICS_SECTION, "performance_mode", _performance_mode)
 	cfg.set_value(_ONLINE_SECTION, "online_penalty_until_unix", online_penalty_until_unix)
 	cfg.set_value(_PROFILE_SECTION, "player_name", player_name)
 	cfg.set_value("voice", "configured", voice_configured)

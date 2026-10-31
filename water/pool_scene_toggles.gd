@@ -30,23 +30,9 @@ extends Node3D
 @export var players_path: NodePath = ^"Players"
 @export var spawner_path: NodePath = ^"MultiplayerSpawner"
 
-const _QUALITY_WATER := {
-	"sim_resolution": 384,
-	"sim_steps_per_second": 120.0,
-	"mesh_resolution": 300,
-	"simple_surface": false,
-	"refraction_strength": 0.07,
-	"detail_strength": 0.18,
-	"enable_height_queries": false,
-}
-
-const _PERFORMANCE_WATER := {
-	"sim_resolution": 192,
-	"sim_steps_per_second": 30.0,
+const _WATER := {
 	"mesh_resolution": 140,
-	"simple_surface": true,
-	"refraction_strength": 0.0,
-	"detail_strength": 0.05,
+	"ocean_surface": true,
 	"enable_height_queries": false,
 }
 
@@ -54,7 +40,7 @@ func _enter_tree() -> void:
 	# physics bodies opt in while frame driven effects stay uninterpolated
 	physics_interpolation_mode = Node.PHYSICS_INTERPOLATION_MODE_OFF
 	if not Engine.is_editor_hint():
-		_apply_performance_mode()
+		_apply_water()
 
 
 func _ready() -> void:
@@ -65,27 +51,17 @@ func _ready() -> void:
 	_apply_deletion(players_path, delete_players)
 	_apply_deletion(spawner_path, delete_players)
 	if not Engine.is_editor_hint():
-		var settings := get_node_or_null("/root/Settings")
-		if settings:
-			settings.connect("performance_mode_changed", _apply_performance_mode)
-		_apply_performance_mode()
+		_apply_water()
 
 
-func _apply_performance_mode() -> void:
-	var performance_mode := _performance_mode_enabled()
+func _apply_water() -> void:
 	var water := get_node_or_null(water_path)
 	if water:
-		var config := _PERFORMANCE_WATER if performance_mode else _QUALITY_WATER
-		water.apply_quality(config)
-
+		water.apply_quality(_WATER)
 	var world_environment := get_node_or_null("WorldEnvironment")
 	if world_environment and world_environment.environment:
-		world_environment.environment.glow_enabled = not performance_mode
+		world_environment.environment.glow_enabled = not VR.quest_standalone
 
-
-func _performance_mode_enabled() -> bool:
-	var settings := get_node_or_null("/root/Settings")
-	return bool(settings.get("performance_mode")) if settings else false
 
 func _apply_visibility(paths: Array[NodePath], to_visible: bool) -> void:
 	if not is_inside_tree():

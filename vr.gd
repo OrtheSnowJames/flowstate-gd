@@ -35,7 +35,6 @@ var _zoom: Tween
 var _saved_transparent := false
 var _saved_disable_3d := false
 var _room_needs_center := false
-var _quest_test_code := preload("res://vr/quest_test_code.gd").new()
 
 
 func _ready() -> void:
@@ -44,7 +43,6 @@ func _ready() -> void:
 		_interface.pose_recentered.connect(_request_room_center)
 	var info := str(_interface.get_system_info()) if _interface and _interface.is_initialized() else ""
 	quest_standalone = is_standalone_quest(OS.get_name(), OS.get_model_name(), info, OS.has_feature("quest"))
-	Settings.performance_mode_changed.connect(_apply_quest_fps_limit)
 	_apply_quest_fps_limit()
 	if "--vr-preview" in OS.get_cmdline_user_args():
 		call_deferred("start", true)
@@ -61,7 +59,7 @@ static func is_standalone_quest(platform: String, model: String, runtime: String
 
 func _apply_quest_fps_limit() -> void:
 	if quest_standalone:
-		Engine.max_fps = 60 if Settings.performance_mode else 40
+		Engine.max_fps = 60
 
 # split up start into start_init and ready_room
 func start_init(preview := false) -> bool:
@@ -154,8 +152,6 @@ func enter_immersive() -> void:
 	if not active or immersive or entering or exiting:
 		return
 	CouchParty.leave()
-	_quest_test_code.reset()
-	Settings.reset_quest_test_performance()
 	entering = true
 	_release_controls()
 	_room_needs_center = false
@@ -193,7 +189,6 @@ func exit_immersive() -> void:
 		return
 	exiting = true
 	_release_controls()
-	_quest_test_code.reset()
 	immersion.cancel_gestures()
 	immersion.set_process(false)
 	var cover: MeshInstance3D = immersion.fade
@@ -276,8 +271,6 @@ func project_ui_position(world: Vector3, fallback: Camera3D) -> Vector2:
 
 func stop() -> void:
 	CouchParty.leave()
-	_quest_test_code.reset()
-	Settings.reset_quest_test_performance()
 	if _zoom and _zoom.is_running():
 		_zoom.kill()
 	_clear_immersion()
@@ -306,15 +299,7 @@ func _process(delta: float) -> void:
 	if active and _room_needs_center and not immersive and not entering:
 		_center_room_from_tracking()
 	if not active or _hands.size() != 2:
-		_quest_test_code.reset()
 		return
-	var both_tracked := _hands[0].get_is_active() and _hands[1].get_is_active()
-	if quest_standalone and not immersive and not entering and both_tracked:
-		_update_quest_test_code(_hands[1].is_button_pressed("ax_button"),
-			_hands[1].is_button_pressed("by_button"), _hands[0].get_vector2("primary").x,
-			_hands[1].get_vector2("primary").x, delta)
-	else:
-		_quest_test_code.reset()
 	var left_click := _hands[0].get_is_active() and _hands[0].is_button_pressed("primary_click")
 	var right_click := _hands[1].get_is_active() and _hands[1].is_button_pressed("primary_click")
 	var escape_chord := _update_escape_chord(left_click, right_click, delta)
@@ -375,14 +360,6 @@ func wall_triggers_held() -> bool:
 	return immersive and _hands.size() == 2 and Net.game_mode != Net.GameMode.ARCADE \
 		and _hands[0].get_is_active() and _hands[1].get_is_active() \
 		and _hands[0].get_float("trigger") > 0.65 and _hands[1].get_float("trigger") > 0.65
-
-
-func _update_quest_test_code(a: bool, b: bool, left_x: float, right_x: float, delta: float) -> void:
-	if not quest_standalone or not active or immersive or entering:
-		_quest_test_code.reset()
-		return
-	if _quest_test_code.update(a, b, left_x, right_x, delta):
-		Settings.toggle_quest_test_performance()
 
 
 func _update_escape_chord(left: bool, right: bool, delta: float) -> bool:

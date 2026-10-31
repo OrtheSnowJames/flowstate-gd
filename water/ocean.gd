@@ -40,13 +40,6 @@ func _ready() -> void:
 
 	_mat.set_shader_parameter("trail_pos",     _trail_pos)
 	_mat.set_shader_parameter("trail_age",     _trail_age)
-	_mat.set_shader_parameter("ripple_str",    0.4)
-	_mat.set_shader_parameter("ripple_freq",   40.0)
-	_mat.set_shader_parameter("ripple_speed",  4.0)
-	# ripple_decay is per second in the shaders exp age ripple_decay and ripple_radius is a
-	_mat.set_shader_parameter("ripple_radius", 12.0)
-	_mat.set_shader_parameter("ripple_decay",  6.0)
-	_mat.set_shader_parameter("player_radius", 1.2)
 	_init_wake()
 	_init_bubbles()
 

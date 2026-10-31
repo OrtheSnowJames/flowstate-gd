@@ -161,7 +161,11 @@ void fragment() {
 
 	// edge foam shore distortion rings
 	float raw_depth  = texture(DEPTH_TEXTURE, SCREEN_UV).r;
+	#if CURRENT_RENDERER == RENDERER_COMPATIBILITY
+	vec4  view_pos   = INV_PROJECTION_MATRIX * vec4(vec3(SCREEN_UV, raw_depth) * 2.0 - 1.0, 1.0);
+	#else
 	vec4  view_pos   = INV_PROJECTION_MATRIX * vec4(SCREEN_UV * 2.0 - 1.0, raw_depth, 1.0);
+	#endif
 	view_pos.xyz    /= view_pos.w;
 	float scene_depth = -view_pos.z;
 	float surf_depth  = -VERTEX.z;

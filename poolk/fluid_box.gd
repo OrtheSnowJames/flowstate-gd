@@ -25,6 +25,7 @@ signal body_splashed(body: Node3D, power: float)
 @export_range(0.0, 2.0) var amplitude := 0.35
 @export_range(60, 300) var mesh_resolution := 160
 @export var simple_surface := false
+@export var ocean_surface := false
 @export_range(0.0, 0.3) var refraction_strength := 0.07
 @export_range(0.0, 1.0) var detail_strength := 0.18
 @export var surface_material_override: ShaderMaterial
@@ -49,6 +50,7 @@ signal body_splashed(body: Node3D, power: float)
 const _SIM_SHADER := preload("res://poolk/water_sim.gdshader")
 const _SURF_SHADER := preload("res://poolk/water_surface.gdshader")
 const _NOISE_SHADER := preload("res://poolk/water_noise.gdshader")
+const _OCEAN_SURFACE := preload("res://water/ocean_surface.gd")
 const MAX_IMPULSES := 16
 const MAX_SIM_STEPS := 8
 const SPLASH_POOL_SIZE := 10
@@ -60,6 +62,7 @@ var _mat_b: ShaderMaterial
 var _sim_scratch: Array[SubViewport] = []
 var _surf_mat: ShaderMaterial
 var _noise_viewport: SubViewport
+var _ocean_surface: RefCounted
 var _mesh: MeshInstance3D
 var _flip := false
 var _reset_sim := true
@@ -92,14 +95,20 @@ func apply_quality(config: Dictionary) -> void:
 	# rebuild visual water without disturbing swimmers or collision
 	_mesh.hide()
 	_mesh.queue_free()
-	_vp_a.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp_b.render_target_update_mode = SubViewport.UPDATE_DISABLED
-	_vp_a.queue_free()
-	_vp_b.queue_free()
-	for viewport in _sim_scratch:
-		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
-		viewport.queue_free()
+	for viewport in [_vp_a, _vp_b] + _sim_scratch:
+		if is_instance_valid(viewport):
+			viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+			viewport.queue_free()
+	_vp_a = null
+	_vp_b = null
+	_mat_a = null
+	_mat_b = null
 	_sim_scratch.clear()
+	_ocean_surface = null
+	_pending.clear()
+	if ocean_surface and is_instance_valid(_noise_viewport):
+		_noise_viewport.queue_free()
+		_noise_viewport = null
 	_flip = false
 	_reset_sim = true
 	_sim_accum = 0.0
@@ -127,6 +136,8 @@ func _build_sim() -> void:
 	else:
 		_sim_size = Vector2i(maxi(int(sim_resolution / aspect), 16), sim_resolution)
 
+	if ocean_surface:
+		return
 	_vp_a = _make_sim_viewport()
 	_vp_b = _make_sim_viewport()
 	_mat_a = (_vp_a.get_child(0) as ColorRect).material
@@ -169,19 +180,23 @@ func _build_surface() -> void:
 	plane.subdivide_depth = maxi(int(mesh_resolution * aspect), 8)
 	_mesh.mesh = plane
 
-	if surface_material_override:
+	if ocean_surface:
+		_ocean_surface = _OCEAN_SURFACE.new()
+		_surf_mat = _ocean_surface.material
+	elif surface_material_override:
 		_surf_mat = surface_material_override
 	else:
 		_surf_mat = ShaderMaterial.new()
 		_surf_mat.shader = _SURF_SHADER
-	_surf_mat.set_shader_parameter("texel", Vector2(1.0 / _sim_size.x, 1.0 / _sim_size.y))
-	_surf_mat.set_shader_parameter("world_size", Vector2(size.x, size.z))
-	_surf_mat.set_shader_parameter("amplitude", amplitude)
-	_surf_mat.set_shader_parameter("simple_surface", simple_surface)
-	_surf_mat.set_shader_parameter("refraction_strength", refraction_strength)
-	_surf_mat.set_shader_parameter("detail_strength", detail_strength)
-	_surf_mat.set_shader_parameter("height_tex", _vp_a.get_texture())
-	if not simple_surface:
+	if not ocean_surface:
+		_surf_mat.set_shader_parameter("texel", Vector2(1.0 / _sim_size.x, 1.0 / _sim_size.y))
+		_surf_mat.set_shader_parameter("world_size", Vector2(size.x, size.z))
+		_surf_mat.set_shader_parameter("amplitude", amplitude)
+		_surf_mat.set_shader_parameter("simple_surface", simple_surface)
+		_surf_mat.set_shader_parameter("refraction_strength", refraction_strength)
+		_surf_mat.set_shader_parameter("detail_strength", detail_strength)
+		_surf_mat.set_shader_parameter("height_tex", _vp_a.get_texture())
+	if not simple_surface and not ocean_surface:
 		_build_detail_noise()
 		_surf_mat.set_shader_parameter("detail_noise", _noise_viewport.get_texture())
 	_mesh.material_override = _surf_mat
@@ -250,6 +265,9 @@ func _build_splash_pool() -> void:
 
 # catch up with separate gpu passes so slow frames dont stretch the waves
 func _process(delta: float) -> void:
+	if _ocean_surface:
+		_ocean_surface.update(delta)
+		return
 	if _reset_sim:
 		_vp_a.render_target_update_mode = SubViewport.UPDATE_ONCE
 		_vp_b.render_target_update_mode = SubViewport.UPDATE_ONCE
@@ -353,6 +371,8 @@ func _physics_process(_delta: float) -> void:
 					add_impulse(st.pos, 0.35 * splash_strength * clampf(p * 0.002, 0.02, 0.25), st.r * 1.3)
 					_spawn_splash(_surface_point(st.pos), p * 0.5, st.r)
 			_tracked.erase(id)
+	if _ocean_surface:
+		_ocean_surface.track_bodies(_tracked, global_position.y)
 
 
 func _on_body_enter(body: Node3D, vel: Vector3, mass: float, radius: float) -> void:
@@ -405,6 +425,9 @@ func add_impulse(world_pos: Vector3, strength_m: float, radius_m: float,
 	var m := Vector2(local.x + size.x * 0.5, local.z + size.z * 0.5)
 	var margin := radius_m * 3.0
 	if m.x < -margin or m.y < -margin or m.x > size.x + margin or m.y > size.z + margin:
+		return
+	if _ocean_surface:
+		_ocean_surface.add_ripple(world_pos)
 		return
 	var d2 := Vector2(dir.x, dir.z)
 	d2 = d2.normalized() if d2.length_squared() > 0.0001 else Vector2.RIGHT

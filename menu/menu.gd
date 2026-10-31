@@ -124,10 +124,6 @@ func _show_settings() -> void:
 			"On" if Settings.exponential_turn_sensitivity else "Off"),
 			"on_press": _toggle_exponential_sensitivity},
 	]
-	var show_performance: bool = (not VR.quest_standalone) or Settings._quest_test_quality
-	if show_performance:
-		buttons.append({"label": "Performance Mode: %s" % ("On" if Settings.performance_mode else "Off"),
-			"on_press": _toggle_performance_mode})
 	buttons.append({"label": "Back", "on_press": _show_root})
 	_menu_screen.show_buttons(buttons)
 
@@ -209,14 +205,6 @@ func _inc_turn_speed() -> String:
 
 func _toggle_exponential_sensitivity() -> void:
 	Settings.exponential_turn_sensitivity = not Settings.exponential_turn_sensitivity
-	Settings.save_settings()
-	_show_settings()
-
-
-func _toggle_performance_mode() -> void:
-	if VR.quest_standalone:
-		return
-	Settings.performance_mode = not Settings.performance_mode
 	Settings.save_settings()
 	_show_settings()
 
