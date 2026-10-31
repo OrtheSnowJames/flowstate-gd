@@ -50,17 +50,19 @@ const _SIM_SHADER := preload("res://poolk/water_sim.gdshader")
 const _SURF_SHADER := preload("res://poolk/water_surface.gdshader")
 const _NOISE_SHADER := preload("res://poolk/water_noise.gdshader")
 const MAX_IMPULSES := 16
+const MAX_SIM_STEPS := 8
 const SPLASH_POOL_SIZE := 10
 
 var _vp_a: SubViewport
 var _vp_b: SubViewport
 var _mat_a: ShaderMaterial
 var _mat_b: ShaderMaterial
+var _sim_scratch: Array[SubViewport] = []
 var _surf_mat: ShaderMaterial
 var _noise_viewport: SubViewport
 var _mesh: MeshInstance3D
 var _flip := false
-var _reset_frames := 3
+var _reset_sim := true
 var _sim_size := Vector2i(256, 256)
 
 var _pending: Array[Dictionary] = [] # impulses queued this frame
@@ -94,8 +96,12 @@ func apply_quality(config: Dictionary) -> void:
 	_vp_b.render_target_update_mode = SubViewport.UPDATE_DISABLED
 	_vp_a.queue_free()
 	_vp_b.queue_free()
+	for viewport in _sim_scratch:
+		viewport.render_target_update_mode = SubViewport.UPDATE_DISABLED
+		viewport.queue_free()
+	_sim_scratch.clear()
 	_flip = false
-	_reset_frames = 3
+	_reset_sim = true
 	_sim_accum = 0.0
 	_readback_img = null
 	_readback_countdown = 0
@@ -242,34 +248,60 @@ func _build_splash_pool() -> void:
 		_splash_pool.append(p)
 
 
-# run the sim at a fixed visual rate instead of once per rendered frame
+# catch up with separate gpu passes so slow frames dont stretch the waves
 func _process(delta: float) -> void:
-	_sim_accum += delta
-	var step_interval := 1.0 / maxf(sim_steps_per_second, 1.0)
-	if _reset_frames <= 0 and _sim_accum < step_interval:
+	if _reset_sim:
+		_vp_a.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_vp_b.render_target_update_mode = SubViewport.UPDATE_ONCE
+		_reset_sim = false
 		return
-	if _sim_accum >= step_interval:
-		_sim_accum = fmod(_sim_accum, step_interval)
+	var step_interval := 1.0 / maxf(sim_steps_per_second, 1.0)
+	_sim_accum = minf(_sim_accum + delta, step_interval * MAX_SIM_STEPS)
+	var steps := mini(int((_sim_accum + 0.000001) / step_interval), MAX_SIM_STEPS)
+	if steps == 0:
+		return
+	_sim_accum = maxf(_sim_accum - steps * step_interval, 0.0)
+	while _sim_scratch.size() < steps - 1:
+		_sim_scratch.append(_make_sim_viewport())
+	var root_viewport := get_viewport().get_viewport_rid()
+	for viewport in [_vp_a, _vp_b] + _sim_scratch:
+		RenderingServer.viewport_set_parent_viewport(viewport.get_viewport_rid(), root_viewport)
 
+	var source := _vp_a if _flip else _vp_b
 	_flip = not _flip
-	var dst_mat := _mat_a if _flip else _mat_b
 	var dst_vp := _vp_a if _flip else _vp_b
-
-	if _reset_frames > 0:
-		_reset_frames -= 1
-		dst_mat.set_shader_parameter("reset", true)
-	else:
-		dst_mat.set_shader_parameter("reset", false)
-
-	_flush_impulses(dst_mat)
-	dst_vp.render_target_update_mode = SubViewport.UPDATE_ONCE
+	var simulated_fraction := steps * step_interval / (steps * step_interval + _sim_accum)
+	for step in steps:
+		var target := dst_vp if step == steps - 1 else _sim_scratch[step]
+		var material: ShaderMaterial = target.get_child(0).material
+		material.set_shader_parameter("prev_tex", source.get_texture())
+		material.set_shader_parameter("reset", false)
+		# child viewports render first so each pass reads the completed previous step
+		if step > 0:
+			RenderingServer.viewport_set_parent_viewport(source.get_viewport_rid(), target.get_viewport_rid())
+		_step_wakes(step_interval, simulated_fraction * float(step + 1) / steps)
+		_flush_impulses(material)
+		target.render_target_update_mode = SubViewport.UPDATE_ONCE
+		source = target
 	_surf_mat.set_shader_parameter("height_tex", dst_vp.get_texture())
+	for state in _tracked.values():
+		if is_instance_valid(state.body):
+			state.wake_pos = state.wake_pos.lerp(state.body.global_position, simulated_fraction)
 
 	if enable_height_queries:
 		_readback_countdown -= 1
 		if _readback_countdown <= 0:
 			_readback_countdown = readback_interval
 			_readback_img = dst_vp.get_texture().get_image()
+
+
+func _step_wakes(delta: float, weight: float) -> void:
+	for state in _tracked.values():
+		var body = state.body
+		if not is_instance_valid(body):
+			continue
+		var pos: Vector3 = state.wake_pos.lerp(body.global_position, weight)
+		_continuous_interaction(pos, _body_velocity(body), _body_mass(body), state.r, delta)
 
 
 func _flush_impulses(mat: ShaderMaterial) -> void:
@@ -291,7 +323,7 @@ func _flush_impulses(mat: ShaderMaterial) -> void:
 	_pending.clear()
 
 
-func _physics_process(delta: float) -> void:
+func _physics_process(_delta: float) -> void:
 	var seen := {}
 	for body in get_overlapping_bodies():
 		if not (body is RigidBody3D or body is CharacterBody3D):
@@ -304,11 +336,10 @@ func _physics_process(delta: float) -> void:
 		var pos := body.global_position
 
 		if not _tracked.has(id):
-			_tracked[id] = {"body": body, "pos": pos, "r": radius}
+			_tracked[id] = {"body": body, "pos": pos, "r": radius, "wake_pos": pos}
 			_on_body_enter(body, vel, mass, radius)
 		else:
 			_tracked[id].pos = pos
-		_continuous_interaction(body, vel, mass, radius, delta)
 
 	# exit splashes body left or was freed
 	for id in _tracked.keys():
@@ -339,8 +370,8 @@ func _on_body_enter(body: Node3D, vel: Vector3, mass: float, radius: float) -> v
 		body_splashed.emit(body, momentum)
 
 
-func _continuous_interaction(body: Node3D, vel: Vector3, mass: float, radius: float, delta: float) -> void:
-	var local := to_local(body.global_position)
+func _continuous_interaction(pos: Vector3, vel: Vector3, mass: float, radius: float, delta: float) -> void:
+	var local := to_local(pos)
 	# only bodies near the surface disturb it deep swimmers dont
 	var depth_factor := clampf(1.0 + local.y / maxf(radius * 2.0, 0.3), 0.0, 1.0)
 	if depth_factor <= 0.0:
@@ -352,19 +383,19 @@ func _continuous_interaction(body: Node3D, vel: Vector3, mass: float, radius: fl
 	var hspeed := hvel.length()
 	if hspeed > wake_min_speed:
 		var dir := hvel / hspeed
-		var ahead := body.global_position + dir * radius * 0.7
+		var ahead := pos + dir * radius * 0.7
 		# dipole travelling in dir crest pushed forward trough dragged behind a real bow wave
 		var speed_amt := clampf(hspeed / 5.0, 0.0, 1.0)
 		var push := wake_strength * mass_f * speed_amt * delta * 7.0
 		# elongation stretches the crest into a forward front the faster it goes
 		add_impulse(ahead, push, radius * 1.2, dir, 1.0, clampf(hspeed * 0.32, 0.0, 3.5))
 		# plus the hole the hull carves depression at the body
-		add_impulse(body.global_position, -push * 0.55 * depth_factor, radius)
+		add_impulse(pos, -push * 0.55 * depth_factor, radius)
 
 	# vertical bobbing near the surface
 	if absf(vel.y) > 0.25 and depth_factor > 0.05:
 		var s := clampf(-vel.y * delta * 0.9, -0.06, 0.06) * mass_f * depth_factor
-		add_impulse(body.global_position, s * splash_strength, radius * 1.1)
+		add_impulse(pos, s * splash_strength, radius * 1.1)
 
 
 # public gameplay api inject a disturbance strength_m signed metres negative press water down positive
