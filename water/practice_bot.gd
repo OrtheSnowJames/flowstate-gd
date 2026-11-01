@@ -54,7 +54,9 @@ func _physics_process(delta: float) -> void:
 		return
 	if infinite_stamina:
 		player.stamina = player.max_stamina_per_mode(Net.game_mode)
-	player.movement_state = player.MovementState.IDLE if player.in_shallow_end() else player.MovementState.TREAD
+	var in_water: bool = is_instance_valid(player._ocean) and player._ocean.overlaps_body(player) and player._submersion() > 0.0
+	var standing: bool = player.Movement._jump_support(player) or player.in_shallow_end()
+	player.movement_state = player.MovementState.TREAD if in_water and not standing else player.MovementState.IDLE
 	player._update_water_counter(delta)
 	_cooldown = maxf(0.0, _cooldown - delta)
 	_cast(delta)

@@ -29,6 +29,7 @@ func _ready() -> void:
 		Net.rpc_id(1, "net_request_pool_party")
 
 
+
 func authoritative() -> bool:
 	return not Net.is_online() or multiplayer.is_server()
 

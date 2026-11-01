@@ -41,7 +41,7 @@ func _physics_process(delta: float) -> void:
 	if players == null:
 		return
 	_update_respawns(players, delta)
-	var control := _occupancy(players)
+	var control := _occupancy()
 	if control != Net.cube_control:
 		_held_seconds = 0.0
 		Net.set_cube_control(control)
@@ -54,14 +54,15 @@ func _physics_process(delta: float) -> void:
 		Net.award_cube_point(Net.PLAYER_SCRIPT.Team.RED if control == Net.CubeControl.RED else Net.PLAYER_SCRIPT.Team.BLUE)
 
 
-func _occupancy(players: Node) -> Net.CubeControl:
+func _occupancy() -> Net.CubeControl:
 	var red := false
 	var blue := false
+	var players := get_tree().get_nodes_in_group("player")
 	var excluded: Array[RID] = []
-	for player in players.get_children():
+	for player in players:
 		if player is CollisionObject3D:
 			excluded.append(player.get_rid())
-	for player in players.get_children():
+	for player in players:
 		if player.is_queued_for_deletion() or player._unconscious or player.movement_locked:
 			continue
 		if not supports_player(player, excluded):

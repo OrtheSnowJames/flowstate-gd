@@ -6,7 +6,7 @@ Well now you can! Introducing Flowstate! (I hastily made this name up)
 Download here: [goto](https://github.com/OrtheSnowJames/orthesnowjames.github.io/releases/tag/flowstate-latest)
 
 An example of King of the Cube:
-![strategy?](product_images/king_of_the_cube.png)
+![strategy?](product_images/new_king_of_the_cube.png)
 
 ## Movement
 
@@ -328,3 +328,4 @@ Quest imports live in `.godot/quest-build/project`, separate from the PCVR cache
 - Done? Untested, also only in alpha on my meta dashboard: VR couch parties with quest friends
 - Done: Fix bug where you can clip out of map
 - Done: Make stamina only start running out when you start moving
+- Done: Change readme picture to match new water
