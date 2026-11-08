@@ -19,7 +19,7 @@ var _wake         : GPUParticles3D
 var _bubbles      : GPUParticles3D
 
 func _ready() -> void:
-	var shader = load("res://water/water shader 2.gdshader") as Shader
+	var shader = load("res://poolk/ocean.gdshader") as Shader
 	_mat = ShaderMaterial.new()
 	_mat.shader = shader
 	# copy saved parameter values from the tres material so colors waves stay intact

@@ -1,7 +1,7 @@
 [gd_scene format=4 uid="uid://b133jbieo01kd"]
 
 [ext_resource type="Script" uid="uid://catnupgbgkmm3" path="res://water/player.gd" id="2_j38dg"]
-[ext_resource type="Material" uid="uid://dtnq8dw3dxtia" path="res://water/water shader.tres" id="2_nb2vx"]
+[ext_resource type="Material" uid="uid://dtnq8dw3dxtia" path="res://poolk/ocean_material.tres" id="2_nb2vx"]
 [ext_resource type="Script" uid="uid://d3ryuu1utammd" path="res://water/ocean.gd" id="3_ocean"]
 [ext_resource type="Material" uid="uid://d0db6ctnjv00e" path="res://water/tile.tres" id="4_ihpsq"]
 [ext_resource type="Script" uid="uid://cajkpw6dc1dpw" path="res://water/fps_counter.gd" id="fps_script"]

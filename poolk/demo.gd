@@ -1,7 +1,7 @@
 # demo a pool you can fight in lmb throw a light ball mass 2
 extends Node3D
 
-const FluidBoxScript := preload("res://poolk/fluid_box.gd")
+const FluidBoxScript := preload("fluid_box.gd")
 
 const POOL_W := 11.0
 const POOL_L := 7.5
@@ -86,7 +86,8 @@ func _add_box(box_size: Vector3, pos: Vector3, mat: Material) -> void:
 func _build_water() -> void:
 	_water = FluidBoxScript.new()
 	_water.size = Vector3(POOL_W, WATER_DEPTH, POOL_L)
-	_water.sim_resolution = 288
+	_water.ocean_surface = true
+	_water.mesh_resolution = 140
 	_water.amplitude = 0.32
 	add_child(_water)
 	_water.position = Vector3(0, WATER_Y, 0)

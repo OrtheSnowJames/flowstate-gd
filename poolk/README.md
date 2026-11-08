@@ -1,114 +1,108 @@
-# FluidBox — interactive 3D water for Godot 4
+# Poolk
 
-A real-time heightfield fluid: a genuine 2D wave-equation simulation running on
-the GPU, rendered as displaced 3D geometry. Not a scrolling-normal-map fake —
-waves propagate, reflect off pool walls, interfere, and diffract. Rigidbodies
-splash, carve wakes and push bow waves scaled by **mass × velocity**, and a
-gameplay API lets you inject directed "water attack" waves from code.
+From pool + toolk
 
-**Requires:** Godot **4.2+**, **Forward+** renderer (Mobile also works;
-Compatibility lacks the depth texture the surface shader uses).
+Poolk is the water toolkit made and used in Flowstate. It contains the water surface, body ripples, splashes, and an optional wave simulation. The toolkit does not need Flowstate's players, networking, settings, or autoloads.
 
-## Quick start
+## Add it to another project
 
-1. Copy the `godot_fluid_water` folder into your project root (`res://godot_fluid_water`).
-2. Open and run `demo/demo.tscn`.
-   - **LMB** throw a light ball · **MMB** heavy cannonball (compare the splashes)
-   - **F** water push attack — a travelling wave fired from the cursor
-   - **RMB drag** orbit · **wheel** zoom
+1. Copy the entire `poolk` folder into your Godot project and let Godot import it. Keep the files together; internal resource paths are relative, so the folder can also live inside another folder.
+2. Drag `poolk/water.tscn` from the FileSystem dock into your 3D scene.
+3. Select the Water node and set **Volume > Size**. X and Z are the surface width and length; Y is the water depth.
+4. Move the node to the desired water level. Its origin is the center of the surface, and its detection volume extends downward.
+5. Set the water's collision mask to include the layers used by your characters and rigid bodies.
+6. Add a camera, lighting, and your pool geometry, then run the scene. The water mesh and detection shape are created at runtime, so they do not appear in the editor preview.
 
-## Using it in your game
+Use the node's **Size**, not its scale, to resize the water. Keep it level and unrotated. Configure size before running; changing size after the water has been built does not rebuild its collision shape.
+
+Poolk uses Godot > 4.6.3. Forward+ and Mobile are the only tested renderers. Compatability rendering is unsupported, but you could probably get it to work with some optimizations.
+
+## Try the demo
+
+Run `poolk/demo.tscn` with F6. It builds a pool, camera, lights, and the current ocean-style water without any other project files.
+
+- Left mouse: throw a light ball
+- Middle mouse: throw a heavy ball
+- F: inject a water ripple
+- Right mouse drag: orbit
+- Mouse wheel: zoom
+
+## Create water from code
 
 ```gdscript
-var water := preload("res://godot_fluid_water/fluid_box.gd").new()
-water.size = Vector3(12, 2, 8)     # x/z = surface extent, y = depth below surface
+var water = preload("res://poolk/water.tscn").instantiate() # or poolk path
+water.size = Vector3(12, 2, 8)
+water.position = Vector3(0, 1.8, 0)
 add_child(water)
-water.global_position = Vector3(0, 1.8, 0)   # node origin = the rest surface
 ```
 
-That's it. Any `RigidBody3D` (or `CharacterBody3D` with a `velocity`) that
-enters the volume automatically produces:
+Disclaimer: rigid bodies and character bodies with a `velocity` property produce ripples and splashes when they move through the water. Water reacts to bodies but does not apply buoyancy, swimming, damage, or movement forces. Add those in your own gameplay scripts. Pool walls and floors also need their own collision bodies.
 
-- **Entry splash** — impulse depth and particle count/size/speed scale with
-  momentum `mass · speed` (via `sqrt`, so an anvil ≫ a pebble without blowing up).
-- **Wake + bow wave** — while moving horizontally, the body carves a depression
-  and pushes a **dipole wave ahead of itself** that keeps travelling after the
-  body slows. Move fast through the water and you shove a wave forward — for free.
-- **Bobbing ripples** and a small **exit splash** when jumping out.
+## Appearance
 
-The water never modifies the bodies (no buoyancy forces) — it only reacts.
+`water.tscn` enables **Ocean Surface** and uses a mesh resolution of 140, matching Flowstate's current surface setup.
 
-## Gameplay API (pool-fighting hooks)
+Edit `ocean_material.tres` to change its default look:
+
+| Shader parameter | Controls |
+|---|---|
+| `color_shallow`, `color_deep` | Water colors and opacity |
+| `color_foam` | Foam color |
+| `normal_strength` | Surface normal detail |
+| `wave_scale`, `wave_speed`, `water_world_scale` | Surface pattern scale and movement |
+| `wave_height` | Background swell height |
+| `ripple_radius`, `ripple_speed`, `ripple_freq` | Body ripple appearance |
+| `trail_count` | Ripple history slots; keep it even and between 2 and 128 |
+
+Each water instance duplicates the material, keeping its ripple history separate. `ocean_surface.gd` advances the wave clock and tracks body trails. `ocean.gdshader` renders the surface. The default material has background swell disabled with `wave_height = 0`.
+
+**Mesh Resolution** controls surface subdivisions. The simulation settings, **Simple Surface**, **Refraction Strength**, **Detail Strength**, and **Surface Material Override** belong to the older simulated surface; they do not tune the ocean material.
+
+## Ripples and splashes from code
+
+Positions passed to these methods are world positions.
 
 ```gdscript
-# Directed attack wave: crest travels along `dir`. dipole=1 makes it travel,
-# elongation stretches the point into a wave FRONT.
-water.add_impulse(hit_pos, 0.3, 0.6, attack_dir, 1.0, 2.0)
+# add a ripple at an impact
+water.add_impulse(hit_position, 0.3, 0.6)
 
-# Symmetric poke (negative = press down, positive = raise):
-water.add_impulse(explosion_pos, -0.4, 1.5)
+# add a ripple and spray particles
+water.splash_at(hit_position, 80.0, 0.3)
 
-# Cosmetic splash + ripple (bullet hits, spells). power ≈ mass·speed:
-water.splash_at(hit_pos, 80.0, 0.3)
-
-# Wave height for gameplay (set enable_height_queries = true first):
-var h := water.get_height_at(player.global_position)
-
-# React to impacts:
-water.body_splashed.connect(func(body, power): print(body, " hit at ", power))
+# listen for body entry splashes
+water.body_splashed.connect(func(body, power):
+    print(body.name, " splash power ", power))
 ```
 
-For a charged attack, scale `strength` (0.05 weak → 0.45 max) and `elongation`
-(0 = jab, 3 = wide sweeping front). For a shockwave, call `add_impulse` with a
-large radius and no direction.
+In ocean mode, `add_impulse` adds a shader ripple. Its strength, radius, direction, dipole, and elongation arguments do not shape that ripple. Those controls apply to the simulated surface. `splash_at` still uses its power and radius for particles.
 
-## How it works (why it looks real)
+## Optional wave simulation
 
-- **Simulation** (`shaders/water_sim.gdshader`): the discrete 2D wave equation
-  `∂²h/∂t² = c²∇²h` with damping, ping-ponged between two `SubViewport`s
-  (RGBA16F). Clamped boundaries mean waves **reflect off the pool walls** —
-  correct behaviour for a pool, and it makes fights messy in a good way.
-  Impulses are injected as elliptical Gaussians in **world metres**; the
-  dipole term (derivative of the Gaussian along the motion direction) is what
-  produces physically-shaped travelling bow waves.
-- **Surface** (`shaders/water_surface.gdshader`): a subdivided plane displaced
-  in the vertex shader (plus Gerstner-style horizontal chop so crests pinch),
-  normals computed analytically from the height gradient, screen-space
-  refraction, Beer–Lambert depth absorption against the scene depth buffer,
-  and foam driven by the sim's *velocity* channel (agitated water foams, still
-  water doesn't) plus crests and shorelines.
-- **Splashes**: a pool of one-shot `GPUParticles3D`; amount, scale, launch
-  speed and lifetime are lerped by clamped momentum.
-- **Robustness**: sim values are clamped every step (can't explode), impulses
-  are capped at 16/frame keeping the strongest, freed/teleported bodies are
-  handled, and non-square pools get aspect-corrected sim grids so waves travel
-  at the same speed in every direction.
+Turn **Ocean Surface** off before running to use the original (bad) heightfield simulation. In this mode, waves propagate across the surface and reflect at its rectangular edges.
 
-## Tuning cheat-sheet
-
-| Property | Effect |
+| Property | Controls |
 |---|---|
-| `sim_resolution` | Ripple detail. 192 cheap, 256 default, 320+ crisp. |
-| `wave_transfer` | Wave speed. Keep ≤ 0.5 (stability limit of the scheme). |
-| `wave_damping` | 0.999 = ocean swell that lingers; 0.99 = thick, calm pool. |
-| `edge_damping` | 0 = mirror walls (dramatic reflections); 1 = soft absorbing rim. |
-| `amplitude` | Physical wave height in metres. |
-| `splash_strength` / `wake_strength` | Global gain on body interactions. |
-| `min_splash_speed` | Below this entry speed, no particle burst (just ripples). |
-| Surface material | Colours, absorption, foam thresholds, micro-ripple detail. |
+| `sim_resolution` | Simulation grid detail; default 256 |
+| `sim_steps_per_second` | Simulation rate; default 30, separate from render FPS |
+| `wave_transfer` | Wave propagation; keep at or below 0.5 |
+| `wave_damping` | Energy retained per simulation step |
+| `edge_damping` | How strongly the edges absorb waves |
+| `amplitude` | Surface displacement scale |
+| `simple_surface` | Simplifies the simulated surface rendering |
+| `splash_strength`, `wake_strength` | Body interaction strength |
 
-## Performance
+A directed impulse is available in this mode:
 
-The sim is one fullscreen pass over a ~256×176 fp16 texture per frame —
-well under 0.1 ms on any discrete GPU. The main cost is the surface mesh
-(`mesh_resolution`, default 160 ≈ 26k verts) and refraction. Leave
-`enable_height_queries` off unless needed: GPU→CPU readback stalls ~0.3–1 ms
-every `readback_interval` frames.
+```gdscript
+water.add_impulse(hit_position, 0.3, 0.6, attack_direction, 1.0, 2.0)
+```
 
-## Notes & extensions
+With **Enable Height Queries** enabled, `get_height_at(world_position)` returns the simulated height offset above the resting surface. Add `water.global_position.y` to get a world height. Queries use GPU readback, so leave them off unless needed. Ocean mode has no heightfield readback and returns zero.
 
-- The surface is culled from below (`cull_back`); underwater camera rendering
-  is a separate effect (fog volume + flipped surface) if you need it.
-- Want buoyancy later? `get_height_at()` gives you wave height; apply
-  `force = ρ·g·submerged_volume` upward per body — the sim side needs no changes.
-- Multiple FluidBoxes in one scene are fine; each owns its own sim.
+To switch surface modes at runtime, use `water.apply_quality({"ocean_surface": false})`. This rebuilds the visual surface and resets its ripples without replacing the detection volume. Set size before initialization instead of passing it to this method.
+
+## Flowstate integration
+
+Flowstate's `water/ocean_fluid_bridge.gd` extends `poolk/fluid_box.gd` and adds game-specific attacks. `water/pool_scene_toggles.gd` selects the ocean surface for the arena. Those scripts stay outside the toolkit and are not needed in another project.
+
+The scoreboard, bathroom, and diving board scenes live in `water/props`. They are game assets rather than water dependencies.

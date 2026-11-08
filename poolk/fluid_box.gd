@@ -47,10 +47,10 @@ signal body_splashed(body: Node3D, power: float)
 @export var enable_height_queries := false
 @export_range(1, 30) var readback_interval := 4
 
-const _SIM_SHADER := preload("res://poolk/water_sim.gdshader")
-const _SURF_SHADER := preload("res://poolk/water_surface.gdshader")
-const _NOISE_SHADER := preload("res://poolk/water_noise.gdshader")
-const _OCEAN_SURFACE := preload("res://water/ocean_surface.gd")
+const _SIM_SHADER := preload("water_sim.gdshader")
+const _SURF_SHADER := preload("water_surface.gdshader")
+const _NOISE_SHADER := preload("water_noise.gdshader")
+const _OCEAN_SURFACE := preload("ocean_surface.gd")
 const MAX_IMPULSES := 16
 const MAX_SIM_STEPS := 8
 const SPLASH_POOL_SIZE := 10

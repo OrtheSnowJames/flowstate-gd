@@ -1,6 +1,6 @@
 extends RefCounted
 
-const MATERIAL := preload("res://water/water shader.tres")
+const MATERIAL := preload("ocean_material.tres")
 
 var material: ShaderMaterial = MATERIAL.duplicate()
 var _positions := PackedVector3Array()
