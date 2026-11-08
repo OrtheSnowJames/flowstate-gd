@@ -71,7 +71,23 @@ func _spawn(specs: Array, my_gen: int) -> void:
 	for spec in specs:
 		# untyped on purpose button_text row_label amount_text the button and stepper interface scripts own exports
 		var btn
-		if spec.get("type", "button") == "stepper":
+		if spec.get("type", "button") == "link":
+			btn = LinkButton.new()
+			btn.text = spec.get("label", "")
+			btn.uri = spec.get("url", "")
+			btn.focus_mode = Control.FOCUS_ALL
+			btn.add_theme_font_size_override("font_size", 26)
+			btn.modulate.a = 0.0
+			add_child(btn)
+		elif spec.get("type", "button") == "text":
+			btn = Label.new()
+			btn.text = spec.get("label", "")
+			btn.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+			btn.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			btn.add_theme_font_size_override("font_size", 26)
+			btn.modulate.a = 0.0
+			add_child(btn)
+		elif spec.get("type", "button") == "stepper":
 			btn = _THE_STEPPER.instantiate()
 			btn.modulate.a = 0.0
 			add_child(btn)

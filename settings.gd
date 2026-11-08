@@ -7,6 +7,10 @@ const _ONLINE_SECTION := "online"
 const _PROFILE_SECTION := "profile"
 const FRAME_LIMITS := [30, 40, 50, 60, 90, 120, 144, 165, 240, 0]
 
+var music_enabled := true
+var music_volume := 100
+var voice_volume := 100
+
 var show_movement_prompts := true
 var frame_limit := 0:
 	set(value):
@@ -33,6 +37,7 @@ var online_penalty_until_unix: int = 0
 
 func _ready() -> void:
 	load_settings()
+	apply_audio_settings()
 	apply_frame_limit()
 
 
@@ -57,6 +62,9 @@ func load_settings() -> void:
 	# a missing corrupt file just means nothing saved yet the defaults above already match
 	if cfg.load(_SAVE_PATH) != OK:
 		return
+	music_enabled = bool(cfg.get_value("audio", "music_enabled", true))
+	music_volume = clampi(int(cfg.get_value("audio", "music_volume", 100)), 0, 100)
+	voice_volume = clampi(int(cfg.get_value("audio", "voice_volume", 100)), 0, 100)
 	frame_limit = int(cfg.get_value("graphics", "frame_limit", frame_limit))
 	show_movement_prompts = bool(cfg.get_value("gameplay", "show_movement_prompts", true))
 	camera_hover_height = cfg.get_value(_SECTION, "camera_hover_height", camera_hover_height)
@@ -73,7 +81,11 @@ func load_settings() -> void:
 
 
 func save_settings() -> void:
+	apply_audio_settings()
 	var cfg := ConfigFile.new()
+	cfg.set_value("audio", "music_enabled", music_enabled)
+	cfg.set_value("audio", "music_volume", music_volume)
+	cfg.set_value("audio", "voice_volume", voice_volume)
 	cfg.set_value("graphics", "frame_limit", frame_limit)
 	cfg.set_value("gameplay", "show_movement_prompts", show_movement_prompts)
 	cfg.set_value(_SECTION, "camera_hover_height", camera_hover_height)
@@ -105,3 +117,16 @@ func start_online_penalty(seconds: int) -> void:
 
 func online_penalty_remaining() -> int:
 	return maxi(0, online_penalty_until_unix - int(Time.get_unix_time_from_system()))
+
+
+func apply_audio_settings() -> void:
+	for bus_name in ["Music", "VoicePlayback"]:
+		if AudioServer.get_bus_index(bus_name) < 0:
+			AudioServer.add_bus()
+			AudioServer.set_bus_name(AudioServer.bus_count - 1, bus_name)
+	var music_bus := AudioServer.get_bus_index("Music")
+	AudioServer.set_bus_mute(music_bus, not music_enabled or music_volume == 0)
+	AudioServer.set_bus_volume_db(music_bus, linear_to_db(maxf(music_volume / 100.0, 0.0001)))
+	var voice_bus := AudioServer.get_bus_index("VoicePlayback")
+	AudioServer.set_bus_mute(voice_bus, voice_volume == 0)
+	AudioServer.set_bus_volume_db(voice_bus, linear_to_db(maxf(voice_volume / 100.0, 0.0001)))

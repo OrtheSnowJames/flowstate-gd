@@ -114,6 +114,7 @@ func _open_code_prompt() -> void:
 func _show_settings() -> void:
 	var buttons := [
 		{"label": "Name and Voice Chat", "on_press": _on_edit_name},
+		{"label": "Audio", "on_press": _show_audio_settings},
 		{"label": "Gameplay Prompts: %s" % ("On" if Settings.show_movement_prompts else "Off"),
 			"on_press": _toggle_movement_prompts},
 		{"type": "stepper", "label": "Frame Limit", "value": _frame_limit_text(),
@@ -244,3 +245,29 @@ func _on_solo_play() -> void:
 
 func _on_connect_localhost() -> void:
 	Net.start_connect_localhost()
+
+
+func _show_audio_settings() -> void:
+	_menu_screen.show_buttons([
+		{"label": "Music: %s" % ("On" if Settings.music_enabled else "Off"), "on_press": _toggle_music},
+		{"type": "stepper", "label": "Music Volume", "value": "%d%%" % Settings.music_volume,
+			"on_left": _change_audio_volume.bind("music_volume", -10), "on_right": _change_audio_volume.bind("music_volume", 10)},
+		{"type": "stepper", "label": "Voice Chat Volume", "value": "%d%%" % Settings.voice_volume,
+			"on_left": _change_audio_volume.bind("voice_volume", -10), "on_right": _change_audio_volume.bind("voice_volume", 10)},
+		{"type": "text", "label": "Music Credits"},
+		{"type": "link", "label": "LuckyEv_Real", "url": "https://www.youtube.com/@LuckyEv_Real"},
+		{"label": "Back", "on_press": _show_settings},
+	])
+
+
+func _toggle_music() -> void:
+	Settings.music_enabled = not Settings.music_enabled
+	Settings.save_settings()
+	_show_audio_settings()
+
+
+func _change_audio_volume(setting: String, amount: int) -> String:
+	var value := clampi(int(Settings.get(setting)) + amount, 0, 100)
+	Settings.set(setting, value)
+	Settings.save_settings()
+	return "%d%%" % value

@@ -18,6 +18,7 @@ var _spatial: AudioStreamPlayer3D
 
 func spatial_at(parent: Node3D) -> void:
 	_spatial = AudioStreamPlayer3D.new()
+	_spatial.bus = &"VoicePlayback"
 	_spatial.stream = stream
 	_spatial.unit_size = 2.0
 	_spatial.max_distance = 12.0
@@ -38,6 +39,7 @@ func _ready() -> void:
 	generator.mix_rate = PCM.RATE
 	generator.buffer_length = 0.16
 	stream = generator
+	bus = &"VoicePlayback"
 	volume_db = 0.0
 
 
